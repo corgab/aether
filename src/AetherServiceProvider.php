@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Aether;
+
+use Illuminate\Contracts\Config\Repository as ConfigContract;
+use Illuminate\Support\ServiceProvider;
+
+class AetherServiceProvider extends ServiceProvider
+{
+    /**
+     * Register package services.
+     */
+    public function register(): void
+    {
+        $this->mergeConfigFrom(
+            __DIR__ . '/../config/aether.php',
+            'aether'
+        );
+
+        $this->app->singleton(QuantumManager::class, function ($app): QuantumManager {
+            return new QuantumManager($app->make(ConfigContract::class));
+        });
+    }
+
+    /**
+     * Bootstrap package services.
+     */
+    public function boot(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__ . '/../config/aether.php' => config_path('aether.php'),
+            ], 'aether-config');
+
+            $this->commands([Commands\AetherInstallCommand::class]);
+        }
+    }
+}
