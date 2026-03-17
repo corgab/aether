@@ -32,6 +32,16 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for an invalid qubit count.
+     *
+     * @param  int  $count
+     */
+    public static function invalidQubitCount(int $count): self
+    {
+        return new self("The circuit requires at least 1 qubit, {$count} given.");
+    }
+
+    /**
      * Create an exception for a circuit that has no measurement operations.
      */
     public static function noMeasurement(): self

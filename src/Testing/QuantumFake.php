@@ -101,8 +101,8 @@ class QuantumFake implements QuantumDevice
         if ($callback !== null) {
             $matched = array_filter($this->recordedCircuits, $callback);
 
-            Assert::assertTrue(
-                count($matched) > 0,
+            Assert::assertNotEmpty(
+                $matched,
                 'No recorded circuit matched the given callback.',
             );
         }

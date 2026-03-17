@@ -13,6 +13,14 @@ use Aether\Results\CircuitResult;
 
 beforeEach(function () {
     $this->bridge = $this->createMock(PythonBridge::class);
+    $this->bridge->method('bitstringToBytes')
+        ->willReturnCallback(function (string $bitstring): string {
+            $bytes = '';
+            foreach (str_split($bitstring, 8) as $chunk) {
+                $bytes .= chr((int) bindec($chunk));
+            }
+            return $bytes;
+        });
     $this->config = [
         'region'           => 'us-east-1',
         'device_arn'       => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',

@@ -218,3 +218,31 @@ it('gate on qubit zero with one qubit circuit does not throw', function () use (
     // No exception expected; reaching this assertion is the pass condition.
     expect(true)->toBeTrue();
 });
+
+// -------------------------------------------------------------------------
+// Validation: negative qubit index
+// -------------------------------------------------------------------------
+
+it('h throws when target is negative', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->h(-1))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('cnot throws when control is negative', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->cnot(-1, 0))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+// -------------------------------------------------------------------------
+// Validation: qubits() rejects invalid counts
+// -------------------------------------------------------------------------
+
+it('qubits throws when count is zero', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(0))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('qubits throws when count is negative', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(-1))
+        ->toThrow(InvalidCircuitException::class);
+});

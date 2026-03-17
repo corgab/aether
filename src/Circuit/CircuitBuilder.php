@@ -44,6 +44,10 @@ class CircuitBuilder
      */
     public function qubits(int $count): static
     {
+        if ($count < 1) {
+            throw InvalidCircuitException::invalidQubitCount($count);
+        }
+
         $this->qubitCount = $count;
 
         return $this;
@@ -206,7 +210,7 @@ class CircuitBuilder
      */
     private function assertTargetInRange(string $gate, int $target): void
     {
-        if ($target >= $this->qubitCount) {
+        if ($target < 0 || $target >= $this->qubitCount) {
             throw InvalidCircuitException::gateTargetOutOfRange($gate, $target, $this->qubitCount);
         }
     }

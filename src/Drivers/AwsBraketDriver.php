@@ -65,7 +65,7 @@ class AwsBraketDriver implements QuantumDevice
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config);
 
-        return $this->bitstringToBytes($response['bits']);
+        return $this->bridge->bitstringToBytes($response['bits']);
     }
 
     /**
@@ -78,22 +78,5 @@ class AwsBraketDriver implements QuantumDevice
         if (($this->config['synchronous_safe'] ?? true) === false) {
             throw QuantumExecutionException::synchronousUnsafe('aws');
         }
-    }
-
-    /**
-     * Convert a binary string (e.g. "10110011") into raw bytes.
-     *
-     * @param  string  $bitstring
-     * @return string
-     */
-    private function bitstringToBytes(string $bitstring): string
-    {
-        $bytes = '';
-
-        foreach (str_split($bitstring, 8) as $chunk) {
-            $bytes .= chr((int) bindec($chunk));
-        }
-
-        return $bytes;
     }
 }

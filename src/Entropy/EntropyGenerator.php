@@ -24,9 +24,7 @@ class EntropyGenerator
      */
     public function generate(int $bits): string
     {
-        $hex = $this->device->generateEntropy($bits);
-
-        return hex2bin($hex);
+        return $this->device->generateEntropy($bits);
     }
 
     /**

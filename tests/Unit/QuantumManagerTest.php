@@ -126,6 +126,16 @@ it('registers and resolves a custom driver via extend()', function () {
     expect($resolved)->toBe($fake);
 });
 
+it('fake returns same instance for any driver name', function () {
+    $manager = new QuantumManager($this->config);
+
+    $fake = $manager->fake();
+
+    expect($manager->driver('local'))->toBe($fake);
+    expect($manager->driver('aws'))->toBe($fake);
+    expect($manager->driver('anything'))->toBe($fake);
+});
+
 it('custom driver takes precedence over built-in driver', function () {
     $fake = $this->createMock(QuantumDevice::class);
 

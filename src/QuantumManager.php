@@ -26,6 +26,8 @@ class QuantumManager
     /** @var array<string, Closure> */
     private array $customCreators = [];
 
+    private ?Testing\QuantumFake $fakeInstance = null;
+
     /**
      * @param  ConfigContract  $config
      */
@@ -40,6 +42,10 @@ class QuantumManager
      */
     public function driver(?string $name = null): QuantumDevice
     {
+        if ($this->fakeInstance !== null) {
+            return $this->fakeInstance;
+        }
+
         $name = $name ?? $this->getDefaultDriver();
 
         if (! isset($this->drivers[$name])) {
@@ -88,8 +94,7 @@ class QuantumManager
         $fake = new Testing\QuantumFake();
         $this->drivers = [];
         $this->customCreators = [];
-        $this->extend('local', fn () => $fake);
-        $this->extend('aws', fn () => $fake);
+        $this->fakeInstance = $fake;
 
         return $fake;
     }

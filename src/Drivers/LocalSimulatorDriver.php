@@ -56,23 +56,6 @@ class LocalSimulatorDriver implements QuantumDevice
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config);
 
-        return $this->bitstringToBytes($response['bits']);
-    }
-
-    /**
-     * Convert a binary string (e.g. "10110011") into raw bytes.
-     *
-     * @param  string  $bitstring
-     * @return string
-     */
-    private function bitstringToBytes(string $bitstring): string
-    {
-        $bytes = '';
-
-        foreach (str_split($bitstring, 8) as $chunk) {
-            $bytes .= chr((int) bindec($chunk));
-        }
-
-        return $bytes;
+        return $this->bridge->bitstringToBytes($response['bits']);
     }
 }

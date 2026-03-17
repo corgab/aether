@@ -85,6 +85,23 @@ class PythonBridge
     }
 
     /**
+     * Convert a binary digit string (e.g. "10110011") into raw bytes.
+     *
+     * @param  string  $bitstring
+     * @return string
+     */
+    public function bitstringToBytes(string $bitstring): string
+    {
+        $bytes = '';
+
+        foreach (str_split($bitstring, 8) as $chunk) {
+            $bytes .= chr((int) bindec($chunk));
+        }
+
+        return $bytes;
+    }
+
+    /**
      * Build the environment variable array for the child process.
      *
      * Only non-null values are included to preserve boto3's credential chain.

@@ -14,6 +14,14 @@ $config = ['backend' => 'statevector_simulator'];
 
 beforeEach(function () use ($config) {
     $this->bridge = $this->createMock(PythonBridge::class);
+    $this->bridge->method('bitstringToBytes')
+        ->willReturnCallback(function (string $bitstring): string {
+            $bytes = '';
+            foreach (str_split($bitstring, 8) as $chunk) {
+                $bytes .= chr((int) bindec($chunk));
+            }
+            return $bytes;
+        });
     $this->config = $config;
     $this->driver = new LocalSimulatorDriver($this->bridge, $this->config);
 });
