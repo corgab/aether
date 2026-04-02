@@ -17,32 +17,28 @@ class PythonBridge implements PythonExecutor
 {
     private readonly string $scriptsPath;
 
-    /**
-     * @param  string  $pythonPath
-     */
     public function __construct(private readonly string $pythonPath)
     {
-        $resolved = realpath(__DIR__ . '/../../bin/python');
+        $resolved = realpath(__DIR__.'/../../bin/python');
 
         $this->scriptsPath = $resolved !== false
             ? $resolved
-            : __DIR__ . '/../../bin/python';
+            : __DIR__.'/../../bin/python';
     }
 
     /**
      * Execute a Python script with the given payload.
      *
-     * @param  string  $script
      * @param  array<mixed>  $payload
      * @param  array<string, mixed>  $driverConfig
      * @return array<mixed>
      *
-     * @throws \Aether\Exceptions\PythonEnvironmentException
-     * @throws \Aether\Exceptions\QuantumExecutionException
+     * @throws PythonEnvironmentException
+     * @throws QuantumExecutionException
      */
     public function execute(string $script, array $payload, array $driverConfig = []): array
     {
-        $scriptPath = $this->scriptsPath . DIRECTORY_SEPARATOR . $script;
+        $scriptPath = $this->scriptsPath.DIRECTORY_SEPARATOR.$script;
 
         $process = new Process(
             command: [$this->pythonPath, $scriptPath],
@@ -79,7 +75,7 @@ class PythonBridge implements PythonExecutor
         } catch (\JsonException $e) {
             throw QuantumExecutionException::fromPythonError(
                 $script,
-                'Invalid JSON output: ' . $e->getMessage(),
+                'Invalid JSON output: '.$e->getMessage(),
                 0,
             );
         }
@@ -87,7 +83,7 @@ class PythonBridge implements PythonExecutor
         if (! is_array($decoded)) {
             throw QuantumExecutionException::fromPythonError(
                 $script,
-                'Expected JSON object, got ' . get_debug_type($decoded),
+                'Expected JSON object, got '.get_debug_type($decoded),
                 0,
             );
         }
@@ -105,9 +101,6 @@ class PythonBridge implements PythonExecutor
 
     /**
      * Convert a binary digit string (e.g. "10110011") into raw bytes.
-     *
-     * @param  string  $bitstring
-     * @return string
      */
     public function bitstringToBytes(string $bitstring): string
     {

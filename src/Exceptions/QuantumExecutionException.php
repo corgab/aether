@@ -11,10 +11,6 @@ class QuantumExecutionException extends AetherException
 {
     /**
      * Create an exception from a Python subprocess error.
-     *
-     * @param  string  $script
-     * @param  string  $stderr
-     * @param  int  $exitCode
      */
     public static function fromPythonError(string $script, string $stderr, int $exitCode): self
     {
@@ -26,8 +22,6 @@ class QuantumExecutionException extends AetherException
 
     /**
      * Create an exception for drivers that do not support synchronous execution.
-     *
-     * @param  string  $driver
      */
     public static function synchronousUnsafe(string $driver): self
     {

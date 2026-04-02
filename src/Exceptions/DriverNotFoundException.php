@@ -11,8 +11,6 @@ class DriverNotFoundException extends AetherException
 {
     /**
      * Create an exception for an unknown driver name.
-     *
-     * @param  string  $name
      */
     public static function forDriver(string $name): self
     {

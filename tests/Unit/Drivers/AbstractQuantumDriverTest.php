@@ -16,10 +16,12 @@ beforeEach(function () {
             foreach (str_split($bitstring, 8) as $chunk) {
                 $bytes .= chr((int) bindec($chunk));
             }
+
             return $bytes;
         });
 
-    $this->driver = new class($this->bridge, ['key' => 'value']) extends AbstractQuantumDriver {
+    $this->driver = new class($this->bridge, ['key' => 'value']) extends AbstractQuantumDriver
+    {
         protected function driverName(): string
         {
             return 'test';
@@ -65,10 +67,19 @@ it('passes driver name and config in entropy payload', function () {
 });
 
 it('calls beforeExecution hook', function () {
-    $driver = new class($this->bridge, []) extends AbstractQuantumDriver {
+    $driver = new class($this->bridge, []) extends AbstractQuantumDriver
+    {
         public bool $hookCalled = false;
-        protected function driverName(): string { return 'hook'; }
-        protected function beforeExecution(): void { $this->hookCalled = true; }
+
+        protected function driverName(): string
+        {
+            return 'hook';
+        }
+
+        protected function beforeExecution(): void
+        {
+            $this->hookCalled = true;
+        }
     };
 
     $this->bridge->method('execute')

@@ -11,16 +11,10 @@ use Aether\Contracts\QuantumDevice;
  */
 class EntropyGenerator
 {
-    /**
-     * @param  QuantumDevice  $device
-     */
     public function __construct(private readonly QuantumDevice $device) {}
 
     /**
      * Generate raw entropy bytes.
-     *
-     * @param  int  $bits
-     * @return string
      */
     public function generate(int $bits): string
     {
@@ -29,9 +23,6 @@ class EntropyGenerator
 
     /**
      * Generate entropy as a lowercase hexadecimal string.
-     *
-     * @param  int  $bits
-     * @return string
      */
     public function hex(int $bits): string
     {
@@ -40,10 +31,6 @@ class EntropyGenerator
 
     /**
      * Generate an unbiased random integer in [$min, $max] using rejection sampling.
-     *
-     * @param  int  $min
-     * @param  int  $max
-     * @return int
      */
     public function integer(int $min, int $max): int
     {
@@ -85,9 +72,6 @@ class EntropyGenerator
 
     /**
      * Convert a raw byte string into a binary digit string.
-     *
-     * @param  string  $bytes
-     * @return string
      */
     private function bytesToBitstring(string $bytes): string
     {

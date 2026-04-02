@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use Aether\Results\CircuitResult;
 use Illuminate\Contracts\Support\Arrayable;
@@ -116,21 +118,21 @@ it('implements jsonable', function (): void {
 // -------------------------------------------------------------------------
 
 it('throws on mostFrequent with empty counts', function () {
-    $result = new \Aether\Results\CircuitResult([]);
+    $result = new CircuitResult([]);
     $result->mostFrequent();
-})->throws(\LogicException::class);
+})->throws(LogicException::class);
 
 // -------------------------------------------------------------------------
 // Stringable
 // -------------------------------------------------------------------------
 
 it('implements Stringable', function () {
-    $result = new \Aether\Results\CircuitResult(['00' => 500, '11' => 500]);
-    expect($result)->toBeInstanceOf(\Stringable::class);
+    $result = new CircuitResult(['00' => 500, '11' => 500]);
+    expect($result)->toBeInstanceOf(Stringable::class);
 });
 
 it('converts to JSON string via __toString', function () {
-    $result = new \Aether\Results\CircuitResult(['0' => 700, '1' => 300]);
+    $result = new CircuitResult(['0' => 700, '1' => 300]);
     $string = (string) $result;
     $decoded = json_decode($string, true);
     expect($decoded)->toHaveKey('counts')

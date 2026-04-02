@@ -1,7 +1,9 @@
-<?php declare(strict_types=1);
+<?php
 
-use Aether\Contracts\PythonExecutor;
+declare(strict_types=1);
+
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Results\CircuitResult;
@@ -20,6 +22,7 @@ beforeEach(function () use ($config) {
             foreach (str_split($bitstring, 8) as $chunk) {
                 $bytes .= chr((int) bindec($chunk));
             }
+
             return $bytes;
         });
     $this->config = $config;
@@ -41,8 +44,8 @@ it('implements QuantumDevice interface', function () {
 it('delegates executeCircuit to bridge with correct payload', function () {
     $circuitArray = [
         'qubits' => 2,
-        'gates'  => [['type' => 'H', 'target' => 0]],
-        'shots'  => 1024,
+        'gates' => [['type' => 'H', 'target' => 0]],
+        'shots' => 1024,
     ];
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -51,7 +54,7 @@ it('delegates executeCircuit to bridge with correct payload', function () {
         ->willReturn($circuitArray);
 
     $expectedPayload = array_merge($circuitArray, [
-        'driver'        => 'local',
+        'driver' => 'local',
         'driver_config' => $this->config,
     ]);
 
@@ -114,5 +117,5 @@ it('converts bitstring to raw bytes correctly', function () {
 
     $entropy = $this->driver->generateEntropy(16);
 
-    expect($entropy)->toBe(chr(0xB3) . chr(0xA5));
+    expect($entropy)->toBe(chr(0xB3).chr(0xA5));
 });

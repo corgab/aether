@@ -1,13 +1,15 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
 
-$device    = null;
+$device = null;
 $generator = null;
 
 beforeEach(function () use (&$device, &$generator): void {
-    $device    = $this->createMock(QuantumDevice::class);
+    $device = $this->createMock(QuantumDevice::class);
     $generator = new EntropyGenerator($device);
 });
 
@@ -125,7 +127,7 @@ it('integer fetches exactly one 256-bit batch when first chunk is valid', functi
         ->expects($this->once())
         ->method('generateEntropy')
         ->with(256)
-        ->willReturn("\x03" . str_repeat("\x00", 31));
+        ->willReturn("\x03".str_repeat("\x00", 31));
 
     $result = $generator->integer(0, 255);
 
@@ -152,7 +154,7 @@ it('integer fetches another batch when buffer is exhausted', function () use (&$
 // -------------------------------------------------------------------------
 
 it('throws when min exceeds max', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    $generator = new \Aether\Entropy\EntropyGenerator($device);
+    $device = $this->createMock(QuantumDevice::class);
+    $generator = new EntropyGenerator($device);
     $generator->integer(10, 5);
-})->throws(\InvalidArgumentException::class, 'must not exceed');
+})->throws(InvalidArgumentException::class, 'must not exceed');

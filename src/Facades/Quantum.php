@@ -7,6 +7,7 @@ namespace Aether\Facades;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
+use Aether\QuantumManager;
 use Aether\Testing\QuantumFake;
 use Closure;
 use Illuminate\Support\Facades\Facade;
@@ -21,7 +22,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static QuantumFake fake()
  * @method static \Aether\QuantumManager forgetDrivers()
  *
- * @see \Aether\QuantumManager
+ * @see QuantumManager
  */
 class Quantum extends Facade
 {
@@ -30,6 +31,6 @@ class Quantum extends Facade
      */
     protected static function getFacadeAccessor(): string
     {
-        return \Aether\QuantumManager::class;
+        return QuantumManager::class;
     }
 }

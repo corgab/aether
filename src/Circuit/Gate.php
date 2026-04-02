@@ -10,9 +10,6 @@ namespace Aether\Circuit;
 final class Gate
 {
     /**
-     * @param  string  $type
-     * @param  int|null  $target
-     * @param  int|null  $control
      * @param  int[]|null  $targets
      */
     private function __construct(
@@ -56,9 +53,6 @@ final class Gate
 
     /**
      * Create a Controlled-NOT gate.
-     *
-     * @param  int  $control
-     * @param  int  $target
      */
     public static function cnot(int $control, int $target): self
     {
@@ -77,9 +71,9 @@ final class Gate
     public static function measure(int|array|null $targets): self
     {
         $resolved = match (true) {
-            $targets === null  => null,
-            is_int($targets)   => [$targets],
-            default            => $targets,
+            $targets === null => null,
+            is_int($targets) => [$targets],
+            default => $targets,
         };
 
         return new self(type: 'measure', target: null, control: null, targets: $resolved);

@@ -3,15 +3,27 @@
     "description": "Laravel Quantum Computing bridge for AWS Braket and local simulators",
     "type": "library",
     "license": "MIT",
+    "keywords": ["laravel", "quantum", "aws-braket", "quantum-computing", "entropy"],
+    "authors": [
+        {
+            "name": "corgab",
+            "homepage": "https://github.com/corgab"
+        }
+    ],
+    "homepage": "https://github.com/corgab/aether",
     "require": {
         "php": "^8.2",
+        "illuminate/console": "^11.0|^12.0",
+        "illuminate/contracts": "^11.0|^12.0",
         "illuminate/support": "^11.0|^12.0",
         "symfony/process": "^7.0"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0",
         "phpunit/phpunit": "^11.0",
-        "pestphp/pest": "*"
+        "pestphp/pest": "^3.0",
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.0"
     },
     "autoload": {
         "psr-4": {
@@ -39,5 +51,14 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
+    },
+    "scripts": {
+        "test": "pest",
+        "analyse": "phpstan analyse",
+        "format": "pint",
+        "check": [
+            "@analyse",
+            "@test"
+        ]
     }
 }

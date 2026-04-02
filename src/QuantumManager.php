@@ -63,7 +63,7 @@ class QuantumManager extends Manager
      */
     public function fake(): QuantumFake
     {
-        $fake = new QuantumFake();
+        $fake = new QuantumFake;
         $this->fakeInstance = $fake;
         $this->forgetDrivers();
 
@@ -79,7 +79,7 @@ class QuantumManager extends Manager
             return $this->callCustomCreator($driver);
         }
 
-        $method = 'create' . Str::studly($driver) . 'Driver';
+        $method = 'create'.Str::studly($driver).'Driver';
 
         if (method_exists($this, $method)) {
             return $this->$method();

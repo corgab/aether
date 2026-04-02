@@ -23,8 +23,6 @@ class QuantumFake implements QuantumDevice
 
     /**
      * Record the circuit and return a deterministic 50/50 result.
-     *
-     * @param  CircuitBuilder  $circuit
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
@@ -44,9 +42,6 @@ class QuantumFake implements QuantumDevice
 
     /**
      * Record the bit request and return deterministic bytes (0xAA pattern).
-     *
-     * @param  int  $bits
-     * @return string
      */
     public function generateEntropy(int $bits): string
     {
@@ -93,8 +88,6 @@ class QuantumFake implements QuantumDevice
 
     /**
      * Assert that at least one circuit was executed, optionally matching a callback.
-     *
-     * @param  Closure|null  $callback
      */
     public function assertCircuitRan(?Closure $callback = null): void
     {
@@ -115,8 +108,6 @@ class QuantumFake implements QuantumDevice
 
     /**
      * Assert that entropy was generated, optionally for a specific bit count.
-     *
-     * @param  int|null  $bits
      */
     public function assertEntropyGenerated(?int $bits = null): void
     {
@@ -164,7 +155,7 @@ class QuantumFake implements QuantumDevice
         Assert::assertCount(
             $count,
             $this->recordedCircuits,
-            "Expected {$count} circuit(s) to be executed, got " . count($this->recordedCircuits) . '.',
+            "Expected {$count} circuit(s) to be executed, got ".count($this->recordedCircuits).'.',
         );
     }
 }

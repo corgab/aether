@@ -1,16 +1,17 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Results\CircuitResult;
-use PHPUnit\Framework\MockObject\MockObject;
 
-$device  = null;
+$device = null;
 $builder = null;
 
 beforeEach(function () use (&$device, &$builder): void {
-    $device  = $this->createMock(QuantumDevice::class);
+    $device = $this->createMock(QuantumDevice::class);
     $builder = new CircuitBuilder($device);
 });
 
@@ -252,24 +253,24 @@ it('qubits throws when count is negative', function () use (&$builder): void {
 // -------------------------------------------------------------------------
 
 it('throws on zero shots', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    (new \Aether\Circuit\CircuitBuilder($device))->qubits(1)->shots(0);
-})->throws(\Aether\Exceptions\InvalidCircuitException::class);
+    $device = $this->createMock(QuantumDevice::class);
+    (new CircuitBuilder($device))->qubits(1)->shots(0);
+})->throws(InvalidCircuitException::class);
 
 it('throws on negative shots', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    (new \Aether\Circuit\CircuitBuilder($device))->qubits(1)->shots(-5);
-})->throws(\Aether\Exceptions\InvalidCircuitException::class);
+    $device = $this->createMock(QuantumDevice::class);
+    (new CircuitBuilder($device))->qubits(1)->shots(-5);
+})->throws(InvalidCircuitException::class);
 
 it('exposes shot count via shotCount()', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    $builder = (new \Aether\Circuit\CircuitBuilder($device))->qubits(1)->shots(2048);
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(1)->shots(2048);
     expect($builder->shotCount())->toBe(2048);
 });
 
 it('returns default shot count of 1000', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    $builder = (new \Aether\Circuit\CircuitBuilder($device))->qubits(1);
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(1);
     expect($builder->shotCount())->toBe(1000);
 });
 
@@ -278,17 +279,17 @@ it('returns default shot count of 1000', function () {
 // -------------------------------------------------------------------------
 
 it('validates measure target indices', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    (new \Aether\Circuit\CircuitBuilder($device))->qubits(2)->measure(5);
-})->throws(\Aether\Exceptions\InvalidCircuitException::class);
+    $device = $this->createMock(QuantumDevice::class);
+    (new CircuitBuilder($device))->qubits(2)->measure(5);
+})->throws(InvalidCircuitException::class);
 
 it('validates measure target array indices', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    (new \Aether\Circuit\CircuitBuilder($device))->qubits(2)->measure([0, 9]);
-})->throws(\Aether\Exceptions\InvalidCircuitException::class);
+    $device = $this->createMock(QuantumDevice::class);
+    (new CircuitBuilder($device))->qubits(2)->measure([0, 9]);
+})->throws(InvalidCircuitException::class);
 
 it('allows measure with null targets', function () {
-    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
-    $builder = (new \Aether\Circuit\CircuitBuilder($device))->qubits(2)->measure();
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(2)->measure();
     expect($builder->qubitCount())->toBe(2);
 });

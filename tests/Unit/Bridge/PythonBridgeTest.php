@@ -1,6 +1,9 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use Aether\Bridge\PythonBridge;
+use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
@@ -58,8 +61,8 @@ it('includes only non-null values in environment', function () {
     $bridge = new PythonBridge('python3');
 
     $env = $bridge->buildEnvironment([
-        'region'     => 'us-east-1',
-        'bucket'     => null,
+        'region' => 'us-east-1',
+        'bucket' => null,
         'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
     ]);
 
@@ -74,8 +77,8 @@ it('does not include AWS credentials in environment', function () {
     $bridge = new PythonBridge('python3');
 
     $env = $bridge->buildEnvironment([
-        'region'                => 'eu-west-1',
-        'AWS_ACCESS_KEY_ID'     => 'AKIAIOSFODNN7EXAMPLE',
+        'region' => 'eu-west-1',
+        'AWS_ACCESS_KEY_ID' => 'AKIAIOSFODNN7EXAMPLE',
         'AWS_SECRET_ACCESS_KEY' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
     ]);
 
@@ -95,15 +98,15 @@ it('maps all supported keys in environment', function () {
     $bridge = new PythonBridge('python3');
 
     $env = $bridge->buildEnvironment([
-        'region'     => 'ap-southeast-2',
-        'bucket'     => 'my-braket-bucket',
+        'region' => 'ap-southeast-2',
+        'bucket' => 'my-braket-bucket',
         'device_arn' => 'arn:aws:braket:::device/qpu/ionq/ionQdevice',
     ]);
 
     expect($env)->toBe([
         'AWS_DEFAULT_REGION' => 'ap-southeast-2',
-        'AETHER_S3_BUCKET'   => 'my-braket-bucket',
-        'AETHER_DEVICE_ARN'  => 'arn:aws:braket:::device/qpu/ionq/ionQdevice',
+        'AETHER_S3_BUCKET' => 'my-braket-bucket',
+        'AETHER_DEVICE_ARN' => 'arn:aws:braket:::device/qpu/ionq/ionQdevice',
     ]);
 });
 
@@ -124,5 +127,5 @@ it('omits unset keys from environment', function () {
 
 it('implements PythonExecutor contract', function () {
     $bridge = new PythonBridge('python3');
-    expect($bridge)->toBeInstanceOf(\Aether\Contracts\PythonExecutor::class);
+    expect($bridge)->toBeInstanceOf(PythonExecutor::class);
 });

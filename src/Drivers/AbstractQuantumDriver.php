@@ -15,7 +15,6 @@ use Aether\Results\CircuitResult;
 abstract class AbstractQuantumDriver implements QuantumDevice
 {
     /**
-     * @param  PythonExecutor  $bridge
      * @param  array<string, mixed>  $config
      */
     public function __construct(

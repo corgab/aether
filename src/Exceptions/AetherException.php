@@ -9,6 +9,4 @@ use RuntimeException;
 /**
  * Base exception for all Aether package exceptions.
  */
-abstract class AetherException extends RuntimeException
-{
-}
+abstract class AetherException extends RuntimeException {}

@@ -12,7 +12,6 @@ interface PythonExecutor
     /**
      * Execute a Python script with the given payload.
      *
-     * @param  string  $script
      * @param  array<mixed>  $payload
      * @param  array<string, mixed>  $driverConfig
      * @return array<mixed>
@@ -21,9 +20,6 @@ interface PythonExecutor
 
     /**
      * Convert a binary digit string into raw bytes.
-     *
-     * @param  string  $bitstring
-     * @return string
      */
     public function bitstringToBytes(string $bitstring): string;
 

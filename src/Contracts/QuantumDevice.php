@@ -14,17 +14,11 @@ interface QuantumDevice
 {
     /**
      * Execute the given circuit on the device and return the measurement results.
-     *
-     * @param  CircuitBuilder  $circuit
-     * @return CircuitResult
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult;
 
     /**
      * Generate a cryptographically strong random bit-string of the requested length.
-     *
-     * @param  int  $bits
-     * @return string
      */
     public function generateEntropy(int $bits): string;
 }

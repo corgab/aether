@@ -19,22 +19,16 @@ class InvalidCircuitException extends AetherException
 
     /**
      * Create an exception for a gate applied to a qubit index outside the circuit range.
-     *
-     * @param  string  $gate
-     * @param  int  $target
-     * @param  int  $qubitCount
      */
     public static function gateTargetOutOfRange(string $gate, int $target, int $qubitCount): self
     {
         return new self(
-            "Gate [{$gate}] targets qubit {$target}, but the circuit only has {$qubitCount} qubit(s) (valid indices: 0–" . ($qubitCount - 1) . ').'
+            "Gate [{$gate}] targets qubit {$target}, but the circuit only has {$qubitCount} qubit(s) (valid indices: 0–".($qubitCount - 1).').'
         );
     }
 
     /**
      * Create an exception for an invalid qubit count.
-     *
-     * @param  int  $count
      */
     public static function invalidQubitCount(int $count): self
     {
@@ -43,8 +37,6 @@ class InvalidCircuitException extends AetherException
 
     /**
      * Create an exception for an invalid shot count.
-     *
-     * @param  int  $shots
      */
     public static function invalidShotCount(int $shots): self
     {

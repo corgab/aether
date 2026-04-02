@@ -6,6 +6,7 @@ namespace Aether\Tests;
 
 use Aether\AetherServiceProvider;
 use Aether\Facades\Quantum;
+use Illuminate\Foundation\Application;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -13,7 +14,7 @@ abstract class TestCase extends BaseTestCase
     /**
      * Register package service providers for the test suite.
      *
-     * @param  \Illuminate\Foundation\Application  $app
+     * @param  Application  $app
      * @return array<int, class-string>
      */
     protected function getPackageProviders($app): array
@@ -26,7 +27,7 @@ abstract class TestCase extends BaseTestCase
     /**
      * Register package facade aliases for the test suite.
      *
-     * @param  \Illuminate\Foundation\Application  $app
+     * @param  Application  $app
      * @return array<string, class-string>
      */
     protected function getPackageAliases($app): array

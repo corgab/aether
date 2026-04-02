@@ -6,13 +6,15 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Results\CircuitResult;
 use Aether\Testing\QuantumFake;
+use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\ExpectationFailedException;
 
 // -------------------------------------------------------------------------
 // Interface contract
 // -------------------------------------------------------------------------
 
 it('implements QuantumDevice', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect($fake)->toBeInstanceOf(QuantumDevice::class);
 });
@@ -22,7 +24,7 @@ it('implements QuantumDevice', function () {
 // -------------------------------------------------------------------------
 
 it('executeCircuit returns a CircuitResult', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
 
     $result = $fake->executeCircuit($circuit);
@@ -31,7 +33,7 @@ it('executeCircuit returns a CircuitResult', function () {
 });
 
 it('executeCircuit returns non-empty counts', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(3)->measure();
 
     $result = $fake->executeCircuit($circuit);
@@ -40,7 +42,7 @@ it('executeCircuit returns non-empty counts', function () {
 });
 
 it('executeCircuit returns deterministic 50/50 result based on qubit count', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
 
     $result = $fake->executeCircuit($circuit);
@@ -53,7 +55,7 @@ it('executeCircuit returns deterministic 50/50 result based on qubit count', fun
 });
 
 it('executeCircuit result keys length matches qubit count', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(4)->measure();
 
     $result = $fake->executeCircuit($circuit);
@@ -69,7 +71,7 @@ it('executeCircuit result keys length matches qubit count', function () {
 // -------------------------------------------------------------------------
 
 it('generateEntropy returns a string', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $entropy = $fake->generateEntropy(128);
 
@@ -77,7 +79,7 @@ it('generateEntropy returns a string', function () {
 });
 
 it('generateEntropy returns bytes of correct length for 256 bits', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $entropy = $fake->generateEntropy(256);
 
@@ -86,7 +88,7 @@ it('generateEntropy returns bytes of correct length for 256 bits', function () {
 });
 
 it('generateEntropy returns bytes of correct length for non-multiple of 8 bits', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     // 9 bits → ceil(9/8) = 2 bytes
     $entropy = $fake->generateEntropy(9);
@@ -95,7 +97,7 @@ it('generateEntropy returns bytes of correct length for non-multiple of 8 bits',
 });
 
 it('generateEntropy returns deterministic bytes with 0xAA pattern', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $entropy = $fake->generateEntropy(16);
 
@@ -107,13 +109,13 @@ it('generateEntropy returns deterministic bytes with 0xAA pattern', function () 
 // -------------------------------------------------------------------------
 
 it('hasExecutedCircuits returns false when no circuits have been run', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect($fake->hasExecutedCircuits())->toBeFalse();
 });
 
 it('hasExecutedCircuits returns true after a circuit is executed', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
 
     $fake->executeCircuit($circuit);
@@ -122,13 +124,13 @@ it('hasExecutedCircuits returns true after a circuit is executed', function () {
 });
 
 it('recordedCircuits returns empty array initially', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect($fake->recordedCircuits())->toBeEmpty();
 });
 
 it('recordedCircuits count increments with each execution', function () {
-    $fake     = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit1 = (new CircuitBuilder($fake))->qubits(1)->measure();
     $circuit2 = (new CircuitBuilder($fake))->qubits(2)->measure();
 
@@ -139,7 +141,7 @@ it('recordedCircuits count increments with each execution', function () {
 });
 
 it('recordedCircuits contains the executed CircuitBuilder instances', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
 
     $fake->executeCircuit($circuit);
@@ -152,13 +154,13 @@ it('recordedCircuits contains the executed CircuitBuilder instances', function (
 // -------------------------------------------------------------------------
 
 it('hasGeneratedEntropy returns false when no entropy has been generated', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect($fake->hasGeneratedEntropy())->toBeFalse();
 });
 
 it('hasGeneratedEntropy returns true after entropy is generated', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $fake->generateEntropy(64);
 
@@ -166,13 +168,13 @@ it('hasGeneratedEntropy returns true after entropy is generated', function () {
 });
 
 it('recordedEntropy returns empty array initially', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect($fake->recordedEntropy())->toBeEmpty();
 });
 
 it('recordedEntropy contains each bits value passed to generateEntropy', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $fake->generateEntropy(128);
     $fake->generateEntropy(256);
@@ -185,7 +187,7 @@ it('recordedEntropy contains each bits value passed to generateEntropy', functio
 // -------------------------------------------------------------------------
 
 it('assertCircuitRan passes after at least one circuit is executed', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
 
     $fake->executeCircuit($circuit);
@@ -196,14 +198,14 @@ it('assertCircuitRan passes after at least one circuit is executed', function ()
 });
 
 it('assertCircuitRan fails when no circuits have been executed', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect(fn () => $fake->assertCircuitRan())
-        ->toThrow(PHPUnit\Framework\AssertionFailedError::class);
+        ->toThrow(AssertionFailedError::class);
 });
 
 it('assertCircuitRan with callback passes when callback returns true for a recorded circuit', function () {
-    $fake     = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit1 = (new CircuitBuilder($fake))->qubits(1)->measure();
     $circuit2 = (new CircuitBuilder($fake))->qubits(3)->measure();
 
@@ -216,14 +218,14 @@ it('assertCircuitRan with callback passes when callback returns true for a recor
 });
 
 it('assertCircuitRan with callback fails when no recorded circuit matches', function () {
-    $fake    = new QuantumFake();
+    $fake = new QuantumFake;
     $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
 
     $fake->executeCircuit($circuit);
 
     // No circuit with 5 qubits was recorded
     expect(fn () => $fake->assertCircuitRan(fn (CircuitBuilder $c) => $c->qubitCount() === 5))
-        ->toThrow(PHPUnit\Framework\AssertionFailedError::class);
+        ->toThrow(AssertionFailedError::class);
 });
 
 // -------------------------------------------------------------------------
@@ -231,7 +233,7 @@ it('assertCircuitRan with callback fails when no recorded circuit matches', func
 // -------------------------------------------------------------------------
 
 it('assertEntropyGenerated passes after entropy has been generated', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $fake->generateEntropy(128);
 
@@ -241,14 +243,14 @@ it('assertEntropyGenerated passes after entropy has been generated', function ()
 });
 
 it('assertEntropyGenerated fails when no entropy has been generated', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     expect(fn () => $fake->assertEntropyGenerated())
-        ->toThrow(PHPUnit\Framework\AssertionFailedError::class);
+        ->toThrow(AssertionFailedError::class);
 });
 
 it('assertEntropyGenerated with specific bits passes when that bit count was requested', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $fake->generateEntropy(256);
 
@@ -258,12 +260,12 @@ it('assertEntropyGenerated with specific bits passes when that bit count was req
 });
 
 it('assertEntropyGenerated with specific bits fails when that bit count was not requested', function () {
-    $fake = new QuantumFake();
+    $fake = new QuantumFake;
 
     $fake->generateEntropy(128);
 
     expect(fn () => $fake->assertEntropyGenerated(256))
-        ->toThrow(PHPUnit\Framework\AssertionFailedError::class);
+        ->toThrow(AssertionFailedError::class);
 });
 
 // -------------------------------------------------------------------------
@@ -271,8 +273,8 @@ it('assertEntropyGenerated with specific bits fails when that bit count was not 
 // -------------------------------------------------------------------------
 
 it('respects circuit shot count', function () {
-    $fake = new \Aether\Testing\QuantumFake();
-    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(2)->shots(100)->measure();
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->shots(100)->measure();
 
     $result = $fake->executeCircuit($circuit);
     $total = array_sum($result->counts());
@@ -285,41 +287,41 @@ it('respects circuit shot count', function () {
 // -------------------------------------------------------------------------
 
 it('assertCircuitNotRan passes when no circuits executed', function () {
-    $fake = new \Aether\Testing\QuantumFake();
+    $fake = new QuantumFake;
     $fake->assertCircuitNotRan();
     expect(true)->toBeTrue();
 });
 
 it('assertCircuitNotRan fails when circuits were executed', function () {
-    $fake = new \Aether\Testing\QuantumFake();
-    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(1)->measure();
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
     $fake->executeCircuit($circuit);
     $fake->assertCircuitNotRan();
-})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
+})->throws(ExpectationFailedException::class);
 
 // -------------------------------------------------------------------------
 // assertEntropyNotGenerated()
 // -------------------------------------------------------------------------
 
 it('assertEntropyNotGenerated passes when no entropy generated', function () {
-    $fake = new \Aether\Testing\QuantumFake();
+    $fake = new QuantumFake;
     $fake->assertEntropyNotGenerated();
     expect(true)->toBeTrue();
 });
 
 it('assertEntropyNotGenerated fails when entropy was generated', function () {
-    $fake = new \Aether\Testing\QuantumFake();
+    $fake = new QuantumFake;
     $fake->generateEntropy(128);
     $fake->assertEntropyNotGenerated();
-})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
+})->throws(ExpectationFailedException::class);
 
 // -------------------------------------------------------------------------
 // assertCircuitRanTimes()
 // -------------------------------------------------------------------------
 
 it('assertCircuitRanTimes passes with correct count', function () {
-    $fake = new \Aether\Testing\QuantumFake();
-    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(1)->measure();
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
     $fake->executeCircuit($circuit);
     $fake->executeCircuit($circuit);
     $fake->assertCircuitRanTimes(2);
@@ -327,6 +329,6 @@ it('assertCircuitRanTimes passes with correct count', function () {
 });
 
 it('assertCircuitRanTimes fails with wrong count', function () {
-    $fake = new \Aether\Testing\QuantumFake();
+    $fake = new QuantumFake;
     $fake->assertCircuitRanTimes(1);
-})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
+})->throws(ExpectationFailedException::class);

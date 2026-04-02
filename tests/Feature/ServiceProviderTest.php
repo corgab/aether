@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aether\AetherServiceProvider;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
 use Aether\QuantumManager;
@@ -13,7 +14,7 @@ use Aether\QuantumManager;
 // -------------------------------------------------------------------------
 
 it('registers QuantumManager as a singleton in the container', function () {
-    $first  = $this->app->make(QuantumManager::class);
+    $first = $this->app->make(QuantumManager::class);
     $second = $this->app->make(QuantumManager::class);
 
     expect($first)->toBeInstanceOf(QuantumManager::class)
@@ -21,8 +22,8 @@ it('registers QuantumManager as a singleton in the container', function () {
 });
 
 it('binds QuantumDevice contract to default driver', function () {
-    $device = app(\Aether\Contracts\QuantumDevice::class);
-    expect($device)->toBeInstanceOf(\Aether\Contracts\QuantumDevice::class);
+    $device = app(QuantumDevice::class);
+    expect($device)->toBeInstanceOf(QuantumDevice::class);
 });
 
 // -------------------------------------------------------------------------

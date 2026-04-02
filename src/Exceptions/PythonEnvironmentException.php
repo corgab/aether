@@ -11,8 +11,6 @@ class PythonEnvironmentException extends AetherException
 {
     /**
      * Create an exception for a Python binary that cannot be located.
-     *
-     * @param  string  $path
      */
     public static function pythonNotFound(string $path): self
     {
@@ -21,8 +19,6 @@ class PythonEnvironmentException extends AetherException
 
     /**
      * Create an exception for missing Python package dependencies.
-     *
-     * @param  string  $details
      */
     public static function missingDependencies(string $details): self
     {

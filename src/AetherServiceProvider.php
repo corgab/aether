@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether;
 
+use Aether\Contracts\QuantumDevice;
 use Illuminate\Support\ServiceProvider;
 
 class AetherServiceProvider extends ServiceProvider
@@ -14,7 +15,7 @@ class AetherServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__ . '/../config/aether.php',
+            __DIR__.'/../config/aether.php',
             'aether'
         );
 
@@ -24,8 +25,8 @@ class AetherServiceProvider extends ServiceProvider
 
         // Bind as non-singleton: the QuantumManager handles driver caching internally.
         $this->app->bind(
-            \Aether\Contracts\QuantumDevice::class,
-            fn ($app): \Aether\Contracts\QuantumDevice => $app->make(\Aether\QuantumManager::class)->driver(),
+            QuantumDevice::class,
+            fn ($app): QuantumDevice => $app->make(QuantumManager::class)->driver(),
         );
     }
 
@@ -36,7 +37,7 @@ class AetherServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->publishes([
-                __DIR__ . '/../config/aether.php' => config_path('aether.php'),
+                __DIR__.'/../config/aether.php' => config_path('aether.php'),
             ], 'aether-config');
 
             $this->commands([Commands\AetherInstallCommand::class]);

@@ -1,7 +1,9 @@
-<?php declare(strict_types=1);
+<?php
 
-use Aether\Contracts\PythonExecutor;
+declare(strict_types=1);
+
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Exceptions\QuantumExecutionException;
@@ -19,11 +21,12 @@ beforeEach(function () {
             foreach (str_split($bitstring, 8) as $chunk) {
                 $bytes .= chr((int) bindec($chunk));
             }
+
             return $bytes;
         });
     $this->config = [
-        'region'           => 'us-east-1',
-        'device_arn'       => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+        'region' => 'us-east-1',
+        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
         'synchronous_safe' => true,
     ];
 });
@@ -47,8 +50,8 @@ it('passes aws driver key in executeCircuit payload', function () {
 
     $circuitArray = [
         'qubits' => 2,
-        'gates'  => [['type' => 'H', 'target' => 0]],
-        'shots'  => 1024,
+        'gates' => [['type' => 'H', 'target' => 0]],
+        'shots' => 1024,
     ];
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -57,7 +60,7 @@ it('passes aws driver key in executeCircuit payload', function () {
         ->willReturn($circuitArray);
 
     $expectedPayload = array_merge($circuitArray, [
-        'driver'        => 'aws',
+        'driver' => 'aws',
         'driver_config' => $this->config,
     ]);
 
@@ -162,5 +165,5 @@ it('converts bitstring to raw bytes correctly in generateEntropy', function () {
 
     $entropy = $driver->generateEntropy(16);
 
-    expect($entropy)->toBe(chr(0xB3) . chr(0xA5));
+    expect($entropy)->toBe(chr(0xB3).chr(0xA5));
 });

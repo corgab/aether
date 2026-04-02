@@ -32,15 +32,10 @@ class CircuitBuilder
 
     private int $shots = 1000;
 
-    /**
-     * @param  QuantumDevice  $device
-     */
     public function __construct(private readonly QuantumDevice $device) {}
 
     /**
      * Set the number of qubits in the circuit.
-     *
-     * @param  int  $count
      */
     public function qubits(int $count): static
     {
@@ -55,8 +50,6 @@ class CircuitBuilder
 
     /**
      * Set the number of measurement shots.
-     *
-     * @param  int  $shots
      */
     public function shots(int $shots): static
     {
@@ -72,7 +65,6 @@ class CircuitBuilder
     /**
      * Add a Hadamard gate on the given qubit.
      *
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
@@ -87,7 +79,6 @@ class CircuitBuilder
     /**
      * Add a Pauli-X (NOT) gate on the given qubit.
      *
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
@@ -102,7 +93,6 @@ class CircuitBuilder
     /**
      * Add a Pauli-Y gate on the given qubit.
      *
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
@@ -117,7 +107,6 @@ class CircuitBuilder
     /**
      * Add a Pauli-Z gate on the given qubit.
      *
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
@@ -132,8 +121,6 @@ class CircuitBuilder
     /**
      * Add a Controlled-NOT gate.
      *
-     * @param  int  $control
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
@@ -215,16 +202,14 @@ class CircuitBuilder
     {
         return [
             'qubits' => $this->qubitCount,
-            'gates'  => array_map(static fn (Gate $gate): array => $gate->toArray(), $this->gates),
-            'shots'  => $this->shots,
+            'gates' => array_map(static fn (Gate $gate): array => $gate->toArray(), $this->gates),
+            'shots' => $this->shots,
         ];
     }
 
     /**
      * Assert that the given qubit index is within the valid range for this circuit.
      *
-     * @param  string  $gate
-     * @param  int  $target
      *
      * @throws InvalidCircuitException
      */
