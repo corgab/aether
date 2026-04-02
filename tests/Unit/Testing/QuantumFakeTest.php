@@ -265,3 +265,17 @@ it('assertEntropyGenerated with specific bits fails when that bit count was not 
     expect(fn () => $fake->assertEntropyGenerated(256))
         ->toThrow(PHPUnit\Framework\AssertionFailedError::class);
 });
+
+// -------------------------------------------------------------------------
+// executeCircuit() — respects shot count
+// -------------------------------------------------------------------------
+
+it('respects circuit shot count', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(2)->shots(100)->measure();
+
+    $result = $fake->executeCircuit($circuit);
+    $total = array_sum($result->counts());
+
+    expect($total)->toBe(100);
+});

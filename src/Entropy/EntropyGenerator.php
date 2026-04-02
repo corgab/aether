@@ -47,6 +47,12 @@ class EntropyGenerator
      */
     public function integer(int $min, int $max): int
     {
+        if ($min > $max) {
+            throw new \InvalidArgumentException(
+                "Minimum value ({$min}) must not exceed maximum value ({$max})."
+            );
+        }
+
         $range = $max - $min;
 
         // Edge case: single possible value.

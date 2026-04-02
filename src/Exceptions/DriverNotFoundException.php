@@ -16,6 +16,6 @@ class DriverNotFoundException extends AetherException
      */
     public static function forDriver(string $name): self
     {
-        return new self("Quantum driver [{$name}] is not registered. Check your 'aether.driver' configuration.");
+        return new self("Quantum driver [{$name}] is not registered. Check your 'aether.default' configuration.");
     }
 }

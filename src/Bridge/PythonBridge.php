@@ -49,7 +49,7 @@ class PythonBridge implements PythonExecutor
             env: $this->buildEnvironment($driverConfig),
         );
 
-        $process->setInput(json_encode($payload));
+        $process->setInput(json_encode($payload, JSON_THROW_ON_ERROR));
         $process->setTimeout(300);
 
         try {
@@ -74,7 +74,25 @@ class PythonBridge implements PythonExecutor
             );
         }
 
-        return (array) json_decode($process->getOutput(), associative: true);
+        try {
+            $decoded = json_decode($process->getOutput(), associative: true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw QuantumExecutionException::fromPythonError(
+                $script,
+                'Invalid JSON output: ' . $e->getMessage(),
+                0,
+            );
+        }
+
+        if (! is_array($decoded)) {
+            throw QuantumExecutionException::fromPythonError(
+                $script,
+                'Expected JSON object, got ' . get_debug_type($decoded),
+                0,
+            );
+        }
+
+        return $decoded;
     }
 
     /**

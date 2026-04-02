@@ -57,6 +57,10 @@ class CircuitResult implements Arrayable, Jsonable
      */
     public function mostFrequent(): string
     {
+        if ($this->counts === []) {
+            throw new \LogicException('Cannot determine most frequent outcome from empty counts.');
+        }
+
         $max = -1;
         $winner = array_key_first($this->counts) ?? '';
 

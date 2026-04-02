@@ -110,3 +110,12 @@ it('implements arrayable', function (): void {
 it('implements jsonable', function (): void {
     expect(new CircuitResult(['00' => 1]))->toBeInstanceOf(Jsonable::class);
 });
+
+// -------------------------------------------------------------------------
+// mostFrequent() — empty guard
+// -------------------------------------------------------------------------
+
+it('throws on mostFrequent with empty counts', function () {
+    $result = new \Aether\Results\CircuitResult([]);
+    $result->mostFrequent();
+})->throws(\LogicException::class);

@@ -31,10 +31,15 @@ class QuantumFake implements QuantumDevice
         $this->recordedCircuits[] = $circuit;
 
         $n = $circuit->qubitCount();
+        $shots = $circuit->shotCount();
         $zeros = str_repeat('0', $n);
         $ones = str_repeat('1', $n);
+        $half = intdiv($shots, 2);
 
-        return new CircuitResult([$zeros => 500, $ones => 500]);
+        return new CircuitResult([
+            $zeros => $half,
+            $ones => $shots - $half,
+        ]);
     }
 
     /**

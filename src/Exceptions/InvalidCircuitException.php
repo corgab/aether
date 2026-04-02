@@ -42,6 +42,16 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for an invalid shot count.
+     *
+     * @param  int  $shots
+     */
+    public static function invalidShotCount(int $shots): self
+    {
+        return new self("The circuit requires at least 1 shot, {$shots} given.");
+    }
+
+    /**
      * Create an exception for a circuit that has no measurement operations.
      */
     public static function noMeasurement(): self

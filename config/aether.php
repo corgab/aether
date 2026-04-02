@@ -44,7 +44,6 @@ return [
     'drivers' => [
 
         'local' => [
-            'backend' => 'default',
             'synchronous_safe' => true,
         ],
 

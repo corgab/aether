@@ -60,6 +60,10 @@ class CircuitBuilder
      */
     public function shots(int $shots): static
     {
+        if ($shots < 1) {
+            throw InvalidCircuitException::invalidShotCount($shots);
+        }
+
         $this->shots = $shots;
 
         return $this;
@@ -153,6 +157,14 @@ class CircuitBuilder
      */
     public function measure(int|array|null $targets = null): static
     {
+        if (is_int($targets)) {
+            $this->assertTargetInRange('Measure', $targets);
+        } elseif (is_array($targets)) {
+            foreach ($targets as $target) {
+                $this->assertTargetInRange('Measure', $target);
+            }
+        }
+
         $this->gates[] = Gate::measure($targets);
         $this->hasMeasurement = true;
 
@@ -165,6 +177,14 @@ class CircuitBuilder
     public function qubitCount(): int
     {
         return $this->qubitCount;
+    }
+
+    /**
+     * Return the configured shot count.
+     */
+    public function shotCount(): int
+    {
+        return $this->shots;
     }
 
     /**

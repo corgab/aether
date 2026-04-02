@@ -146,3 +146,13 @@ it('integer fetches another batch when buffer is exhausted', function () use (&$
 
     expect($result)->toBe(0);
 });
+
+// -------------------------------------------------------------------------
+// Validation: min > max
+// -------------------------------------------------------------------------
+
+it('throws when min exceeds max', function () {
+    $device = $this->createMock(\Aether\Contracts\QuantumDevice::class);
+    $generator = new \Aether\Entropy\EntropyGenerator($device);
+    $generator->integer(10, 5);
+})->throws(\InvalidArgumentException::class, 'must not exceed');
