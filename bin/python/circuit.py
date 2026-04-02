@@ -30,6 +30,8 @@ import json
 import sys
 from typing import Any
 
+from common import resolve_device
+
 
 def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
@@ -82,48 +84,6 @@ def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     return circuit
 
 
-def _resolve_device(driver: str, driver_config: dict[str, Any]) -> Any:
-    """Resolve the Braket device from the driver name and its configuration.
-
-    For ``"local"`` the Amazon Braket local simulator is returned directly.
-    For ``"aws"`` a real :class:`~braket.aws.AwsDevice` is constructed using
-    a :class:`boto3.Session` seeded from ``driver_config``.
-
-    AWS-specific imports are intentionally deferred to this branch so that
-    the script can be imported or tested without the full AWS SDK installed.
-
-    Args:
-        driver:        Either ``"local"`` or ``"aws"``.
-        driver_config: Driver-specific options (region, device_arn, …).
-
-    Returns:
-        A Braket device object (either a local simulator or an AwsDevice).
-
-    Raises:
-        ValueError: When ``driver`` is not a recognised value.
-    """
-    if driver == "local":
-        from braket.devices import LocalSimulator  # noqa: PLC0415
-
-        return LocalSimulator()
-
-    if driver == "aws":
-        import boto3  # noqa: PLC0415
-        from braket.aws import AwsDevice, AwsSession  # noqa: PLC0415
-
-        region = driver_config.get("region", "us-east-1")
-        boto_session = boto3.Session(region_name=region)
-        aws_session = AwsSession(boto_session=boto_session)
-
-        device_arn = driver_config.get(
-            "device_arn",
-            "arn:aws:braket:::device/quantum-simulator/amazon/sv1",
-        )
-        return AwsDevice(device_arn, aws_session=aws_session)
-
-    raise ValueError(f"Unknown driver: {driver!r}")
-
-
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
     """Execute the circuit described by *payload* and return the count histogram.
 
@@ -140,7 +100,7 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     driver_config: dict[str, Any] = payload.get("driver_config", {})
 
     circuit = _build_circuit(qubits, gates)
-    device = _resolve_device(driver, driver_config)
+    device = resolve_device(driver, driver_config)
 
     run_kwargs: dict[str, Any] = {"shots": shots}
 
