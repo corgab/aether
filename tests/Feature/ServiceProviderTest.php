@@ -8,8 +8,6 @@ use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
 use Aether\QuantumManager;
 
-uses(Aether\Tests\TestCase::class);
-
 // -------------------------------------------------------------------------
 // Service container registration
 // -------------------------------------------------------------------------

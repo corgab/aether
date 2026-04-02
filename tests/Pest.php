@@ -14,9 +14,8 @@
 pest()->extend(PHPUnit\Framework\TestCase::class)
     ->in('Unit');
 
-// pest()->extend(Tests\TestCase::class)
-//  ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
-//     ->in('Feature');
+pest()->extend(Aether\Tests\TestCase::class)
+    ->in('Feature');
 
 /*
 |--------------------------------------------------------------------------

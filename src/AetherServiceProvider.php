@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Aether;
 
-use Illuminate\Contracts\Config\Repository as ConfigContract;
 use Illuminate\Support\ServiceProvider;
 
 class AetherServiceProvider extends ServiceProvider
@@ -20,7 +19,7 @@ class AetherServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(QuantumManager::class, function ($app): QuantumManager {
-            return new QuantumManager($app->make(ConfigContract::class));
+            return new QuantumManager($app);
         });
     }
 

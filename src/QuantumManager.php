@@ -6,59 +6,44 @@ namespace Aether;
 
 use Aether\Bridge\PythonBridge;
 use Aether\Circuit\CircuitBuilder;
-use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Testing\QuantumFake;
-use Closure;
-use Illuminate\Contracts\Config\Repository as ConfigContract;
+use Illuminate\Support\Manager;
+use Illuminate\Support\Str;
 
 /**
  * Manages quantum backend driver resolution and caching.
  */
-class QuantumManager
+class QuantumManager extends Manager
 {
-    /** @var array<string, QuantumDevice> */
-    private array $drivers = [];
-
-    /** @var array<string, Closure> */
-    private array $customCreators = [];
-
-    private ?Testing\QuantumFake $fakeInstance = null;
+    private ?QuantumFake $fakeInstance = null;
 
     /**
-     * @param  ConfigContract  $config
+     * Return the name of the default driver from configuration.
      */
-    public function __construct(private readonly ConfigContract $config) {}
+    public function getDefaultDriver(): string
+    {
+        return $this->config->get('aether.default', 'local');
+    }
 
     /**
-     * Resolve the given driver, or the default driver when no name is provided.
-     *
-     * @param  string|null  $name
-     *
-     * @throws DriverNotFoundException
+     * Resolve the given driver, or the default when no name is provided.
+     * Returns the fake instance when testing.
      */
-    public function driver(?string $name = null): QuantumDevice
+    public function driver($driver = null)
     {
         if ($this->fakeInstance !== null) {
             return $this->fakeInstance;
         }
 
-        $name = $name ?? $this->getDefaultDriver();
-
-        if (! isset($this->drivers[$name])) {
-            $this->drivers[$name] = $this->resolve($name);
-        }
-
-        return $this->drivers[$name];
+        return parent::driver($driver);
     }
 
     /**
      * Create a CircuitBuilder backed by the given (or default) driver.
-     *
-     * @param  string|null  $driver
      */
     public function circuit(?string $driver = null): CircuitBuilder
     {
@@ -67,8 +52,6 @@ class QuantumManager
 
     /**
      * Create an EntropyGenerator backed by the given (or default) driver.
-     *
-     * @param  string|null  $driver
      */
     public function entropy(?string $driver = null): EntropyGenerator
     {
@@ -76,73 +59,64 @@ class QuantumManager
     }
 
     /**
-     * Register a custom driver creator closure.
-     *
-     * @param  string  $name
-     * @param  Closure  $callback
-     */
-    public function extend(string $name, Closure $callback): void
-    {
-        $this->customCreators[$name] = $callback;
-    }
-
-    /**
      * Replace all drivers with a QuantumFake for use in tests.
      */
-    public function fake(): Testing\QuantumFake
+    public function fake(): QuantumFake
     {
-        $fake = new Testing\QuantumFake();
-        $this->drivers = [];
-        $this->customCreators = [];
+        $fake = new QuantumFake();
         $this->fakeInstance = $fake;
+        $this->forgetDrivers();
 
         return $fake;
     }
 
     /**
-     * Return the name of the default driver from configuration.
+     * Resolve a driver by name, throwing DriverNotFoundException for unknown drivers.
      */
-    public function getDefaultDriver(): string
+    protected function createDriver($driver)
     {
-        return (string) $this->config->get('aether.default', 'local');
+        if (isset($this->customCreators[$driver])) {
+            return $this->callCustomCreator($driver);
+        }
+
+        $method = 'create' . Str::studly($driver) . 'Driver';
+
+        if (method_exists($this, $method)) {
+            return $this->$method();
+        }
+
+        throw DriverNotFoundException::forDriver($driver);
     }
 
     /**
-     * Resolve a driver instance by name.
-     *
-     * @param  string  $name
-     *
-     * @throws DriverNotFoundException
+     * Create a LocalSimulatorDriver instance.
      */
-    private function resolve(string $name): QuantumDevice
+    protected function createLocalDriver(): LocalSimulatorDriver
     {
-        if (isset($this->customCreators[$name])) {
-            return ($this->customCreators[$name])();
-        }
-
-        /** @var array<string, mixed>|null $driverConfig */
-        $driverConfig = $this->config->get("aether.drivers.{$name}");
-
-        if ($driverConfig === null) {
-            throw DriverNotFoundException::forDriver($name);
-        }
-
-        $bridge = $this->createBridge();
-
-        return match ($name) {
-            'local' => new LocalSimulatorDriver($bridge, $driverConfig),
-            'aws' => new AwsBraketDriver($bridge, $driverConfig),
-            default => throw DriverNotFoundException::forDriver($name),
-        };
+        return new LocalSimulatorDriver(
+            $this->createBridge(),
+            $this->config->get('aether.drivers.local', []),
+        );
     }
 
     /**
-     * Create a PythonBridge instance configured with the python_path from config.
+     * Create an AwsBraketDriver instance.
+     */
+    protected function createAwsDriver(): AwsBraketDriver
+    {
+        return new AwsBraketDriver(
+            $this->createBridge(),
+            $this->config->get('aether.drivers.aws', []),
+        );
+    }
+
+    /**
+     * Create a PythonBridge configured with the python_path from config.
      */
     private function createBridge(): PythonBridge
     {
         return new PythonBridge(
-            (string) $this->config->get('aether.python_path', 'python3'),
+            $this->config->get('aether.python_path', 'python3'),
         );
     }
 }
