@@ -119,3 +119,20 @@ it('throws on mostFrequent with empty counts', function () {
     $result = new \Aether\Results\CircuitResult([]);
     $result->mostFrequent();
 })->throws(\LogicException::class);
+
+// -------------------------------------------------------------------------
+// Stringable
+// -------------------------------------------------------------------------
+
+it('implements Stringable', function () {
+    $result = new \Aether\Results\CircuitResult(['00' => 500, '11' => 500]);
+    expect($result)->toBeInstanceOf(\Stringable::class);
+});
+
+it('converts to JSON string via __toString', function () {
+    $result = new \Aether\Results\CircuitResult(['0' => 700, '1' => 300]);
+    $string = (string) $result;
+    $decoded = json_decode($string, true);
+    expect($decoded)->toHaveKey('counts')
+        ->and($decoded['counts'])->toBe(['0' => 700, '1' => 300]);
+});

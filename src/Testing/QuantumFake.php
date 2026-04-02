@@ -133,4 +133,38 @@ class QuantumFake implements QuantumDevice
             );
         }
     }
+
+    /**
+     * Assert that no circuits were executed.
+     */
+    public function assertCircuitNotRan(): void
+    {
+        Assert::assertEmpty(
+            $this->recordedCircuits,
+            'Unexpected circuits were executed.',
+        );
+    }
+
+    /**
+     * Assert that no entropy was generated.
+     */
+    public function assertEntropyNotGenerated(): void
+    {
+        Assert::assertEmpty(
+            $this->recordedEntropy,
+            'Unexpected entropy was generated.',
+        );
+    }
+
+    /**
+     * Assert that exactly the given number of circuits were executed.
+     */
+    public function assertCircuitRanTimes(int $count): void
+    {
+        Assert::assertCount(
+            $count,
+            $this->recordedCircuits,
+            "Expected {$count} circuit(s) to be executed, got " . count($this->recordedCircuits) . '.',
+        );
+    }
 }

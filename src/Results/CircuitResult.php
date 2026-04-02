@@ -13,7 +13,7 @@ use JsonException;
  *
  * @implements Arrayable<string, mixed>
  */
-class CircuitResult implements Arrayable, Jsonable
+class CircuitResult implements Arrayable, Jsonable, \Stringable
 {
     /**
      * @param  array<string, int>  $counts
@@ -62,12 +62,12 @@ class CircuitResult implements Arrayable, Jsonable
         }
 
         $max = -1;
-        $winner = array_key_first($this->counts) ?? '';
+        $winner = (string) (array_key_first($this->counts) ?? '');
 
         foreach ($this->counts as $bitstring => $count) {
             if ($count > $max) {
                 $max = $count;
-                $winner = $bitstring;
+                $winner = (string) $bitstring;
             }
         }
 
@@ -98,5 +98,13 @@ class CircuitResult implements Arrayable, Jsonable
     public function toJson($options = 0): string
     {
         return json_encode($this->toArray(), $options | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Return the JSON representation of the result.
+     */
+    public function __toString(): string
+    {
+        return $this->toJson();
     }
 }

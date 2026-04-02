@@ -279,3 +279,54 @@ it('respects circuit shot count', function () {
 
     expect($total)->toBe(100);
 });
+
+// -------------------------------------------------------------------------
+// assertCircuitNotRan()
+// -------------------------------------------------------------------------
+
+it('assertCircuitNotRan passes when no circuits executed', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $fake->assertCircuitNotRan();
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitNotRan fails when circuits were executed', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->executeCircuit($circuit);
+    $fake->assertCircuitNotRan();
+})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
+
+// -------------------------------------------------------------------------
+// assertEntropyNotGenerated()
+// -------------------------------------------------------------------------
+
+it('assertEntropyNotGenerated passes when no entropy generated', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $fake->assertEntropyNotGenerated();
+    expect(true)->toBeTrue();
+});
+
+it('assertEntropyNotGenerated fails when entropy was generated', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $fake->generateEntropy(128);
+    $fake->assertEntropyNotGenerated();
+})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
+
+// -------------------------------------------------------------------------
+// assertCircuitRanTimes()
+// -------------------------------------------------------------------------
+
+it('assertCircuitRanTimes passes with correct count', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $circuit = (new \Aether\Circuit\CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->executeCircuit($circuit);
+    $fake->executeCircuit($circuit);
+    $fake->assertCircuitRanTimes(2);
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitRanTimes fails with wrong count', function () {
+    $fake = new \Aether\Testing\QuantumFake();
+    $fake->assertCircuitRanTimes(1);
+})->throws(\PHPUnit\Framework\ExpectationFailedException::class);
