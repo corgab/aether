@@ -117,3 +117,12 @@ it('omits unset keys from environment', function () {
     expect($env)->not->toHaveKey('AETHER_S3_BUCKET');
     expect($env)->not->toHaveKey('AETHER_DEVICE_ARN');
 });
+
+// -------------------------------------------------------------------------
+// Contract compliance
+// -------------------------------------------------------------------------
+
+it('implements PythonExecutor contract', function () {
+    $bridge = new PythonBridge('python3');
+    expect($bridge)->toBeInstanceOf(\Aether\Contracts\PythonExecutor::class);
+});

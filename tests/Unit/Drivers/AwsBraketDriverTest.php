@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-use Aether\Bridge\PythonBridge;
+use Aether\Contracts\PythonExecutor;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
@@ -12,7 +12,7 @@ use Aether\Results\CircuitResult;
 // -------------------------------------------------------------------------
 
 beforeEach(function () {
-    $this->bridge = $this->createMock(PythonBridge::class);
+    $this->bridge = $this->createMock(PythonExecutor::class);
     $this->bridge->method('bitstringToBytes')
         ->willReturnCallback(function (string $bitstring): string {
             $bytes = '';

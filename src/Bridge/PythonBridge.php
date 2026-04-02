@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Bridge;
 
+use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 use Symfony\Component\Process\Exception\RuntimeException as ProcessRuntimeException;
@@ -12,7 +13,7 @@ use Symfony\Component\Process\Process;
 /**
  * Execute Python quantum scripts via the Symfony Process component.
  */
-class PythonBridge
+class PythonBridge implements PythonExecutor
 {
     private readonly string $scriptsPath;
 
