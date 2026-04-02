@@ -20,6 +20,11 @@ it('registers QuantumManager as a singleton in the container', function () {
         ->and($first)->toBe($second);
 });
 
+it('binds QuantumDevice contract to default driver', function () {
+    $device = app(\Aether\Contracts\QuantumDevice::class);
+    expect($device)->toBeInstanceOf(\Aether\Contracts\QuantumDevice::class);
+});
+
 // -------------------------------------------------------------------------
 // Configuration
 // -------------------------------------------------------------------------

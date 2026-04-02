@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static EntropyGenerator entropy(?string $driver = null)
  * @method static void extend(string $name, Closure $callback)
  * @method static QuantumFake fake()
+ * @method static \Aether\QuantumManager forgetDrivers()
  *
  * @see \Aether\QuantumManager
  */

@@ -21,6 +21,12 @@ class AetherServiceProvider extends ServiceProvider
         $this->app->singleton(QuantumManager::class, function ($app): QuantumManager {
             return new QuantumManager($app);
         });
+
+        // Bind as non-singleton: the QuantumManager handles driver caching internally.
+        $this->app->bind(
+            \Aether\Contracts\QuantumDevice::class,
+            fn ($app): \Aether\Contracts\QuantumDevice => $app->make(\Aether\QuantumManager::class)->driver(),
+        );
     }
 
     /**
