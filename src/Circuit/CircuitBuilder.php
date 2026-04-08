@@ -70,7 +70,7 @@ class CircuitBuilder
      */
     public function h(int $target): static
     {
-        $this->assertTargetInRange('H', $target);
+        $this->validateTargets('H', $target);
         $this->gates[] = Gate::h($target);
 
         return $this;
@@ -84,7 +84,7 @@ class CircuitBuilder
      */
     public function x(int $target): static
     {
-        $this->assertTargetInRange('X', $target);
+        $this->validateTargets('X', $target);
         $this->gates[] = Gate::x($target);
 
         return $this;
@@ -98,7 +98,7 @@ class CircuitBuilder
      */
     public function y(int $target): static
     {
-        $this->assertTargetInRange('Y', $target);
+        $this->validateTargets('Y', $target);
         $this->gates[] = Gate::y($target);
 
         return $this;
@@ -112,7 +112,7 @@ class CircuitBuilder
      */
     public function z(int $target): static
     {
-        $this->assertTargetInRange('Z', $target);
+        $this->validateTargets('Z', $target);
         $this->gates[] = Gate::z($target);
 
         return $this;
@@ -126,9 +126,106 @@ class CircuitBuilder
      */
     public function cnot(int $control, int $target): static
     {
-        $this->assertTargetInRange('CNOT', $control);
-        $this->assertTargetInRange('CNOT', $target);
+        $this->validateTargets('CNOT', $control, $target);
         $this->gates[] = Gate::cnot($control, $target);
+
+        return $this;
+    }
+
+    /**
+     * Add a Phase-S gate on the given qubit.
+     */
+    public function s(int $target): static
+    {
+        $this->validateTargets('S', $target);
+        $this->gates[] = Gate::s($target);
+
+        return $this;
+    }
+
+    /**
+     * Add a Phase-T gate on the given qubit.
+     */
+    public function t(int $target): static
+    {
+        $this->validateTargets('T', $target);
+        $this->gates[] = Gate::t($target);
+
+        return $this;
+    }
+
+    /**
+     * Add a rotation around the X-axis.
+     */
+    public function rx(int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('RX', $target);
+        $this->gates[] = Gate::rx($target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a rotation around the Y-axis.
+     */
+    public function ry(int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('RY', $target);
+        $this->gates[] = Gate::ry($target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a rotation around the Z-axis.
+     */
+    public function rz(int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('RZ', $target);
+        $this->gates[] = Gate::rz($target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a SWAP gate.
+     */
+    public function swap(int $qubit0, int $qubit1): static
+    {
+        $this->validateTargets('SWAP', $qubit0, $qubit1);
+        $this->gates[] = Gate::swap($qubit0, $qubit1);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-Z gate.
+     */
+    public function cz(int $control, int $target): static
+    {
+        $this->validateTargets('CZ', $control, $target);
+        $this->gates[] = Gate::cz($control, $target);
+
+        return $this;
+    }
+
+    /**
+     * Add a Toffoli (CCNOT) gate.
+     */
+    public function ccnot(int $control0, int $control1, int $target): static
+    {
+        $this->validateTargets('CCNOT', $control0, $control1, $target);
+        $this->gates[] = Gate::ccnot($control0, $control1, $target);
+
+        return $this;
+    }
+
+    /**
+     * Add a barrier (logical separator, no hardware effect).
+     */
+    public function barrier(): static
+    {
+        $this->gates[] = Gate::barrier();
 
         return $this;
     }
@@ -145,11 +242,9 @@ class CircuitBuilder
     public function measure(int|array|null $targets = null): static
     {
         if (is_int($targets)) {
-            $this->assertTargetInRange('Measure', $targets);
+            $this->validateTargets('Measure', $targets);
         } elseif (is_array($targets)) {
-            foreach ($targets as $target) {
-                $this->assertTargetInRange('Measure', $target);
-            }
+            $this->validateTargets('Measure', ...$targets);
         }
 
         $this->gates[] = Gate::measure($targets);
@@ -208,15 +303,16 @@ class CircuitBuilder
     }
 
     /**
-     * Assert that the given qubit index is within the valid range for this circuit.
-     *
+     * Assert that all given qubit indices are within the valid range for this circuit.
      *
      * @throws InvalidCircuitException
      */
-    private function assertTargetInRange(string $gate, int $target): void
+    private function validateTargets(string $gate, int ...$qubits): void
     {
-        if ($target < 0 || $target >= $this->qubitCount) {
-            throw InvalidCircuitException::gateTargetOutOfRange($gate, $target, $this->qubitCount);
+        foreach ($qubits as $qubit) {
+            if ($qubit < 0 || $qubit >= $this->qubitCount) {
+                throw InvalidCircuitException::gateTargetOutOfRange($gate, $qubit, $this->qubitCount);
+            }
         }
     }
 }

@@ -36,7 +36,7 @@ from common import resolve_device
 def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
 
-    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``cnot``, ``measure``.
+    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``s``, ``t``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``swap``, ``ccnot``, ``measure``, ``barrier``.
     For ``measure`` gates, a ``null`` / missing ``targets`` field means
     *measure all qubits* (indices 0 through ``qubits-1``).
 
@@ -64,19 +64,31 @@ def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
         elif gate_type == "x":
             circuit.x(gate["target"])
 
-        elif gate_type == "y":
-            circuit.y(gate["target"])
+        elif gate_type in ("y", "z", "s", "t"):
+            getattr(circuit, gate_type)(gate["target"])
 
-        elif gate_type == "z":
-            circuit.z(gate["target"])
+        elif gate_type in ("rx", "ry", "rz"):
+            getattr(circuit, gate_type)(gate["target"], gate["angle"])
 
         elif gate_type == "cnot":
             circuit.cnot(gate["control"], gate["target"])
+
+        elif gate_type == "cz":
+            circuit.cz(gate["control"], gate["target"])
+
+        elif gate_type == "swap":
+            circuit.swap(gate["target0"], gate["target1"])
+
+        elif gate_type == "ccnot":
+            circuit.ccnot(gate["control0"], gate["control1"], gate["target"])
 
         elif gate_type == "measure":
             targets = gate.get("targets")
             qubit_indices = targets if targets is not None else list(range(qubits))
             circuit.measure(qubit_indices)
+
+        elif gate_type == "barrier":
+            pass
 
         else:
             raise ValueError(f"Unknown gate type: {gate_type!r}")

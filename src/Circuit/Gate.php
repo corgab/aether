@@ -7,16 +7,14 @@ namespace Aether\Circuit;
 /**
  * Immutable value object representing a single quantum gate operation.
  */
-final class Gate
+final readonly class Gate
 {
     /**
-     * @param  int[]|null  $targets
+     * @param  array<string, mixed>  $params
      */
     private function __construct(
-        public readonly string $type,
-        public readonly ?int $target,
-        public readonly ?int $control,
-        public readonly ?array $targets,
+        public string $type,
+        public array $params = [],
     ) {}
 
     /**
@@ -24,7 +22,7 @@ final class Gate
      */
     public static function h(int $target): self
     {
-        return new self(type: 'h', target: $target, control: null, targets: null);
+        return new self('h', ['target' => $target]);
     }
 
     /**
@@ -32,7 +30,7 @@ final class Gate
      */
     public static function x(int $target): self
     {
-        return new self(type: 'x', target: $target, control: null, targets: null);
+        return new self('x', ['target' => $target]);
     }
 
     /**
@@ -40,7 +38,7 @@ final class Gate
      */
     public static function y(int $target): self
     {
-        return new self(type: 'y', target: $target, control: null, targets: null);
+        return new self('y', ['target' => $target]);
     }
 
     /**
@@ -48,7 +46,56 @@ final class Gate
      */
     public static function z(int $target): self
     {
-        return new self(type: 'z', target: $target, control: null, targets: null);
+        return new self('z', ['target' => $target]);
+    }
+
+    /**
+     * Create a Phase-S gate on the given qubit.
+     */
+    public static function s(int $target): self
+    {
+        return new self('s', ['target' => $target]);
+    }
+
+    /**
+     * Create a Phase-T gate on the given qubit.
+     */
+    public static function t(int $target): self
+    {
+        return new self('t', ['target' => $target]);
+    }
+
+    /**
+     * Create a rotation around the X-axis.
+     */
+    public static function rx(int $target, float|Angle $angle): self
+    {
+        return new self('rx', [
+            'target' => $target,
+            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+        ]);
+    }
+
+    /**
+     * Create a rotation around the Y-axis.
+     */
+    public static function ry(int $target, float|Angle $angle): self
+    {
+        return new self('ry', [
+            'target' => $target,
+            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+        ]);
+    }
+
+    /**
+     * Create a rotation around the Z-axis.
+     */
+    public static function rz(int $target, float|Angle $angle): self
+    {
+        return new self('rz', [
+            'target' => $target,
+            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+        ]);
     }
 
     /**
@@ -56,19 +103,39 @@ final class Gate
      */
     public static function cnot(int $control, int $target): self
     {
-        return new self(type: 'cnot', target: $target, control: $control, targets: null);
+        return new self('cnot', ['control' => $control, 'target' => $target]);
+    }
+
+    /**
+     * Create a Controlled-Z gate.
+     */
+    public static function cz(int $control, int $target): self
+    {
+        return new self('cz', ['control' => $control, 'target' => $target]);
+    }
+
+    /**
+     * Create a SWAP gate.
+     */
+    public static function swap(int $target0, int $target1): self
+    {
+        return new self('swap', ['target0' => $target0, 'target1' => $target1]);
+    }
+
+    /**
+     * Create a Toffoli (CCNOT) gate.
+     */
+    public static function ccnot(int $control0, int $control1, int $target): self
+    {
+        return new self('ccnot', ['control0' => $control0, 'control1' => $control1, 'target' => $target]);
     }
 
     /**
      * Create a measurement gate.
      *
-     * - Pass null  → measure all qubits (targets remains null).
-     * - Pass int   → measure a single qubit (wrapped into a one-element array).
-     * - Pass array → measure the specified qubits verbatim.
-     *
      * @param  int|int[]|null  $targets
      */
-    public static function measure(int|array|null $targets): self
+    public static function measure(int|array|null $targets = null): self
     {
         $resolved = match (true) {
             $targets === null => null,
@@ -76,25 +143,24 @@ final class Gate
             default => $targets,
         };
 
-        return new self(type: 'measure', target: null, control: null, targets: $resolved);
+        return new self('measure', ['targets' => $resolved]);
     }
 
     /**
-     * Serialize the gate to a plain array suitable for JSON encoding or
-     * passing to a circuit runner.
+     * Create a barrier (logical separator, no hardware effect).
+     */
+    public static function barrier(): self
+    {
+        return new self('barrier');
+    }
+
+    /**
+     * Serialize the gate to a flat array suitable for JSON encoding.
      *
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
-        if ($this->type === 'measure') {
-            return ['type' => 'measure', 'targets' => $this->targets];
-        }
-
-        if ($this->type === 'cnot') {
-            return ['type' => 'cnot', 'control' => $this->control, 'target' => $this->target];
-        }
-
-        return ['type' => $this->type, 'target' => $this->target];
+        return array_merge(['type' => $this->type], $this->params);
     }
 }

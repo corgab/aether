@@ -45,6 +45,7 @@ return [
 
         'local' => [
             'synchronous_safe' => true,
+            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
         ],
 
         'aws' => [
@@ -52,6 +53,7 @@ return [
             'bucket' => env('AETHER_S3_BUCKET'),
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
             'synchronous_safe' => true,
+            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
         ],
 
     ],

@@ -89,7 +89,7 @@ it('delegates generateEntropy to bridge with correct payload', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            ['bits' => 16, 'driver' => 'local', 'driver_config' => $this->config],
+            ['qubits' => 16, 'shots' => 1, 'driver' => 'local', 'driver_config' => $this->config],
             $this->config
         )
         ->willReturn(['bits' => '1011001110100101']);

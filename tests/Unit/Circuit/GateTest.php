@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aether\Circuit\Angle;
 use Aether\Circuit\Gate;
 
 // -------------------------------------------------------------------------
@@ -12,130 +13,194 @@ it('h creates hadamard gate', function (): void {
     $gate = Gate::h(0);
 
     expect($gate->type)->toBe('h');
-    expect($gate->target)->toBe(0);
-    expect($gate->control)->toBeNull();
-    expect($gate->targets)->toBeNull();
+    expect($gate->params)->toBe(['target' => 0]);
 });
 
 it('x creates pauli x gate', function (): void {
     $gate = Gate::x(2);
 
     expect($gate->type)->toBe('x');
-    expect($gate->target)->toBe(2);
-    expect($gate->control)->toBeNull();
-    expect($gate->targets)->toBeNull();
+    expect($gate->params)->toBe(['target' => 2]);
 });
 
 it('y creates pauli y gate', function (): void {
     $gate = Gate::y(1);
 
     expect($gate->type)->toBe('y');
-    expect($gate->target)->toBe(1);
-    expect($gate->control)->toBeNull();
-    expect($gate->targets)->toBeNull();
+    expect($gate->params)->toBe(['target' => 1]);
 });
 
 it('z creates pauli z gate', function (): void {
     $gate = Gate::z(3);
 
     expect($gate->type)->toBe('z');
-    expect($gate->target)->toBe(3);
-    expect($gate->control)->toBeNull();
-    expect($gate->targets)->toBeNull();
+    expect($gate->params)->toBe(['target' => 3]);
 });
 
 // -------------------------------------------------------------------------
-// Factory: controlled gate
+// Factory: phase gates
+// -------------------------------------------------------------------------
+
+it('s creates phase s gate', function (): void {
+    $gate = Gate::s(0);
+
+    expect($gate->type)->toBe('s');
+    expect($gate->params)->toBe(['target' => 0]);
+});
+
+it('t creates phase t gate', function (): void {
+    $gate = Gate::t(1);
+
+    expect($gate->type)->toBe('t');
+    expect($gate->params)->toBe(['target' => 1]);
+});
+
+// -------------------------------------------------------------------------
+// Factory: parametric gates
+// -------------------------------------------------------------------------
+
+it('rx creates rotation x gate with Angle', function (): void {
+    $gate = Gate::rx(0, Angle::pi(0.5));
+
+    expect($gate->type)->toBe('rx');
+    expect($gate->params['target'])->toBe(0);
+    expect($gate->params['angle'])->toEqualWithDelta(M_PI / 2, 1e-10);
+});
+
+it('ry creates rotation y gate with float', function (): void {
+    $gate = Gate::ry(1, 1.5708);
+
+    expect($gate->type)->toBe('ry');
+    expect($gate->params['target'])->toBe(1);
+    expect($gate->params['angle'])->toBe(1.5708);
+});
+
+it('rz creates rotation z gate with Angle degrees', function (): void {
+    $gate = Gate::rz(2, Angle::deg(90.0));
+
+    expect($gate->type)->toBe('rz');
+    expect($gate->params['target'])->toBe(2);
+    expect($gate->params['angle'])->toEqualWithDelta(M_PI / 2, 1e-10);
+});
+
+// -------------------------------------------------------------------------
+// Factory: controlled gates
 // -------------------------------------------------------------------------
 
 it('cnot creates controlled not gate', function (): void {
     $gate = Gate::cnot(0, 1);
 
     expect($gate->type)->toBe('cnot');
-    expect($gate->control)->toBe(0);
-    expect($gate->target)->toBe(1);
-    expect($gate->targets)->toBeNull();
+    expect($gate->params)->toBe(['control' => 0, 'target' => 1]);
+});
+
+it('cz creates controlled z gate', function (): void {
+    $gate = Gate::cz(0, 1);
+
+    expect($gate->type)->toBe('cz');
+    expect($gate->params)->toBe(['control' => 0, 'target' => 1]);
+});
+
+// -------------------------------------------------------------------------
+// Factory: multi-qubit gates
+// -------------------------------------------------------------------------
+
+it('swap creates swap gate', function (): void {
+    $gate = Gate::swap(0, 1);
+
+    expect($gate->type)->toBe('swap');
+    expect($gate->params)->toBe(['target0' => 0, 'target1' => 1]);
+});
+
+it('ccnot creates toffoli gate', function (): void {
+    $gate = Gate::ccnot(0, 1, 2);
+
+    expect($gate->type)->toBe('ccnot');
+    expect($gate->params)->toBe(['control0' => 0, 'control1' => 1, 'target' => 2]);
 });
 
 // -------------------------------------------------------------------------
 // Factory: measure gate
 // -------------------------------------------------------------------------
 
-it('measure with null keeps null targets', function (): void {
-    $gate = Gate::measure(null);
+it('measure with no args keeps null targets', function (): void {
+    $gate = Gate::measure();
 
     expect($gate->type)->toBe('measure');
-    expect($gate->targets)->toBeNull();
-    expect($gate->target)->toBeNull();
-    expect($gate->control)->toBeNull();
+    expect($gate->params)->toBe(['targets' => null]);
 });
 
 it('measure with int wraps in array', function (): void {
     $gate = Gate::measure(2);
 
     expect($gate->type)->toBe('measure');
-    expect($gate->targets)->toBe([2]);
-    expect($gate->target)->toBeNull();
-    expect($gate->control)->toBeNull();
+    expect($gate->params)->toBe(['targets' => [2]]);
 });
 
 it('measure with array keeps array', function (): void {
     $gate = Gate::measure([0, 1, 2]);
 
     expect($gate->type)->toBe('measure');
-    expect($gate->targets)->toBe([0, 1, 2]);
-    expect($gate->target)->toBeNull();
-    expect($gate->control)->toBeNull();
+    expect($gate->params)->toBe(['targets' => [0, 1, 2]]);
 });
 
 // -------------------------------------------------------------------------
-// toArray
+// Factory: barrier
+// -------------------------------------------------------------------------
+
+it('barrier creates barrier gate', function (): void {
+    $gate = Gate::barrier();
+
+    expect($gate->type)->toBe('barrier');
+    expect($gate->params)->toBe([]);
+});
+
+// -------------------------------------------------------------------------
+// toArray — flat serialization
 // -------------------------------------------------------------------------
 
 it('to array for single target gate', function (): void {
-    $gate = Gate::h(0);
-
-    expect($gate->toArray())->toBe(['type' => 'h', 'target' => 0]);
+    expect(Gate::h(0)->toArray())->toBe(['type' => 'h', 'target' => 0]);
 });
 
 it('to array for cnot gate', function (): void {
-    $gate = Gate::cnot(0, 1);
+    expect(Gate::cnot(0, 1)->toArray())->toBe(['type' => 'cnot', 'control' => 0, 'target' => 1]);
+});
 
-    expect($gate->toArray())->toBe(['type' => 'cnot', 'control' => 0, 'target' => 1]);
+it('to array for cz gate', function (): void {
+    expect(Gate::cz(0, 1)->toArray())->toBe(['type' => 'cz', 'control' => 0, 'target' => 1]);
+});
+
+it('to array for swap gate', function (): void {
+    expect(Gate::swap(0, 1)->toArray())->toBe(['type' => 'swap', 'target0' => 0, 'target1' => 1]);
+});
+
+it('to array for ccnot gate', function (): void {
+    expect(Gate::ccnot(0, 1, 2)->toArray())->toBe(['type' => 'ccnot', 'control0' => 0, 'control1' => 1, 'target' => 2]);
+});
+
+it('to array for rx gate serializes angle as float', function (): void {
+    $arr = Gate::rx(0, Angle::pi())->toArray();
+
+    expect($arr['type'])->toBe('rx');
+    expect($arr['target'])->toBe(0);
+    expect($arr['angle'])->toBe(M_PI);
 });
 
 it('to array for measure gate with targets', function (): void {
-    $gate = Gate::measure([0, 1]);
-
-    expect($gate->toArray())->toBe(['type' => 'measure', 'targets' => [0, 1]]);
+    expect(Gate::measure([0, 1])->toArray())->toBe(['type' => 'measure', 'targets' => [0, 1]]);
 });
 
 it('to array for measure gate with null', function (): void {
-    $gate = Gate::measure(null);
-
-    expect($gate->toArray())->toBe(['type' => 'measure', 'targets' => null]);
+    expect(Gate::measure()->toArray())->toBe(['type' => 'measure', 'targets' => null]);
 });
 
-it('to array for x gate', function (): void {
-    $gate = Gate::x(3);
-
-    expect($gate->toArray())->toBe(['type' => 'x', 'target' => 3]);
-});
-
-it('to array for y gate', function (): void {
-    $gate = Gate::y(1);
-
-    expect($gate->toArray())->toBe(['type' => 'y', 'target' => 1]);
-});
-
-it('to array for z gate', function (): void {
-    $gate = Gate::z(4);
-
-    expect($gate->toArray())->toBe(['type' => 'z', 'target' => 4]);
+it('to array for barrier', function (): void {
+    expect(Gate::barrier()->toArray())->toBe(['type' => 'barrier']);
 });
 
 // -------------------------------------------------------------------------
-// Immutability: verify readonly properties cannot be modified
+// Immutability
 // -------------------------------------------------------------------------
 
 it('gate is immutable', function (): void {

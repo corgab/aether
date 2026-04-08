@@ -52,18 +52,67 @@ it('passes driver name and config in circuit payload', function () {
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
-it('passes driver name and config in entropy payload', function () {
+it('passes qubits and shots in entropy payload', function () {
+    $driver = new class($this->bridge, ['key' => 'value', 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
     $this->bridge->expects($this->once())
         ->method('execute')
         ->with(
             'entropy.py',
-            $this->callback(fn (array $p) => $p['driver'] === 'test' && $p['bits'] === 128),
+            $this->callback(function (array $p) {
+                return $p['driver'] === 'test'
+                    && $p['qubits'] === 16
+                    && $p['shots'] === 1
+                    && ! array_key_exists('bits', $p);
+            }),
+            ['key' => 'value', 'entropy_qubits' => 16]
+        )
+        ->willReturn(['bits' => str_repeat('1', 16)]);
+
+    $bytes = $driver->generateEntropy(8);
+    expect(strlen($bytes))->toBe(1);
+});
+
+it('computes shots dynamically based on requested bits', function () {
+    $driver = new class($this->bridge, ['key' => 'value', 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'entropy.py',
+            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 16),
+            ['key' => 'value', 'entropy_qubits' => 16]
+        )
+        ->willReturn(['bits' => str_repeat('10', 128)]);
+
+    $bytes = $driver->generateEntropy(256);
+    expect(strlen($bytes))->toBe(32);
+});
+
+it('defaults to 16 qubits when entropy_qubits not in config', function () {
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'entropy.py',
+            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 1),
             ['key' => 'value']
         )
-        ->willReturn(['bits' => str_repeat('1', 128)]);
+        ->willReturn(['bits' => str_repeat('1', 16)]);
 
-    $bytes = $this->driver->generateEntropy(128);
-    expect(strlen($bytes))->toBe(16);
+    $bytes = $this->driver->generateEntropy(8);
+    expect(strlen($bytes))->toBe(1);
 });
 
 it('calls beforeExecution hook', function () {

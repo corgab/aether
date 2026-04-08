@@ -50,14 +50,20 @@ abstract class AbstractQuantumDriver implements QuantumDevice
     {
         $this->beforeExecution();
 
+        $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
+        $shots = (int) ceil($bits / $qubits);
+
         $payload = [
-            'bits' => $bits,
+            'qubits' => $qubits,
+            'shots' => $shots,
             'driver' => $this->driverName(),
             'driver_config' => $this->config,
         ];
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config);
 
-        return $this->bridge->bitstringToBytes($response['bits']);
+        $bitstring = substr($response['bits'], 0, $bits);
+
+        return $this->bridge->bitstringToBytes($bitstring);
     }
 }

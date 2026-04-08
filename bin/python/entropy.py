@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """Quantum entropy generator for the Aether Laravel package.
 
-Reads a request as JSON from stdin, builds a single-shot Hadamard circuit
-with *N* qubits, runs it, and writes the resulting random bitstring to stdout.
+Reads a request as JSON from stdin, builds a Hadamard circuit with *N* qubits,
+runs it with configurable shot count, and writes the resulting random bitstring
+to stdout.
 
 The randomness is quantum in origin: each qubit is placed in an equal
-superposition by a Hadamard gate and then measured exactly once, producing
-a truly random bit per qubit (on real hardware) or a pseudorandom bit (on the
-local simulator).
+superposition by a Hadamard gate and then measured, producing truly random bits
+per qubit (on real hardware) or pseudorandom bits (on the local simulator).
+Multi-shot support allows generating longer bitstrings efficiently by running
+the circuit multiple times and concatenating all measurement results.
 
 Input schema (JSON on stdin)::
 
     {
-        "bits": 32,
+        "qubits": 16,
+        "shots": 2,
         "driver": "local",
         "driver_config": {}
     }
@@ -35,7 +38,7 @@ from typing import Any
 from common import resolve_device
 
 
-def _build_entropy_circuit(n_bits: int) -> "Circuit":
+def _build_entropy_circuit(n_qubits: int) -> "Circuit":
     """Build a circuit that applies a Hadamard gate and measures every qubit.
 
     Each qubit is initialised in state |0⟩, placed in an equal superposition
@@ -43,44 +46,43 @@ def _build_entropy_circuit(n_bits: int) -> "Circuit":
     produces one uniformly-distributed random bit per qubit.
 
     Args:
-        n_bits: Number of qubits (and therefore random bits) to generate.
+        n_qubits: Number of qubits (and therefore random bits per shot) to generate.
 
     Returns:
-        A :class:`~braket.circuits.Circuit` with ``n_bits`` qubits.
+        A :class:`~braket.circuits.Circuit` with ``n_qubits`` qubits.
     """
     from braket.circuits import Circuit  # noqa: PLC0415
 
     circuit = Circuit()
-    for qubit in range(n_bits):
+    for qubit in range(n_qubits):
         circuit.h(qubit)
-    circuit.measure(list(range(n_bits)))
+    circuit.measure(list(range(n_qubits)))
     return circuit
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
     """Execute an entropy circuit and return the measured bitstring.
 
-    A single shot is used so that exactly one outcome is observed, giving a
-    concrete bitstring rather than a probability distribution.
+    The circuit uses the configured number of qubits with the computed number
+    of shots. All shot results are concatenated into a single bitstring.
 
     Args:
-        payload: Deserialised JSON input dict.
+        payload: Deserialised JSON input dict with keys: qubits, shots,
+            driver, driver_config.
 
     Returns:
-        A dict with a single ``"bits"`` key whose value is the bitstring.
-
-    Raises:
-        RuntimeError: When the result contains no measurements (should never
-            happen with shots=1 on a well-formed circuit).
+        A dict with a single ``"bits"`` key whose value is the concatenated
+        bitstring from all shots.
     """
-    n_bits: int = payload["bits"]
+    n_qubits: int = payload["qubits"]
+    shots: int = payload["shots"]
     driver: str = payload.get("driver", "local")
     driver_config: dict[str, Any] = payload.get("driver_config", {})
 
-    circuit = _build_entropy_circuit(n_bits)
+    circuit = _build_entropy_circuit(n_qubits)
     device = resolve_device(driver, driver_config)
 
-    run_kwargs: dict[str, Any] = {"shots": 1}
+    run_kwargs: dict[str, Any] = {"shots": shots}
 
     if driver == "aws":
         bucket = driver_config.get("bucket")
@@ -90,12 +92,15 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     task = device.run(circuit, **run_kwargs)
     result = task.result()
 
-    # measurements is a 2-D list: [[bit0, bit1, ...]] for shots=1
     measurements = result.measurements
-    if not measurements or not measurements[0]:
+    if measurements is None or len(measurements) == 0:
         raise RuntimeError("No measurement data returned from device.")
 
-    bitstring = "".join(str(bit) for bit in measurements[0])
+    bitstring = "".join(
+        "".join(str(bit) for bit in shot)
+        for shot in measurements
+    )
+
     return {"bits": bitstring}
 
 
