@@ -37,6 +37,9 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # laravel/pao is a dev-only agent output formatter that requires PHP >= 8.3
+          # and plays no role in CI; drop it so the PHP 8.2 legs can resolve.
+          composer remove --dev laravel/pao --no-update
           composer require "illuminate/support:${{ matrix.laravel }}" "illuminate/console:${{ matrix.laravel }}" "illuminate/contracts:${{ matrix.laravel }}" --no-interaction --no-update
           composer update --prefer-dist --no-interaction
 
