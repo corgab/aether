@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace Aether\Entropy;
 
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\QuantumExecutionException;
 
 /**
  * High-level entropy generator backed by a quantum device.
  */
 class EntropyGenerator
 {
+    /**
+     * Maximum number of 256-bit entropy batches to fetch while rejection
+     * sampling before giving up. The normal path succeeds on the first batch.
+     */
+    private const MAX_ENTROPY_BATCHES = 1000;
+
     public function __construct(private readonly QuantumDevice $device) {}
 
     /**
@@ -50,7 +57,10 @@ class EntropyGenerator
         $bitsNeeded = (int) ceil(log($range + 1, 2));
         $mask = (1 << $bitsNeeded) - 1;
 
-        while (true) {
+        // A correct entropy source accepts on the first batch with overwhelming
+        // probability; the cap is a safety net against a degenerate source that
+        // would otherwise spin forever.
+        for ($batch = 0; $batch < self::MAX_ENTROPY_BATCHES; $batch++) {
             $bitstring = $this->bytesToBitstring($this->generate(256));
             $length = strlen($bitstring);
             $offset = 0;
@@ -66,8 +76,10 @@ class EntropyGenerator
                 }
                 // Rejected — try the next chunk.
             }
-            // Buffer exhausted; fetch another batch (extremely unlikely).
+            // Buffer exhausted; fetch another batch.
         }
+
+        throw QuantumExecutionException::entropyExhausted($min, $max, self::MAX_ENTROPY_BATCHES);
     }
 
     /**

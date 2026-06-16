@@ -29,4 +29,15 @@ class QuantumExecutionException extends AetherException
             "Driver [{$driver}] does not support synchronous execution. Use dispatch() or queue() instead."
         );
     }
+
+    /**
+     * Create an exception when rejection sampling cannot find an in-range
+     * value within the allotted number of entropy batches.
+     */
+    public static function entropyExhausted(int $min, int $max, int $batches): self
+    {
+        return new self(
+            "Failed to generate an in-range integer in [{$min}, {$max}] after {$batches} entropy batches. The entropy source may be degenerate."
+        );
+    }
 }

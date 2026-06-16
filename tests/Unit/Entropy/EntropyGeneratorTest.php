@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
+use Aether\Exceptions\QuantumExecutionException;
 
 $device = null;
 $generator = null;
@@ -148,6 +149,17 @@ it('integer fetches another batch when buffer is exhausted', function () use (&$
 
     expect($result)->toBe(0);
 });
+
+it('integer throws when entropy is exhausted without an in-range value', function () use (&$device, &$generator): void {
+    // Range 0..2 needs 2 bits per chunk; every "11" chunk decodes to 3, which
+    // is always > 2 and therefore always rejected. With a degenerate source
+    // returning only 0xff, no batch can ever yield an in-range value.
+    $device
+        ->method('generateEntropy')
+        ->willReturn(str_repeat("\xff", 32));
+
+    $generator->integer(0, 2);
+})->throws(QuantumExecutionException::class, 'entropy');
 
 // -------------------------------------------------------------------------
 // Validation: min > max
