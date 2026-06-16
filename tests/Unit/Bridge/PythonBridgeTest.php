@@ -7,6 +7,20 @@ use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
+/**
+ * Create a throwaway executable that stands in for the python interpreter,
+ * emitting a fixed stdout/stderr/exit code so execute()'s output-handling
+ * branches can be exercised without a real Python environment.
+ */
+function fakePython(string $shBody): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'aether_fakepy_');
+    file_put_contents($path, "#!/bin/sh\n{$shBody}\n");
+    chmod($path, 0o755);
+
+    return $path;
+}
+
 // -------------------------------------------------------------------------
 // scriptsPath()
 // -------------------------------------------------------------------------
@@ -52,6 +66,61 @@ it('throws QuantumExecutionException with nonexistent script', function () {
 
     $bridge->execute('nonexistent_script_that_does_not_exist.py', ['qubits' => 2]);
 })->throws(QuantumExecutionException::class);
+
+// -------------------------------------------------------------------------
+// execute() — output handling (via a fake interpreter)
+// -------------------------------------------------------------------------
+
+afterEach(function () {
+    foreach (glob(sys_get_temp_dir().'/aether_fakepy_*') ?: [] as $tmp) {
+        @unlink($tmp);
+    }
+});
+
+it('returns the decoded array on a successful run', function () {
+    $python = fakePython("printf '{\"counts\":{\"00\":7,\"11\":3}}'");
+
+    $result = (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+
+    expect($result)->toBe(['counts' => ['00' => 7, '11' => 3]]);
+});
+
+it('throws QuantumExecutionException when python exits non-zero', function () {
+    $python = fakePython("printf 'kaboom' >&2; exit 3");
+
+    try {
+        (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('kaboom');
+        expect($e->getCode())->toBe(3);
+    }
+});
+
+it('throws QuantumExecutionException on invalid JSON output', function () {
+    $python = fakePython("printf 'this is not json'");
+
+    expect(fn () => (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]))
+        ->toThrow(QuantumExecutionException::class, 'Invalid JSON');
+});
+
+it('throws QuantumExecutionException when output is a JSON scalar, not an object', function () {
+    $python = fakePython("printf '42'");
+
+    expect(fn () => (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]))
+        ->toThrow(QuantumExecutionException::class, 'Expected JSON object');
+});
+
+// -------------------------------------------------------------------------
+// bitstringToBytes()
+// -------------------------------------------------------------------------
+
+it('converts a binary digit string into raw bytes', function () {
+    $bridge = new PythonBridge('python3');
+
+    // '01001000' = 0x48 = 'H', '01101001' = 0x69 = 'i'
+    expect($bridge->bitstringToBytes('0100100001101001'))->toBe('Hi');
+});
 
 // -------------------------------------------------------------------------
 // buildEnvironment()
