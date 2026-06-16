@@ -32,6 +32,43 @@ from typing import Any
 
 from common import resolve_device
 
+# Gate parameter keys that hold a qubit index (``measure`` is handled
+# separately because its targets live in a list).
+_QUBIT_INDEX_KEYS = ("target", "control", "control0", "control1", "target0", "target1")
+
+
+def _validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
+    """Ensure every qubit index referenced by *gates* is within range.
+
+    This is defense in depth: the PHP ``CircuitBuilder`` already validates
+    targets before serialising, but the script should not trust its input
+    blindly — an out-of-range index should fail with a clear message rather
+    than an opaque error from the Braket SDK.
+
+    Args:
+        qubits: Total number of qubits in the circuit.
+        gates:  Ordered list of gate-definition dicts.
+
+    Raises:
+        ValueError: When a gate references a qubit outside ``[0, qubits)``.
+    """
+    for gate in gates:
+        gate_type = gate.get("type", "")
+
+        indices = [gate[key] for key in _QUBIT_INDEX_KEYS if gate.get(key) is not None]
+
+        if gate_type == "measure":
+            targets = gate.get("targets")
+            if targets is not None:
+                indices.extend(targets)
+
+        for index in indices:
+            if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < qubits:
+                raise ValueError(
+                    f"Gate {gate_type!r} references qubit {index!r}, "
+                    f"outside the valid range [0, {qubits})."
+                )
+
 
 def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
@@ -49,8 +86,10 @@ def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
 
     Raises:
         ValueError: When an unknown gate type or missing required key is
-            encountered.
+            encountered, or when a gate references an out-of-range qubit.
     """
+    _validate_gates(qubits, gates)
+
     from braket.circuits import Circuit  # noqa: PLC0415
 
     circuit = Circuit()
