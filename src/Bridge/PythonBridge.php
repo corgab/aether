@@ -107,7 +107,9 @@ class PythonBridge implements PythonExecutor
         $bytes = '';
 
         foreach (str_split($bitstring, 8) as $chunk) {
-            $bytes .= chr((int) bindec($chunk));
+            // & 0xFF keeps the value in chr()'s 0-255 range (each chunk is at
+            // most 8 bits, so this is a no-op for valid input).
+            $bytes .= chr(((int) bindec($chunk)) & 0xFF);
         }
 
         return $bytes;
