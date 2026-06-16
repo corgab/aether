@@ -106,7 +106,16 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `x($qubit)` | Pauli-X (NOT) |
 | `y($qubit)` | Pauli-Y |
 | `z($qubit)` | Pauli-Z |
+| `s($qubit)` | Phase-S |
+| `t($qubit)` | Phase-T |
+| `rx($qubit, $angle)` | Rotation around the X-axis (`float` radians or `Angle`) |
+| `ry($qubit, $angle)` | Rotation around the Y-axis (`float` radians or `Angle`) |
+| `rz($qubit, $angle)` | Rotation around the Z-axis (`float` radians or `Angle`) |
 | `cnot($control, $target)` | Controlled-NOT |
+| `cz($control, $target)` | Controlled-Z |
+| `swap($qubit0, $qubit1)` | SWAP |
+| `ccnot($control0, $control1, $target)` | Toffoli (CCNOT) |
+| `barrier()` | Logical separator (not yet executed on any backend) |
 | `measure($targets)` | Measurement (null = all qubits) |
 
 ## Testing

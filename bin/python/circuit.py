@@ -88,6 +88,9 @@ def _build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
             circuit.measure(qubit_indices)
 
         elif gate_type == "barrier":
+            # TODO: not yet implemented. Braket has no native barrier; the real
+            # mapping is Circuit.add_verbatim_box() (a compiler fence). Skipped
+            # for now so existing circuits keep running.
             pass
 
         else:

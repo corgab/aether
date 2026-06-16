@@ -65,7 +65,6 @@ class CircuitBuilder
     /**
      * Add a Hadamard gate on the given qubit.
      *
-     *
      * @throws InvalidCircuitException
      */
     public function h(int $target): static
@@ -78,7 +77,6 @@ class CircuitBuilder
 
     /**
      * Add a Pauli-X (NOT) gate on the given qubit.
-     *
      *
      * @throws InvalidCircuitException
      */
@@ -93,7 +91,6 @@ class CircuitBuilder
     /**
      * Add a Pauli-Y gate on the given qubit.
      *
-     *
      * @throws InvalidCircuitException
      */
     public function y(int $target): static
@@ -107,7 +104,6 @@ class CircuitBuilder
     /**
      * Add a Pauli-Z gate on the given qubit.
      *
-     *
      * @throws InvalidCircuitException
      */
     public function z(int $target): static
@@ -120,7 +116,6 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-NOT gate.
-     *
      *
      * @throws InvalidCircuitException
      */
@@ -221,7 +216,11 @@ class CircuitBuilder
     }
 
     /**
-     * Add a barrier (logical separator, no hardware effect).
+     * Add a barrier (logical separator).
+     *
+     * @todo Not yet implemented on any backend. Braket has no native barrier;
+     *       the real mapping is Circuit.add_verbatim_box() (a compiler fence).
+     *       For now the gate is serialized but skipped during execution.
      */
     public function barrier(): static
     {

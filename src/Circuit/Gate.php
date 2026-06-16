@@ -147,7 +147,11 @@ final readonly class Gate
     }
 
     /**
-     * Create a barrier (logical separator, no hardware effect).
+     * Create a barrier (logical separator).
+     *
+     * @todo Not yet implemented on any backend. Braket has no native barrier;
+     *       the real mapping is Circuit.add_verbatim_box() (a compiler fence).
+     *       For now the gate is serialized but skipped during execution.
      */
     public static function barrier(): self
     {
