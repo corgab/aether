@@ -7,6 +7,7 @@ namespace Aether\Drivers;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Results\CircuitResult;
 
 /**
@@ -28,9 +29,50 @@ abstract class AbstractQuantumDriver implements QuantumDevice
     abstract protected function driverName(): string;
 
     /**
-     * Hook called before every circuit execution or entropy generation.
+     * Config keys that must be present and non-empty before the driver runs.
+     *
+     * Override in concrete drivers that talk to a remote service so that a
+     * misconfiguration fails fast here, instead of the Python layer silently
+     * falling back to its own defaults.
+     *
+     * @return list<string>
      */
-    protected function beforeExecution(): void {}
+    protected function requiredConfig(): array
+    {
+        return [];
+    }
+
+    /**
+     * Hook called before every circuit execution or entropy generation.
+     *
+     * Overriding drivers should call parent::beforeExecution() to keep the
+     * required-config check.
+     */
+    protected function beforeExecution(): void
+    {
+        $this->assertConfigured();
+    }
+
+    /**
+     * Ensure every required config key is present and non-empty, failing fast
+     * with a clear message before any Python subprocess is spawned.
+     */
+    private function assertConfigured(): void
+    {
+        $missing = [];
+
+        foreach ($this->requiredConfig() as $key) {
+            $value = $this->config[$key] ?? null;
+
+            if (! is_string($value) || trim($value) === '') {
+                $missing[] = $key;
+            }
+        }
+
+        if ($missing !== []) {
+            throw InvalidDriverConfigException::missingKeys($this->driverName(), $missing);
+        }
+    }
 
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {

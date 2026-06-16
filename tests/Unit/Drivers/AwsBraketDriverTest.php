@@ -6,6 +6,7 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
 
@@ -95,7 +96,7 @@ it('throws QuantumExecutionException when synchronous_safe is false on executeCi
 
 it('works when synchronous_safe defaults to true on executeCircuit', function () {
     // Config without 'synchronous_safe' key — should default to true (safe)
-    $config = ['region' => 'us-east-1'];
+    $config = ['region' => 'us-east-1', 'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'];
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -166,4 +167,56 @@ it('converts bitstring to raw bytes correctly in generateEntropy', function () {
     $entropy = $driver->generateEntropy(16);
 
     expect($entropy)->toBe(chr(0xB3).chr(0xA5));
+});
+
+// -------------------------------------------------------------------------
+// Config validation (fail fast, before Python)
+// -------------------------------------------------------------------------
+
+it('throws InvalidDriverConfigException when device_arn is missing', function () {
+    $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1']);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->expects($this->never())->method('toArray');
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected InvalidDriverConfigException was not thrown.');
+    } catch (InvalidDriverConfigException $e) {
+        expect($e->getMessage())->toContain('device_arn');
+        expect(strtolower($e->getMessage()))->toContain('aws');
+    }
+});
+
+it('throws InvalidDriverConfigException when region is an empty string', function () {
+    $config = ['region' => '   ', 'device_arn' => 'arn:aws:braket:::device/x'];
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidDriverConfigException::class, 'region');
+});
+
+it('lists every missing required key in the exception message', function () {
+    $driver = new AwsBraketDriver($this->bridge, ['synchronous_safe' => true]);
+
+    try {
+        $driver->generateEntropy(16);
+        $this->fail('Expected InvalidDriverConfigException was not thrown.');
+    } catch (InvalidDriverConfigException $e) {
+        expect($e->getMessage())->toContain('region');
+        expect($e->getMessage())->toContain('device_arn');
+    }
+});
+
+it('validates config on generateEntropy as well as executeCircuit', function () {
+    $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1']);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->generateEntropy(16))
+        ->toThrow(InvalidDriverConfigException::class, 'device_arn');
 });

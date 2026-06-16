@@ -16,8 +16,18 @@ class AwsBraketDriver extends AbstractQuantumDriver
         return 'aws';
     }
 
+    /**
+     * @return list<string>
+     */
+    protected function requiredConfig(): array
+    {
+        return ['region', 'device_arn'];
+    }
+
     protected function beforeExecution(): void
     {
+        parent::beforeExecution();
+
         if (($this->config['synchronous_safe'] ?? true) === false) {
             throw QuantumExecutionException::synchronousUnsafe('aws');
         }

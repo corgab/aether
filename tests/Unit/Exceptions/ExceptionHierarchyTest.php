@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Aether\Exceptions\AetherException;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
@@ -113,4 +114,22 @@ it('no measurement returns meaningful message', function (): void {
 
     expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
     expect($exception->getMessage())->not->toBeEmpty();
+});
+
+// -------------------------------------------------------------------------
+// InvalidDriverConfigException
+// -------------------------------------------------------------------------
+
+it('invalid driver config exception extends aether exception', function (): void {
+    expect(is_subclass_of(InvalidDriverConfigException::class, AetherException::class))->toBeTrue();
+});
+
+it('missing keys includes driver name and every missing key', function (): void {
+    $exception = InvalidDriverConfigException::missingKeys('aws', ['region', 'device_arn']);
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getMessage())
+        ->toContain('aws')
+        ->toContain('region')
+        ->toContain('device_arn');
 });
