@@ -45,7 +45,7 @@ Quantum (Facade)
 ## Conventions
 
 - **PSR-12** strict, `declare(strict_types=1)` in every PHP file
-- **PHP 8.2+** features: readonly properties, named arguments, match expressions
+- **PHP 8.3+** features: readonly properties, named arguments, match expressions
 - **Laravel style naming:** Driver files use `*Driver` suffix (`LocalSimulatorDriver`, `AwsBraketDriver`). Contracts use semantic names without `Contract` suffix (`Contracts\QuantumDevice`).
 - **Tests use Pest PHP**, not raw PHPUnit classes. Use `it()` / `test()` with `expect()`.
 - **Python scripts** live in `bin/python/`, not `resources/`. Each script is self-contained (reads JSON stdin, writes JSON stdout).

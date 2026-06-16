@@ -13,15 +13,8 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        php: ['8.2', '8.3', '8.4', '8.5']
-        laravel: ['11.*', '12.*', '13.*']
-        exclude:
-          # Laravel 13 requires PHP >= 8.3
-          - php: '8.2'
-            laravel: '13.*'
-          # Laravel 11 supports PHP up to 8.4
-          - php: '8.5'
-            laravel: '11.*'
+        php: ['8.3', '8.4', '8.5']
+        laravel: ['12.*', '13.*']
 
     name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }}
 
@@ -37,9 +30,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # laravel/pao is a dev-only agent output formatter that requires PHP >= 8.3
-          # and plays no role in CI; drop it so the PHP 8.2 legs can resolve.
-          composer remove --dev laravel/pao --no-update
           composer require "illuminate/support:${{ matrix.laravel }}" "illuminate/console:${{ matrix.laravel }}" "illuminate/contracts:${{ matrix.laravel }}" --no-interaction --no-update
           composer update --prefer-dist --no-interaction
 
