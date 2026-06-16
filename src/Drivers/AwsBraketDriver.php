@@ -26,8 +26,6 @@ class AwsBraketDriver extends AbstractQuantumDriver
 
     protected function beforeExecution(): void
     {
-        parent::beforeExecution();
-
         if (($this->config['synchronous_safe'] ?? true) === false) {
             throw QuantumExecutionException::synchronousUnsafe('aws');
         }

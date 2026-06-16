@@ -33,7 +33,9 @@ from typing import Any
 from common import resolve_device
 
 # Gate parameter keys that hold a qubit index (``measure`` is handled
-# separately because its targets live in a list).
+# separately because its targets live in a list). Keep in sync with the gate
+# branches in _build_circuit(); an allowlist is used deliberately rather than
+# "every int parameter" because params such as ``angle`` may deserialise as int.
 _QUBIT_INDEX_KEYS = ("target", "control", "control0", "control1", "target0", "target1")
 
 
@@ -60,7 +62,9 @@ def _validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
         if gate_type == "measure":
             targets = gate.get("targets")
             if targets is not None:
-                indices.extend(targets)
+                # Tolerate a scalar target so a malformed payload still hits the
+                # range check below with a clear message, not a raw TypeError.
+                indices.extend(targets if isinstance(targets, list) else [targets])
 
         for index in indices:
             if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < qubits:

@@ -43,14 +43,24 @@ abstract class AbstractQuantumDriver implements QuantumDevice
     }
 
     /**
-     * Hook called before every circuit execution or entropy generation.
+     * Hook for driver-specific pre-flight logic (e.g. safety checks).
      *
-     * Overriding drivers should call parent::beforeExecution() to keep the
-     * required-config check.
+     * Runs before every circuit execution and entropy generation, after the
+     * required-config check. Default is a no-op; overrides need no parent call.
      */
-    protected function beforeExecution(): void
+    protected function beforeExecution(): void {}
+
+    /**
+     * Run the mandatory pre-flight steps before spawning any Python subprocess.
+     *
+     * The config check lives here rather than in beforeExecution() so a driver
+     * overriding the hook cannot silently skip validation by forgetting to call
+     * the parent implementation.
+     */
+    private function preflight(): void
     {
         $this->assertConfigured();
+        $this->beforeExecution();
     }
 
     /**
@@ -64,7 +74,7 @@ abstract class AbstractQuantumDriver implements QuantumDevice
         foreach ($this->requiredConfig() as $key) {
             $value = $this->config[$key] ?? null;
 
-            if (! is_string($value) || trim($value) === '') {
+            if ($value === null || (is_string($value) && trim($value) === '')) {
                 $missing[] = $key;
             }
         }
@@ -76,7 +86,7 @@ abstract class AbstractQuantumDriver implements QuantumDevice
 
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->beforeExecution();
+        $this->preflight();
 
         $payload = array_merge($circuit->toArray(), [
             'driver' => $this->driverName(),
@@ -90,7 +100,7 @@ abstract class AbstractQuantumDriver implements QuantumDevice
 
     public function generateEntropy(int $bits): string
     {
-        $this->beforeExecution();
+        $this->preflight();
 
         $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
         $shots = (int) ceil($bits / $qubits);

@@ -13,8 +13,15 @@ use Aether\Exceptions\QuantumExecutionException;
 class EntropyGenerator
 {
     /**
-     * Maximum number of 256-bit entropy batches to fetch while rejection
-     * sampling before giving up. The normal path succeeds on the first batch.
+     * Hard ceiling on the number of 256-bit entropy batches fetched while
+     * rejection sampling before giving up.
+     *
+     * This is a safety net, not a tuning knob: a correct entropy source accepts
+     * within the first batch with overwhelming probability (the per-chunk
+     * rejection rate is always below 50%), so reaching this bound means the
+     * source is degenerate. The value is deliberately large enough never to
+     * false-trip on a healthy source while still guaranteeing integer()
+     * terminates.
      */
     private const MAX_ENTROPY_BATCHES = 1000;
 
