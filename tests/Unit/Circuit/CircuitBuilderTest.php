@@ -347,12 +347,6 @@ it('ccnot returns self', function () use (&$builder): void {
     expect($builder->ccnot(0, 1, 2))->toBe($builder);
 });
 
-it('barrier returns self', function () use (&$builder): void {
-    $builder->qubits(1);
-
-    expect($builder->barrier())->toBe($builder);
-});
-
 // -------------------------------------------------------------------------
 // toArray: new gates serialize correctly
 // -------------------------------------------------------------------------
@@ -399,13 +393,6 @@ it('cz gate serializes in toArray', function () use (&$builder): void {
     $gates = $builder->toArray()['gates'];
 
     expect($gates[0])->toBe(['type' => 'cz', 'control' => 0, 'target' => 1]);
-});
-
-it('barrier serializes in toArray', function () use (&$builder): void {
-    $builder->qubits(1)->h(0)->barrier()->measure();
-    $gates = $builder->toArray()['gates'];
-
-    expect($gates[1])->toBe(['type' => 'barrier']);
 });
 
 // -------------------------------------------------------------------------

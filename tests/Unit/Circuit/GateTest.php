@@ -145,17 +145,6 @@ it('measure with array keeps array', function (): void {
 });
 
 // -------------------------------------------------------------------------
-// Factory: barrier
-// -------------------------------------------------------------------------
-
-it('barrier creates barrier gate', function (): void {
-    $gate = Gate::barrier();
-
-    expect($gate->type)->toBe('barrier');
-    expect($gate->params)->toBe([]);
-});
-
-// -------------------------------------------------------------------------
 // toArray — flat serialization
 // -------------------------------------------------------------------------
 
@@ -193,10 +182,6 @@ it('to array for measure gate with targets', function (): void {
 
 it('to array for measure gate with null', function (): void {
     expect(Gate::measure()->toArray())->toBe(['type' => 'measure', 'targets' => null]);
-});
-
-it('to array for barrier', function (): void {
-    expect(Gate::barrier()->toArray())->toBe(['type' => 'barrier']);
 });
 
 // -------------------------------------------------------------------------

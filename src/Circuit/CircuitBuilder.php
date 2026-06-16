@@ -216,20 +216,6 @@ class CircuitBuilder
     }
 
     /**
-     * Add a barrier (logical separator).
-     *
-     * @todo Not yet implemented on any backend. Braket has no native barrier;
-     *       the real mapping is Circuit.add_verbatim_box() (a compiler fence).
-     *       For now the gate is serialized but skipped during execution.
-     */
-    public function barrier(): static
-    {
-        $this->gates[] = Gate::barrier();
-
-        return $this;
-    }
-
-    /**
      * Add a measurement gate.
      *
      * - Pass null (default) to measure all qubits.

@@ -115,7 +115,6 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `cz($control, $target)` | Controlled-Z |
 | `swap($qubit0, $qubit1)` | SWAP |
 | `ccnot($control0, $control1, $target)` | Toffoli (CCNOT) |
-| `barrier()` | Logical separator (not yet executed on any backend) |
 | `measure($targets)` | Measurement (null = all qubits) |
 
 ## Testing
