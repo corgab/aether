@@ -9,6 +9,7 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 - PHP 8.3+
 - Laravel 12 or 13
 - Python 3.8+ with `amazon-braket-sdk`
+- A running queue worker, if you use asynchronous execution
 
 ## Installation
 
@@ -78,6 +79,53 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+### Asynchronous Execution
+
+Real QPU tasks queue for minutes or hours, so a synchronous `->run()` would block the request. Use `->dispatch()` instead: the circuit is submitted by a queued job, polled until it reaches a terminal state, and the result is delivered through an event.
+
+```php
+use Aether\Facades\Quantum;
+
+Quantum::circuit('aws')
+    ->qubits(2)
+    ->h(0)
+    ->cnot(0, 1)
+    ->measure()
+    ->shots(1000)
+    ->dispatch();
+```
+
+`->queue('quantum')` does the same on a specific queue, and both return Laravel's `PendingDispatch`, so the usual chaining works:
+
+```php
+Quantum::circuit('aws')->qubits(1)->h(0)->measure()->dispatch()->onQueue('quantum');
+```
+
+Listen for the result:
+
+```php
+use Aether\Events\CircuitCompleted;
+use Illuminate\Support\Facades\Event;
+
+Event::listen(function (CircuitCompleted $event) {
+    $event->result->counts();  // ['00' => 503, '11' => 497]
+    $event->taskArn;           // 'arn:aws:braket:...:quantum-task/...'
+    $event->driver;            // 'aws'
+});
+```
+
+Tune the polling in `config/aether.php`:
+
+```env
+AETHER_QUEUE=quantum
+AETHER_POLL_INTERVAL=5
+AETHER_MAX_POLL_ATTEMPTS=720
+```
+
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console.
+
+The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
+
 ### Switching Drivers
 
 ```php
@@ -133,6 +181,22 @@ $fake->assertCircuitRan(fn ($circuit) => $circuit->qubitCount() === 2);
 $fake->assertEntropyGenerated(256);
 ```
 
+Asynchronously dispatched circuits are recorded separately:
+
+```php
+$fake->assertCircuitDispatched();
+$fake->assertCircuitDispatched(fn ($circuit) => $circuit->shotCount() === 1000);
+$fake->assertCircuitDispatchedTimes(2);
+$fake->assertCircuitNotDispatched();
+```
+
+Stub what the fake returns:
+
+```php
+$fake->respondWithCounts(['00' => 1000]);          // measurement counts
+$fake->respondWithTaskStatus(TaskStatus::Running); // simulate a task still in flight
+```
+
 ### Running the Test Suite
 
 ```bash
@@ -151,7 +215,7 @@ When using real QPU hardware, requests can take minutes. Set `synchronous_safe` 
 ],
 ```
 
-This will throw a `QuantumExecutionException` on direct calls, forcing you to use queued jobs instead.
+This will throw a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission is never blocked by this flag — that is the path the flag is steering you toward.
 
 ## License
 

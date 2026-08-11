@@ -32,6 +32,12 @@ class EntropyGenerator
      */
     public function generate(int $bits): string
     {
+        if ($bits < 1) {
+            throw new \InvalidArgumentException(
+                "Requested bit count ({$bits}) must be a positive integer."
+            );
+        }
+
         return $this->device->generateEntropy($bits);
     }
 

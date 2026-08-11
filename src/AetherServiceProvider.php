@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether;
 
 use Aether\Contracts\QuantumDevice;
+use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\ServiceProvider;
 
 class AetherServiceProvider extends ServiceProvider
@@ -42,5 +43,11 @@ class AetherServiceProvider extends ServiceProvider
 
             $this->commands([Commands\AetherInstallCommand::class]);
         }
+
+        AboutCommand::add('Aether', fn (): array => [
+            'Default Driver' => config('aether.default', 'local'),
+            'Python Path' => config('aether.python_path', 'python3'),
+            'Process Timeout' => config('aether.process_timeout', 300).'s',
+        ]);
     }
 }

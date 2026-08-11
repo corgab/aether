@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Quantum circuit executor for the Aether Laravel package.
+"""Asynchronous quantum circuit submitter for the Aether Laravel package.
 
-Reads a circuit definition as JSON from stdin, builds and runs an Amazon
-Braket circuit, then writes the measurement-count histogram as JSON to stdout.
+Reads a circuit definition as JSON from stdin, builds a Braket circuit, and
+submits it for execution *without* waiting for a result. This is used for
+QPU tasks that may queue for hours — the PHP side stores the returned task
+ARN and polls it later via ``check.py`` from a queued job.
 
 Input schema (JSON on stdin)::
 
@@ -14,13 +16,13 @@ Input schema (JSON on stdin)::
             {"type": "measure", "targets": [0, 1]}
         ],
         "shots": 1000,
-        "driver": "local",
+        "driver": "aws",
         "driver_config": {}
     }
 
 Output (JSON on stdout)::
 
-    {"counts": {"00": 503, "11": 497}}
+    {"task_arn": "arn:aws:braket:us-east-1:...:quantum-task/uuid"}
 
 On error the script writes ``{"error": "<message>"}`` to stderr and exits
 with code 1.
@@ -34,13 +36,18 @@ from common import build_circuit, resolve_device
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
-    """Execute the circuit described by *payload* and return the count histogram.
+    """Submit the circuit described by *payload* and return its task ARN.
+
+    Unlike ``circuit.py``, this does not call ``task.result()`` — it returns
+    as soon as the task has been accepted by the device, so it never blocks
+    on a queued QPU task.
 
     Args:
         payload: Deserialised JSON input dict.
 
     Returns:
-        A dict with a single ``"counts"`` key mapping bitstrings to integers.
+        A dict with a single ``"task_arn"`` key holding the submitted task's
+        identifier (a Braket ARN for ``"aws"``, a local UUID for ``"local"``).
     """
     qubits: int = payload["qubits"]
     gates: list[dict[str, Any]] = payload["gates"]
@@ -59,16 +66,12 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
             run_kwargs["s3_destination_folder"] = (bucket, "results")
 
     task = device.run(circuit, **run_kwargs)
-    result = task.result()
 
-    # measurement_counts is a Counter-like dict {bitstring: int}
-    counts = dict(result.measurement_counts)
-
-    return {"counts": counts}
+    return {"task_arn": task.id}
 
 
 def main() -> None:
-    """Entry point: read JSON from stdin, run the circuit, write JSON to stdout."""
+    """Entry point: read JSON from stdin, submit the circuit, write JSON to stdout."""
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw)

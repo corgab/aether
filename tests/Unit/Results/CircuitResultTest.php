@@ -138,3 +138,74 @@ it('converts to JSON string via __toString', function () {
     expect($decoded)->toHaveKey('counts')
         ->and($decoded['counts'])->toBe(['0' => 700, '1' => 300]);
 });
+
+// -------------------------------------------------------------------------
+// JsonSerializable
+// -------------------------------------------------------------------------
+
+it('implements JsonSerializable', function () {
+    expect(new CircuitResult(['00' => 1]))->toBeInstanceOf(JsonSerializable::class);
+});
+
+it('jsonSerialize returns the same shape as toArray', function () {
+    $result = new CircuitResult(['00' => 503, '11' => 497]);
+
+    expect($result->jsonSerialize())->toBe($result->toArray());
+});
+
+it('json_encode produces the full structured payload, not an empty object', function () {
+    $result = new CircuitResult(['00' => 503, '11' => 497]);
+
+    $json = json_encode($result);
+    $decoded = json_decode($json, true);
+
+    expect($decoded)->toBe([
+        'counts' => ['00' => 503, '11' => 497],
+        'probabilities' => $result->probabilities(),
+        'most_frequent' => '00',
+    ]);
+});
+
+// -------------------------------------------------------------------------
+// Countable
+// -------------------------------------------------------------------------
+
+it('implements Countable', function () {
+    expect(new CircuitResult(['00' => 1]))->toBeInstanceOf(Countable::class);
+});
+
+it('count returns the number of distinct outcomes', function () {
+    $result = new CircuitResult(['00' => 503, '01' => 10, '11' => 497]);
+
+    expect(count($result))->toBe(3);
+});
+
+it('count is zero for empty counts', function () {
+    $result = new CircuitResult([]);
+
+    expect(count($result))->toBe(0);
+});
+
+// -------------------------------------------------------------------------
+// toArray() — empty counts
+// -------------------------------------------------------------------------
+
+it('toArray returns null most_frequent for empty counts instead of throwing', function () {
+    $result = new CircuitResult([]);
+
+    $array = $result->toArray();
+
+    expect($array['most_frequent'])->toBeNull()
+        ->and($array['counts'])->toBe([])
+        ->and($array['probabilities'])->toBe([]);
+});
+
+// -------------------------------------------------------------------------
+// Numeric-string key normalization
+// -------------------------------------------------------------------------
+
+it('normalizes integer count keys to strings', function () {
+    $result = new CircuitResult([10 => 500, 11 => 500]);
+
+    expect($result->counts())->toBe(['10' => 500, '11' => 500]);
+});

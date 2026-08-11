@@ -40,4 +40,37 @@ class QuantumExecutionException extends AetherException
             "Failed to generate an in-range integer in [{$min}, {$max}] after {$batches} entropy batches. The entropy source may be degenerate."
         );
     }
+
+    /**
+     * Create an exception when a Python script returns a response that does
+     * not match the shape expected by the driver (missing key, wrong type,
+     * or otherwise unusable).
+     */
+    public static function malformedResponse(string $script, string $reason): self
+    {
+        return new self(
+            "Python script [{$script}] returned a malformed response: {$reason}"
+        );
+    }
+
+    /**
+     * Create an exception for drivers that do not support asynchronous execution.
+     */
+    public static function asynchronousUnsupported(string $driver): self
+    {
+        return new self(
+            "Driver [{$driver}] does not support asynchronous execution. Drivers implementing Aether\\Contracts\\AsynchronousDevice (currently 'local' and 'aws') support dispatch() via SubmitQuantumCircuit."
+        );
+    }
+
+    /**
+     * Create an exception when a polling job exhausts its allotted number of
+     * attempts without the task reaching a terminal state.
+     */
+    public static function pollingExhausted(string $taskArn, int $attempts): self
+    {
+        return new self(
+            "Quantum task [{$taskArn}] did not reach a terminal state after {$attempts} poll attempts. Inspect the task in the AWS Braket console."
+        );
+    }
 }

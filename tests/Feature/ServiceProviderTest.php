@@ -8,6 +8,7 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
 use Aether\QuantumManager;
+use Illuminate\Support\Facades\Artisan;
 
 // -------------------------------------------------------------------------
 // Service container registration
@@ -74,4 +75,38 @@ it('is a deferred provider that does not defer loading', function () {
     $provider = new AetherServiceProvider($this->app);
 
     expect($provider->isDeferred())->toBeFalse();
+});
+
+// -------------------------------------------------------------------------
+// process_timeout config
+// -------------------------------------------------------------------------
+
+it('defaults aether.process_timeout to 300', function () {
+    expect($this->app['config']->get('aether.process_timeout'))->toBe(300);
+});
+
+it('passes the configured process_timeout through to the driver bridge', function () {
+    config()->set('aether.process_timeout', 45);
+
+    $manager = new QuantumManager($this->app);
+    $driver = $manager->driver('local');
+
+    $bridge = (new ReflectionProperty($driver, 'bridge'))->getValue($driver);
+    $timeout = (new ReflectionProperty($bridge, 'timeout'))->getValue($bridge);
+
+    expect($timeout)->toBe(45);
+});
+
+// -------------------------------------------------------------------------
+// php artisan about
+// -------------------------------------------------------------------------
+
+it('registers an Aether section in php artisan about', function () {
+    Artisan::call('about', ['--json' => true]);
+
+    $output = json_decode(Artisan::output(), associative: true);
+
+    expect($output)->toHaveKey('aether');
+    expect($output['aether'])->toHaveKey('default_driver', 'local');
+    expect($output['aether'])->toHaveKey('python_path', 'python3');
 });

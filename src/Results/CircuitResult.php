@@ -4,23 +4,40 @@ declare(strict_types=1);
 
 namespace Aether\Results;
 
+use Countable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use JsonException;
+use JsonSerializable;
 
 /**
  * Immutable value object representing the measurement results of a quantum circuit run.
  *
  * @implements Arrayable<string, mixed>
  */
-class CircuitResult implements \Stringable, Arrayable, Jsonable
+class CircuitResult implements \Stringable, Arrayable, Countable, Jsonable, JsonSerializable
 {
+    /**
+     * @var array<string, int>
+     */
+    private readonly array $counts;
+
     /**
      * @param  array<string, int>  $counts
      */
-    public function __construct(
-        private readonly array $counts,
-    ) {}
+    public function __construct(array $counts)
+    {
+        // Normalize incoming keys to strings so counts() honestly returns
+        // array<string, int> even when PHP has (or a caller has) turned
+        // numeric-string outcomes such as "10" into integer array keys.
+        $normalized = [];
+
+        foreach ($counts as $bitstring => $count) {
+            $normalized[(string) $bitstring] = $count;
+        }
+
+        $this->counts = $normalized;
+    }
 
     /**
      * Return the raw measurement counts.
@@ -54,6 +71,8 @@ class CircuitResult implements \Stringable, Arrayable, Jsonable
     /**
      * Return the bitstring with the highest measurement count.
      * On a tie, the first key (in insertion order) is returned.
+     *
+     * @throws \LogicException when counts are empty.
      */
     public function mostFrequent(): string
     {
@@ -75,17 +94,38 @@ class CircuitResult implements \Stringable, Arrayable, Jsonable
     }
 
     /**
+     * Return the number of distinct measured outcomes.
+     */
+    public function count(): int
+    {
+        return count($this->counts);
+    }
+
+    /**
      * Return a structured array representation of the result.
      *
-     * @return array{counts: array<string, int>, probabilities: array<string, float>, most_frequent: string}
+     * `most_frequent` is null when there are no counts to derive it from,
+     * instead of propagating mostFrequent()'s LogicException.
+     *
+     * @return array{counts: array<string, int>, probabilities: array<string, float>, most_frequent: string|null}
      */
     public function toArray(): array
     {
         return [
             'counts' => $this->counts(),
             'probabilities' => $this->probabilities(),
-            'most_frequent' => $this->mostFrequent(),
+            'most_frequent' => $this->counts === [] ? null : $this->mostFrequent(),
         ];
+    }
+
+    /**
+     * Return the data used to serialize the result to JSON.
+     *
+     * @return array{counts: array<string, int>, probabilities: array<string, float>, most_frequent: string|null}
+     */
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
     }
 
     /**

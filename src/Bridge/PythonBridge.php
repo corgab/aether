@@ -7,6 +7,7 @@ namespace Aether\Bridge;
 use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Exception\RuntimeException as ProcessRuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -17,8 +18,10 @@ class PythonBridge implements PythonExecutor
 {
     private readonly string $scriptsPath;
 
-    public function __construct(private readonly string $pythonPath)
-    {
+    public function __construct(
+        private readonly string $pythonPath,
+        private readonly int $timeout = 300,
+    ) {
         $resolved = realpath(__DIR__.'/../../bin/python');
 
         $this->scriptsPath = $resolved !== false
@@ -46,10 +49,19 @@ class PythonBridge implements PythonExecutor
         );
 
         $process->setInput(json_encode($payload, JSON_THROW_ON_ERROR));
-        $process->setTimeout(300);
+        $process->setTimeout($this->timeout);
 
         try {
             $process->run();
+        } catch (ProcessTimedOutException) {
+            // ProcessTimedOutException extends the same RuntimeException caught
+            // below, so it must be caught first — otherwise a timeout would be
+            // misreported as a missing Python binary.
+            throw QuantumExecutionException::fromPythonError(
+                $script,
+                "Process timed out after {$this->timeout}s",
+                0,
+            );
         } catch (ProcessRuntimeException) {
             throw PythonEnvironmentException::pythonNotFound($this->pythonPath);
         }
@@ -65,7 +77,7 @@ class PythonBridge implements PythonExecutor
         if (! $process->isSuccessful()) {
             throw QuantumExecutionException::fromPythonError(
                 $script,
-                $process->getErrorOutput(),
+                $this->extractErrorMessage($process->getErrorOutput()),
                 $exitCode,
             );
         }
@@ -89,6 +101,28 @@ class PythonBridge implements PythonExecutor
         }
 
         return $decoded;
+    }
+
+    /**
+     * Extract a human-readable error message from a failed process's stderr.
+     *
+     * Python scripts write {"error": "message"} to stderr on failure. When
+     * stderr is valid JSON containing an "error" key, the bare message is
+     * returned; otherwise the raw stderr is returned unchanged.
+     */
+    private function extractErrorMessage(string $stderr): string
+    {
+        try {
+            $decoded = json_decode($stderr, associative: true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return $stderr;
+        }
+
+        if (is_array($decoded) && isset($decoded['error']) && is_string($decoded['error'])) {
+            return $decoded['error'];
+        }
+
+        return $stderr;
     }
 
     /**

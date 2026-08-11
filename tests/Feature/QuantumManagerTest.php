@@ -69,3 +69,17 @@ it('forgets all cached drivers', function () {
     $b = $manager->driver('local');
     expect($a)->not->toBe($b);
 });
+
+it('names the driver on circuits it builds so dispatched jobs target the same backend', function () {
+    $manager = app(QuantumManager::class);
+
+    expect($manager->circuit('aws')->driverName())->toBe('aws');
+});
+
+it('pins the resolved default driver name when no driver is requested', function () {
+    config()->set('aether.default', 'local');
+
+    $manager = app(QuantumManager::class);
+
+    expect($manager->circuit()->driverName())->toBe('local');
+});

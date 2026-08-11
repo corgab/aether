@@ -44,10 +44,17 @@ class QuantumManager extends Manager
 
     /**
      * Create a CircuitBuilder backed by the given (or default) driver.
+     *
+     * The resolved driver name is pinned onto the builder so a circuit that is
+     * dispatched to the queue executes on the same backend it was built for,
+     * even if the default driver changes before the job runs.
      */
     public function circuit(?string $driver = null): CircuitBuilder
     {
-        return new CircuitBuilder($this->driver($driver));
+        return new CircuitBuilder(
+            $this->driver($driver),
+            $driver ?? $this->getDefaultDriver(),
+        );
     }
 
     /**
@@ -117,6 +124,7 @@ class QuantumManager extends Manager
     {
         return new PythonBridge(
             $this->config->get('aether.python_path', 'python3'),
+            (int) $this->config->get('aether.process_timeout', 300),
         );
     }
 }

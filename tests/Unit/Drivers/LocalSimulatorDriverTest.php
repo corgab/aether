@@ -3,10 +3,20 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
+use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
+use Aether\Tasks\TaskSnapshot;
+use Aether\Tasks\TaskStatus;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository as CacheRepository;
+use Illuminate\Config\Repository as ConfigRepository;
+use Illuminate\Container\Container;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 // -------------------------------------------------------------------------
 // Shared state
@@ -27,6 +37,19 @@ beforeEach(function () use ($config) {
         });
     $this->config = $config;
     $this->driver = new LocalSimulatorDriver($this->bridge, $this->config);
+
+    // submitCircuit()/checkTask() go through the Cache facade and the global
+    // config() helper. Neither requires a full Laravel app: an ArrayStore-backed
+    // cache repository is swapped into the facade, and a bare container carries
+    // a minimal config repository for the config() helper to resolve.
+    Cache::swap(new CacheRepository(new ArrayStore));
+    Container::setInstance(tap(new Container, function (Container $container) {
+        $container->instance('config', new ConfigRepository(['aether' => ['local_task_ttl' => 3600]]));
+    }));
+});
+
+afterEach(function () {
+    Container::setInstance(null);
 });
 
 // -------------------------------------------------------------------------
@@ -118,4 +141,65 @@ it('converts bitstring to raw bytes correctly', function () {
     $entropy = $this->driver->generateEntropy(16);
 
     expect($entropy)->toBe(chr(0xB3).chr(0xA5));
+});
+
+// -------------------------------------------------------------------------
+// AsynchronousDevice: simulated local async
+// -------------------------------------------------------------------------
+
+it('implements AsynchronousDevice interface', function () {
+    expect($this->driver)->toBeInstanceOf(AsynchronousDevice::class);
+});
+
+it('submitCircuit returns a synthetic local: identifier', function () {
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $this->driver->submitCircuit($circuit);
+
+    expect($taskArn)->toBeString();
+    expect($taskArn)->toStartWith('local:');
+});
+
+it('submit then check round-trips the measurement counts', function () {
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 75, '1' => 25]]);
+
+    $taskArn = $this->driver->submitCircuit($circuit);
+    $snapshot = $this->driver->checkTask($taskArn);
+
+    expect($snapshot)->toBeInstanceOf(TaskSnapshot::class);
+    expect($snapshot->status)->toBe(TaskStatus::Completed);
+    expect($snapshot->counts)->toBe(['0' => 75, '1' => 25]);
+});
+
+it('submitCircuit still runs the circuit synchronously through the bridge', function () {
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->expects($this->once())
+        ->method('toArray')
+        ->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with('circuit.py', $this->anything(), $this->config)
+        ->willReturn(['counts' => ['0' => 100]]);
+
+    $this->driver->submitCircuit($circuit);
+});
+
+it('checkTask reports Failed for an unknown task key', function () {
+    $snapshot = $this->driver->checkTask('local:'.Str::uuid());
+
+    expect($snapshot)->toBeInstanceOf(TaskSnapshot::class);
+    expect($snapshot->status)->toBe(TaskStatus::Failed);
+    expect($snapshot->counts)->toBeNull();
+});
+
+it('checkTask rejects a task arn that is not in local: form', function () {
+    expect(fn () => $this->driver->checkTask('arn:aws:braket:us-east-1:123456789012:quantum-task/abc'))
+        ->toThrow(QuantumExecutionException::class);
 });

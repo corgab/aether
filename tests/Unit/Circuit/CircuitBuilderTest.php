@@ -295,6 +295,109 @@ it('allows measure with null targets', function () {
     expect($builder->qubitCount())->toBe(2);
 });
 
+it('measure with an empty array throws', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->measure([]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+// -------------------------------------------------------------------------
+// Validation: qubits() shrink revalidates existing gates
+// -------------------------------------------------------------------------
+
+it('qubits throws when shrinking below an existing gate target', function () use (&$builder): void {
+    $builder->qubits(3)->h(2);
+
+    expect(fn () => $builder->qubits(1))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('qubits throws when shrinking below an existing two qubit gate target', function () use (&$builder): void {
+    $builder->qubits(3)->cnot(0, 2);
+
+    expect(fn () => $builder->qubits(2))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('qubits allows shrinking when no gate is out of range', function () use (&$builder): void {
+    $builder->qubits(3)->h(0)->x(1);
+
+    expect($builder->qubits(2))->toBe($builder);
+    expect($builder->qubitCount())->toBe(2);
+});
+
+it('qubits does not mutate count when shrink is rejected', function () use (&$builder): void {
+    $builder->qubits(3)->h(2);
+
+    try {
+        $builder->qubits(1);
+    } catch (InvalidCircuitException) {
+        // ignored — asserting state below
+    }
+
+    expect($builder->qubitCount())->toBe(3);
+});
+
+it('qubits allows shrinking when only a measure all gate exists', function () use (&$builder): void {
+    $builder->qubits(3)->measure();
+
+    expect($builder->qubits(1))->toBe($builder);
+    expect($builder->qubitCount())->toBe(1);
+});
+
+it('qubits throws when shrinking below an explicit measure target', function () use (&$builder): void {
+    $builder->qubits(3)->measure([0, 2]);
+
+    expect(fn () => $builder->qubits(2))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('qubits allows shrinking when explicit measure targets stay in range', function () use (&$builder): void {
+    $builder->qubits(3)->measure([0, 1]);
+
+    expect($builder->qubits(2))->toBe($builder);
+    expect($builder->qubitCount())->toBe(2);
+});
+
+// -------------------------------------------------------------------------
+// Conditionable / Tappable traits
+// -------------------------------------------------------------------------
+
+it('when applies the callback when the condition is truthy', function () use (&$builder): void {
+    $builder->qubits(2)->when(true, fn (CircuitBuilder $c) => $c->h(0));
+
+    expect($builder->toArray()['gates'])->toHaveCount(1);
+    expect($builder->toArray()['gates'][0])->toBe(['type' => 'h', 'target' => 0]);
+});
+
+it('when skips the callback when the condition is falsy', function () use (&$builder): void {
+    $builder->qubits(2)->when(false, fn (CircuitBuilder $c) => $c->h(0));
+
+    expect($builder->toArray()['gates'])->toHaveCount(0);
+});
+
+it('unless applies the callback when the condition is falsy', function () use (&$builder): void {
+    $builder->qubits(2)->unless(false, fn (CircuitBuilder $c) => $c->h(0));
+
+    expect($builder->toArray()['gates'])->toHaveCount(1);
+});
+
+it('unless skips the callback when the condition is truthy', function () use (&$builder): void {
+    $builder->qubits(2)->unless(true, fn (CircuitBuilder $c) => $c->h(0));
+
+    expect($builder->toArray()['gates'])->toHaveCount(0);
+});
+
+it('tap runs a callback and returns the same instance', function () use (&$builder): void {
+    $tapped = null;
+
+    $result = $builder->qubits(2)->tap(function (CircuitBuilder $c) use (&$tapped): void {
+        $tapped = $c;
+    });
+
+    expect($result)->toBe($builder);
+    expect($tapped)->toBe($builder);
+});
+
 // -------------------------------------------------------------------------
 // Fluent API: new gates return self
 // -------------------------------------------------------------------------
@@ -446,5 +549,144 @@ it('cz throws when control is out of range', function () use (&$builder): void {
 
 it('cz throws when target is out of range', function () use (&$builder): void {
     expect(fn () => $builder->qubits(2)->cz(0, 5))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+// -------------------------------------------------------------------------
+// driverName() accessor + BC of single-arg construction
+// -------------------------------------------------------------------------
+
+it('driverName is null when constructed with a single argument', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = new CircuitBuilder($device);
+
+    expect($builder->driverName())->toBeNull();
+});
+
+it('driverName returns the name passed to the constructor', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = new CircuitBuilder($device, 'aws');
+
+    expect($builder->driverName())->toBe('aws');
+});
+
+it('driverName is null when explicitly passed null', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = new CircuitBuilder($device, null);
+
+    expect($builder->driverName())->toBeNull();
+});
+
+// -------------------------------------------------------------------------
+// fromArray() — round trips every gate type
+// -------------------------------------------------------------------------
+
+it('fromArray round trips a circuit with every gate type', function () {
+    $device = $this->createMock(QuantumDevice::class);
+
+    $original = (new CircuitBuilder($device))
+        ->qubits(4)
+        ->h(0)
+        ->x(1)
+        ->y(2)
+        ->z(3)
+        ->s(0)
+        ->t(1)
+        ->rx(0, M_PI / 2)
+        ->ry(1, M_PI / 4)
+        ->rz(2, 1.23)
+        ->cnot(0, 1)
+        ->cz(1, 2)
+        ->swap(0, 3)
+        ->ccnot(0, 1, 2)
+        ->measure([0, 2])
+        ->shots(2048);
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+
+    expect($rebuilt->toArray())->toBe($original->toArray());
+});
+
+it('fromArray round trips a measure-all circuit', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $original = (new CircuitBuilder($device))->qubits(2)->h(0)->cnot(0, 1)->measure();
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+
+    expect($rebuilt->toArray())->toBe($original->toArray());
+});
+
+it('fromArray round trips a single target measure circuit', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $original = (new CircuitBuilder($device))->qubits(2)->x(0)->measure(0);
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+
+    expect($rebuilt->toArray())->toBe($original->toArray());
+});
+
+it('fromArray round trips a multi target measure circuit', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $original = (new CircuitBuilder($device))->qubits(3)->measure([0, 2]);
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+
+    expect($rebuilt->toArray())->toBe($original->toArray());
+});
+
+it('fromArray accepts an explicit driver name', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $original = (new CircuitBuilder($device))->qubits(1)->measure();
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device, 'aws');
+
+    expect($rebuilt->driverName())->toBe('aws');
+});
+
+it('fromArray defaults driver name to null', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $original = (new CircuitBuilder($device))->qubits(1)->measure();
+
+    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+
+    expect($rebuilt->driverName())->toBeNull();
+});
+
+it('fromArray throws InvalidCircuitException for an unknown gate type', function () {
+    $device = $this->createMock(QuantumDevice::class);
+
+    $definition = [
+        'qubits' => 1,
+        'gates' => [
+            ['type' => 'not-a-real-gate', 'target' => 0],
+        ],
+        'shots' => 1000,
+    ];
+
+    expect(fn () => CircuitBuilder::fromArray($definition, $device))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+// -------------------------------------------------------------------------
+// dispatch() — validation mirrors run()
+// -------------------------------------------------------------------------
+
+it('dispatch throws when no qubits defined', function () use (&$builder): void {
+    expect(fn () => $builder->measure()->dispatch())
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('dispatch throws when no measurement', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(1)->h(0)->dispatch())
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('queue throws when no qubits defined', function () use (&$builder): void {
+    expect(fn () => $builder->measure()->queue())
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('queue throws when no measurement', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(1)->h(0)->queue())
         ->toThrow(InvalidCircuitException::class);
 });

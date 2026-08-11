@@ -97,6 +97,71 @@ it('throws QuantumExecutionException when python exits non-zero', function () {
     }
 });
 
+it('unwraps a JSON error object on stderr to its bare message', function () {
+    $python = fakePython('printf \'{"error":"qubit index out of range"}\' >&2; exit 1');
+
+    try {
+        (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('qubit index out of range');
+        expect($e->getMessage())->not->toContain('{"error"');
+    }
+});
+
+it('falls back to raw stderr when it is not valid JSON', function () {
+    $python = fakePython("printf 'not json at all' >&2; exit 1");
+
+    try {
+        (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('not json at all');
+    }
+});
+
+it('falls back to raw stderr when JSON is valid but has no error key', function () {
+    $python = fakePython('printf \'{"detail":"nope"}\' >&2; exit 1');
+
+    try {
+        (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('{"detail":"nope"}');
+    }
+});
+
+// -------------------------------------------------------------------------
+// execute() — process timeout
+// -------------------------------------------------------------------------
+
+it('throws QuantumExecutionException (not PythonEnvironmentException) when the process times out', function () {
+    $python = fakePython('sleep 2');
+
+    try {
+        (new PythonBridge($python, timeout: 1))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('timed out');
+    }
+});
+
+it('reads the configured timeout and applies it to the process', function () {
+    $bridge = new PythonBridge('python3', timeout: 42);
+
+    $reflection = new ReflectionProperty($bridge, 'timeout');
+
+    expect($reflection->getValue($bridge))->toBe(42);
+});
+
+it('defaults the timeout to 300 seconds when not provided', function () {
+    $bridge = new PythonBridge('python3');
+
+    $reflection = new ReflectionProperty($bridge, 'timeout');
+
+    expect($reflection->getValue($bridge))->toBe(300);
+});
+
 it('throws QuantumExecutionException on invalid JSON output', function () {
     $python = fakePython("printf 'this is not json'");
 

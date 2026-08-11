@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Entropy\EntropyGenerator;
 use Aether\Results\CircuitResult;
+use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\ExpectationFailedException;
@@ -96,12 +99,12 @@ it('generateEntropy returns bytes of correct length for non-multiple of 8 bits',
     expect(strlen($entropy))->toBe(2);
 });
 
-it('generateEntropy returns deterministic bytes with 0xAA pattern', function () {
+it('generateEntropy returns a deterministic counter sequence', function () {
     $fake = new QuantumFake;
 
     $entropy = $fake->generateEntropy(16);
 
-    expect($entropy)->toBe(str_repeat("\xAA", 2));
+    expect($entropy)->toBe("\x00\x01");
 });
 
 // -------------------------------------------------------------------------
@@ -332,3 +335,267 @@ it('assertCircuitRanTimes fails with wrong count', function () {
     $fake = new QuantumFake;
     $fake->assertCircuitRanTimes(1);
 })->throws(ExpectationFailedException::class);
+
+// -------------------------------------------------------------------------
+// respondWithCounts() — stubs deterministic counts
+// -------------------------------------------------------------------------
+
+it('respondWithCounts overrides executeCircuit counts', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithCounts(['00' => 7, '11' => 3]);
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->shots(10)->measure();
+
+    $result = $fake->executeCircuit($circuit);
+
+    expect($result->counts())->toBe(['00' => 7, '11' => 3]);
+});
+
+it('respondWithCounts returns self for chaining', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->respondWithCounts(['0' => 1]))->toBe($fake);
+});
+
+// -------------------------------------------------------------------------
+// implements AsynchronousDevice
+// -------------------------------------------------------------------------
+
+it('implements AsynchronousDevice', function () {
+    $fake = new QuantumFake;
+
+    expect($fake)->toBeInstanceOf(AsynchronousDevice::class);
+});
+
+// -------------------------------------------------------------------------
+// submitCircuit() — dispatched circuits recorded separately from ran ones
+// -------------------------------------------------------------------------
+
+it('submitCircuit records the circuit as dispatched, not ran', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    $fake->submitCircuit($circuit);
+
+    expect($fake->dispatchedCircuits())->toHaveCount(1)
+        ->and($fake->dispatchedCircuits()[0])->toBe($circuit)
+        ->and($fake->recordedCircuits())->toBeEmpty()
+        ->and($fake->hasExecutedCircuits())->toBeFalse();
+});
+
+it('submitCircuit returns a fake task ARN', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+
+    expect($arn)->toBeString()->toStartWith('arn:aws:braket:::fake-task/');
+});
+
+it('submitCircuit returns incrementing ARNs for successive dispatches', function () {
+    $fake = new QuantumFake;
+    $circuit1 = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $circuit2 = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $arn1 = $fake->submitCircuit($circuit1);
+    $arn2 = $fake->submitCircuit($circuit2);
+
+    expect($arn1)->not->toBe($arn2);
+});
+
+// -------------------------------------------------------------------------
+// dispatchedCircuits() accessor
+// -------------------------------------------------------------------------
+
+it('dispatchedCircuits returns empty array initially', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->dispatchedCircuits())->toBeEmpty();
+});
+
+it('dispatchedCircuits count increments with each submission', function () {
+    $fake = new QuantumFake;
+    $circuit1 = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $circuit2 = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    $fake->submitCircuit($circuit1);
+    $fake->submitCircuit($circuit2);
+
+    expect($fake->dispatchedCircuits())->toHaveCount(2);
+});
+
+// -------------------------------------------------------------------------
+// checkTask() — deterministic completion
+// -------------------------------------------------------------------------
+
+it('checkTask returns a Completed snapshot with executeCircuit-equivalent counts', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->shots(100)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Completed)
+        ->and($snapshot->counts)->toBe(['00' => 50, '11' => 50]);
+});
+
+it('checkTask honours respondWithCounts', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithCounts(['01' => 9, '10' => 1]);
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Completed)
+        ->and($snapshot->counts)->toBe(['01' => 9, '10' => 1]);
+});
+
+// -------------------------------------------------------------------------
+// respondWithTaskStatus() — polling / non-terminal / failed states
+// -------------------------------------------------------------------------
+
+it('respondWithTaskStatus overrides checkTask status', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithTaskStatus(TaskStatus::Running);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Running)
+        ->and($snapshot->counts)->toBeNull();
+});
+
+it('respondWithTaskStatus can simulate a failed task', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithTaskStatus(TaskStatus::Failed);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Failed)
+        ->and($snapshot->counts)->toBeNull();
+});
+
+it('respondWithTaskStatus returns self for chaining', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->respondWithTaskStatus(TaskStatus::Failed))->toBe($fake);
+});
+
+// -------------------------------------------------------------------------
+// assertCircuitDispatched()
+// -------------------------------------------------------------------------
+
+it('assertCircuitDispatched passes after a circuit is submitted', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    $fake->submitCircuit($circuit);
+
+    $fake->assertCircuitDispatched();
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitDispatched fails when nothing was submitted', function () {
+    $fake = new QuantumFake;
+
+    expect(fn () => $fake->assertCircuitDispatched())
+        ->toThrow(AssertionFailedError::class);
+});
+
+it('assertCircuitDispatched with callback passes when a submitted circuit matches', function () {
+    $fake = new QuantumFake;
+    $circuit1 = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $circuit2 = (new CircuitBuilder($fake))->qubits(3)->measure();
+
+    $fake->submitCircuit($circuit1);
+    $fake->submitCircuit($circuit2);
+
+    $fake->assertCircuitDispatched(fn (CircuitBuilder $c) => $c->qubitCount() === 3);
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitDispatched with callback fails when no submitted circuit matches', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->submitCircuit($circuit);
+
+    expect(fn () => $fake->assertCircuitDispatched(fn (CircuitBuilder $c) => $c->qubitCount() === 5))
+        ->toThrow(AssertionFailedError::class);
+});
+
+// -------------------------------------------------------------------------
+// assertCircuitNotDispatched()
+// -------------------------------------------------------------------------
+
+it('assertCircuitNotDispatched passes when nothing was submitted', function () {
+    $fake = new QuantumFake;
+    $fake->assertCircuitNotDispatched();
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitNotDispatched fails when a circuit was submitted', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->submitCircuit($circuit);
+    $fake->assertCircuitNotDispatched();
+})->throws(ExpectationFailedException::class);
+
+// -------------------------------------------------------------------------
+// assertCircuitDispatchedTimes()
+// -------------------------------------------------------------------------
+
+it('assertCircuitDispatchedTimes passes with the correct count', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->submitCircuit($circuit);
+    $fake->submitCircuit($circuit);
+    $fake->assertCircuitDispatchedTimes(2);
+    expect(true)->toBeTrue();
+});
+
+it('assertCircuitDispatchedTimes fails with the wrong count', function () {
+    $fake = new QuantumFake;
+    $fake->assertCircuitDispatchedTimes(1);
+})->throws(ExpectationFailedException::class);
+
+// ---------------------------------------------------------------------------
+// Entropy quality — the fake must be usable with rejection sampling
+// ---------------------------------------------------------------------------
+
+it('produces entropy that rejection sampling can actually consume', function () {
+    $generator = new EntropyGenerator(new QuantumFake);
+
+    expect($generator->integer(0, 8))->toBeGreaterThanOrEqual(0)->toBeLessThanOrEqual(8);
+});
+
+it('does not repeat the same byte forever', function () {
+    $bytes = (new QuantumFake)->generateEntropy(256);
+
+    expect(count(array_unique(str_split($bytes))))->toBeGreaterThan(1);
+});
+
+it('continues its entropy sequence across calls', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->generateEntropy(64))->not->toBe($fake->generateEntropy(64));
+});
+
+it('asserts how many times entropy was generated', function () {
+    $fake = new QuantumFake;
+    $fake->generateEntropy(128);
+    $fake->generateEntropy(64);
+
+    $fake->assertEntropyGeneratedTimes(2);
+});
+
+it('fails when the entropy generation count does not match', function () {
+    $fake = new QuantumFake;
+    $fake->generateEntropy(128);
+
+    expect(fn () => $fake->assertEntropyGeneratedTimes(3))
+        ->toThrow(AssertionFailedError::class);
+});

@@ -51,8 +51,13 @@ class AetherInstallCommand extends Command
 
         $this->suggestGitignore();
 
-        if ($pythonOk) {
-            $this->runTestCircuit($manager);
+        if ($pythonOk && ! $this->runTestCircuit($manager)) {
+            $this->components->warn(
+                'The test circuit failed to run. Check that your Python dependencies are '
+                .'installed correctly, or that AETHER_PYTHON_PATH points to a valid interpreter.'
+            );
+
+            return self::FAILURE;
         }
 
         $this->components->info('Aether installation complete.');
@@ -164,17 +169,24 @@ class AetherInstallCommand extends Command
     /**
      * Run a minimal test circuit to verify the installation end-to-end.
      */
-    protected function runTestCircuit(QuantumManager $manager): void
+    protected function runTestCircuit(QuantumManager $manager): bool
     {
-        $this->components->task('Running test circuit', function () use ($manager): bool {
+        $succeeded = false;
+
+        // components->task() renders the DONE/FAIL line but does not return
+        // the callback's result, so it is captured via reference instead.
+        $this->components->task('Running test circuit', function () use ($manager, &$succeeded): bool {
             try {
                 $manager->circuit()->qubits(1)->h(0)->measure()->run();
-
-                return true;
+                $succeeded = true;
             } catch (Throwable) {
-                return false;
+                $succeeded = false;
             }
+
+            return $succeeded;
         });
+
+        return $succeeded;
     }
 
     /**

@@ -170,3 +170,19 @@ it('throws when min exceeds max', function () {
     $generator = new EntropyGenerator($device);
     $generator->integer(10, 5);
 })->throws(InvalidArgumentException::class, 'must not exceed');
+
+// -------------------------------------------------------------------------
+// Validation: bits < 1
+// -------------------------------------------------------------------------
+
+it('throws when generate is called with zero bits', function () use (&$device, &$generator): void {
+    $device->expects($this->never())->method('generateEntropy');
+
+    $generator->generate(0);
+})->throws(InvalidArgumentException::class, 'positive integer');
+
+it('throws when generate is called with negative bits', function () use (&$device, &$generator): void {
+    $device->expects($this->never())->method('generateEntropy');
+
+    $generator->generate(-5);
+})->throws(InvalidArgumentException::class, 'positive integer');

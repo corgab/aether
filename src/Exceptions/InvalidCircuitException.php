@@ -50,4 +50,37 @@ class InvalidCircuitException extends AetherException
     {
         return new self('The circuit has no measurement operations. Add at least one measurement before running.');
     }
+
+    /**
+     * Create an exception for a qubit count reduction that would leave an
+     * already-added gate targeting a qubit index outside the new range.
+     */
+    public static function qubitCountBelowExistingGates(string $gate, int $target, int $count): self
+    {
+        return new self(
+            "Cannot set qubit count to {$count}: gate [{$gate}] already targets qubit {$target}, ".
+            'which would be out of range. Remove or update the offending gate before shrinking the circuit.'
+        );
+    }
+
+    /**
+     * Create an exception for a measurement operation with an empty target list.
+     */
+    public static function emptyMeasurementTargets(): self
+    {
+        return new self(
+            'The measure() targets array cannot be empty. Pass null to measure all qubits, an int for a single qubit, or a non-empty array of qubit indices.'
+        );
+    }
+
+    /**
+     * Create an exception for an unrecognized gate type encountered while
+     * rebuilding a circuit from its array definition (see CircuitBuilder::fromArray()).
+     */
+    public static function unknownGateType(string $type): self
+    {
+        return new self(
+            "Unknown gate type [{$type}] encountered while rebuilding a circuit from its array definition."
+        );
+    }
 }
