@@ -194,3 +194,84 @@ it('gate is immutable', function (): void {
     expect(fn () => $gate->type = 'x') // @phpstan-ignore-line
         ->toThrow(Error::class);
 });
+
+it('crx creates controlled rotation x gate', function (): void {
+    $gate = Gate::crx(0, 1, Angle::pi(0.5));
+    expect($gate->type)->toBe('crx');
+    expect($gate->params['control'])->toBe(0);
+    expect($gate->params['target'])->toBe(1);
+    expect($gate->params['angle'])->toEqualWithDelta(M_PI / 2, 1e-10);
+});
+
+it('cphaseshift creates controlled phase shift gate', function (): void {
+    $gate = Gate::cphaseshift(0, 1, M_PI);
+    expect($gate->type)->toBe('cphaseshift');
+    expect($gate->params['control'])->toBe(0);
+    expect($gate->params['target'])->toBe(1);
+    expect($gate->params['angle'])->toEqualWithDelta(M_PI, 1e-10);
+});
+
+it('u creates U gate', function (): void {
+    $gate = Gate::u(0, 1.0, 2.0, 3.0);
+    expect($gate->type)->toBe('u');
+    expect($gate->params['target'])->toBe(0);
+    expect($gate->params['theta'])->toBe(1.0);
+    expect($gate->params['phi'])->toBe(2.0);
+    expect($gate->params['lambda'])->toBe(3.0);
+});
+
+it('cswap creates Fredkin gate', function (): void {
+    $gate = Gate::cswap(0, 1, 2);
+    expect($gate->type)->toBe('cswap');
+    expect($gate->params)->toBe(['control' => 0, 'target0' => 1, 'target1' => 2]);
+});
+
+it('iswap creates iSWAP gate', function (): void {
+    $gate = Gate::iswap(0, 1);
+    expect($gate->type)->toBe('iswap');
+    expect($gate->params)->toBe(['target0' => 0, 'target1' => 1]);
+});
+
+it('xx creates XX gate', function (): void {
+    $gate = Gate::xx(0, 1, 1.57);
+    expect($gate->type)->toBe('xx');
+    expect($gate->params)->toBe(['target0' => 0, 'target1' => 1, 'angle' => 1.57]);
+});
+
+it('cry creates controlled rotation y gate', function (): void {
+    $gate = Gate::cry(0, 1, 1.57);
+    expect($gate->type)->toBe('cry');
+    expect($gate->params)->toBe(['control' => 0, 'target' => 1, 'angle' => 1.57]);
+});
+
+it('crz creates controlled rotation z gate', function (): void {
+    $gate = Gate::crz(0, 1, 1.57);
+    expect($gate->type)->toBe('crz');
+    expect($gate->params)->toBe(['control' => 0, 'target' => 1, 'angle' => 1.57]);
+});
+
+it('phaseshift creates phase shift gate', function (): void {
+    $gate = Gate::phaseshift(0, 1.57);
+    expect($gate->type)->toBe('phaseshift');
+    expect($gate->params)->toBe(['target' => 0, 'angle' => 1.57]);
+});
+
+it('yy creates yy gate', function (): void {
+    $gate = Gate::yy(0, 1, 1.57);
+    expect($gate->type)->toBe('yy');
+    expect($gate->params)->toBe(['target0' => 0, 'target1' => 1, 'angle' => 1.57]);
+});
+
+it('zz creates zz gate', function (): void {
+    $gate = Gate::zz(0, 1, 1.57);
+    expect($gate->type)->toBe('zz');
+    expect($gate->params)->toBe(['target0' => 0, 'target1' => 1, 'angle' => 1.57]);
+});
+
+it('throws InvalidArgumentException when given NAN', function (): void {
+    expect(fn () => Gate::rx(0, NAN))->toThrow(InvalidArgumentException::class);
+});
+
+it('throws InvalidArgumentException when given INF', function (): void {
+    expect(fn () => Gate::u(0, INF, 0.0, 0.0))->toThrow(InvalidArgumentException::class);
+});

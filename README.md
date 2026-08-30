@@ -163,10 +163,21 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `rx($qubit, $angle)` | Rotation around the X-axis (`float` radians or `Angle`) |
 | `ry($qubit, $angle)` | Rotation around the Y-axis (`float` radians or `Angle`) |
 | `rz($qubit, $angle)` | Rotation around the Z-axis (`float` radians or `Angle`) |
+| `phaseshift($qubit, $angle)` | Phase shift (`float` radians or `Angle`) |
+| `u($qubit, $theta, $phi, $lambda)` | Universal single-qubit rotation |
 | `cnot($control, $target)` | Controlled-NOT |
 | `cz($control, $target)` | Controlled-Z |
+| `crx($control, $target, $angle)` | Controlled-RX (`float` radians or `Angle`) |
+| `cry($control, $target, $angle)` | Controlled-RY (`float` radians or `Angle`) |
+| `crz($control, $target, $angle)` | Controlled-RZ (`float` radians or `Angle`) |
+| `cphaseshift($control, $target, $angle)` | Controlled-PhaseShift (`float` radians or `Angle`) |
 | `swap($qubit0, $qubit1)` | SWAP |
+| `iswap($qubit0, $qubit1)` | iSWAP |
+| `xx($qubit0, $qubit1, $angle)` | Ising XX coupling |
+| `yy($qubit0, $qubit1, $angle)` | Ising YY coupling |
+| `zz($qubit0, $qubit1, $angle)` | Ising ZZ coupling |
 | `ccnot($control0, $control1, $target)` | Toffoli (CCNOT) |
+| `cswap($control, $qubit0, $qubit1)` | Controlled-SWAP (Fredkin) |
 | `measure($targets)` | Measurement (null = all qubits) |
 
 ## Testing

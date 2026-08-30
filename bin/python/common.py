@@ -48,7 +48,7 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
 def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
 
-    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``s``, ``t``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``swap``, ``ccnot``, ``measure``.
+    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``s``, ``t``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``swap``, ``ccnot``, ``crx``, ``cry``, ``crz``, ``cphaseshift``, ``phaseshift``, ``u``, ``cswap``, ``iswap``, ``xx``, ``yy``, ``zz``, ``measure``.
     For ``measure`` gates, a ``null`` / missing ``targets`` field means
     *measure all qubits* (indices 0 through ``qubits-1``).
 
@@ -81,8 +81,30 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
         elif gate_type in ("y", "z", "s", "t"):
             getattr(circuit, gate_type)(gate["target"])
 
-        elif gate_type in ("rx", "ry", "rz"):
+        elif gate_type in ("rx", "ry", "rz", "phaseshift"):
             getattr(circuit, gate_type)(gate["target"], gate["angle"])
+
+        elif gate_type == "cphaseshift":
+            getattr(circuit, gate_type)(gate["control"], gate["target"], gate["angle"])
+
+        # The Braket SDK does not natively support crx, cry, and crz.
+        # We decompose them into native gates so they run identically
+        # on the local simulator, SV1, and real QPUs without relying on
+        # OpenQASM features that may not be supported on real hardware.
+        elif gate_type == "crz":
+            c, t, theta = gate["control"], gate["target"], gate["angle"]
+            circuit.rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t)
+
+        elif gate_type == "cry":
+            c, t, theta = gate["control"], gate["target"], gate["angle"]
+            circuit.ry(t, theta / 2).cnot(c, t).ry(t, -theta / 2).cnot(c, t)
+
+        elif gate_type == "crx":
+            c, t, theta = gate["control"], gate["target"], gate["angle"]
+            circuit.h(t).rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t).h(t)
+
+        elif gate_type == "u":
+            circuit.u(gate["target"], gate["theta"], gate["phi"], gate["lambda"])
 
         elif gate_type == "cnot":
             circuit.cnot(gate["control"], gate["target"])
@@ -90,8 +112,14 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
         elif gate_type == "cz":
             circuit.cz(gate["control"], gate["target"])
 
-        elif gate_type == "swap":
-            circuit.swap(gate["target0"], gate["target1"])
+        elif gate_type in ("swap", "iswap"):
+            getattr(circuit, gate_type)(gate["target0"], gate["target1"])
+
+        elif gate_type == "cswap":
+            circuit.cswap(gate["control"], gate["target0"], gate["target1"])
+
+        elif gate_type in ("xx", "yy", "zz"):
+            getattr(circuit, gate_type)(gate["target0"], gate["target1"], gate["angle"])
 
         elif gate_type == "ccnot":
             circuit.ccnot(gate["control0"], gate["control1"], gate["target"])

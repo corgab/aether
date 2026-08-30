@@ -244,6 +244,127 @@ class CircuitBuilder
     }
 
     /**
+     * Add a Controlled-RX gate.
+     */
+    public function crx(int $control, int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('CRX', $control, $target);
+        $this->gates[] = Gate::crx($control, $target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-RY gate.
+     */
+    public function cry(int $control, int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('CRY', $control, $target);
+        $this->gates[] = Gate::cry($control, $target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-RZ gate.
+     */
+    public function crz(int $control, int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('CRZ', $control, $target);
+        $this->gates[] = Gate::crz($control, $target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-PhaseShift gate.
+     */
+    public function cphaseshift(int $control, int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('CPHASESHIFT', $control, $target);
+        $this->gates[] = Gate::cphaseshift($control, $target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a PhaseShift gate.
+     */
+    public function phaseshift(int $target, float|Angle $angle): static
+    {
+        $this->validateTargets('PHASESHIFT', $target);
+        $this->gates[] = Gate::phaseshift($target, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a U gate.
+     */
+    public function u(int $target, float|Angle $theta, float|Angle $phi, float|Angle $lambda): static
+    {
+        $this->validateTargets('U', $target);
+        $this->gates[] = Gate::u($target, $theta, $phi, $lambda);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-SWAP (Fredkin) gate.
+     */
+    public function cswap(int $control, int $qubit0, int $qubit1): static
+    {
+        $this->validateTargets('CSWAP', $control, $qubit0, $qubit1);
+        $this->gates[] = Gate::cswap($control, $qubit0, $qubit1);
+
+        return $this;
+    }
+
+    /**
+     * Add an iSWAP gate.
+     */
+    public function iswap(int $qubit0, int $qubit1): static
+    {
+        $this->validateTargets('ISWAP', $qubit0, $qubit1);
+        $this->gates[] = Gate::iswap($qubit0, $qubit1);
+
+        return $this;
+    }
+
+    /**
+     * Add an XX gate.
+     */
+    public function xx(int $qubit0, int $qubit1, float|Angle $angle): static
+    {
+        $this->validateTargets('XX', $qubit0, $qubit1);
+        $this->gates[] = Gate::xx($qubit0, $qubit1, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a YY gate.
+     */
+    public function yy(int $qubit0, int $qubit1, float|Angle $angle): static
+    {
+        $this->validateTargets('YY', $qubit0, $qubit1);
+        $this->gates[] = Gate::yy($qubit0, $qubit1, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Add a ZZ gate.
+     */
+    public function zz(int $qubit0, int $qubit1, float|Angle $angle): static
+    {
+        $this->validateTargets('ZZ', $qubit0, $qubit1);
+        $this->gates[] = Gate::zz($qubit0, $qubit1, $angle);
+
+        return $this;
+    }
+
+    /**
      * Add a measurement gate.
      *
      * - Pass null (default) to measure all qubits.
@@ -428,6 +549,22 @@ class CircuitBuilder
             'cz' => $this->cz((int) $gate['control'], (int) $gate['target']),
             'swap' => $this->swap((int) $gate['target0'], (int) $gate['target1']),
             'ccnot' => $this->ccnot((int) $gate['control0'], (int) $gate['control1'], (int) $gate['target']),
+            'crx' => $this->crx((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
+            'cry' => $this->cry((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
+            'crz' => $this->crz((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
+            'cphaseshift' => $this->cphaseshift((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
+            'phaseshift' => $this->phaseshift((int) $gate['target'], (float) $gate['angle']),
+            'u' => $this->u(
+                (int) $gate['target'],
+                (float) $gate['theta'],
+                (float) $gate['phi'],
+                (float) $gate['lambda']
+            ),
+            'cswap' => $this->cswap((int) $gate['control'], (int) $gate['target0'], (int) $gate['target1']),
+            'iswap' => $this->iswap((int) $gate['target0'], (int) $gate['target1']),
+            'xx' => $this->xx((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
+            'yy' => $this->yy((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
+            'zz' => $this->zz((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
             'measure' => $this->measure($this->decodeMeasureTargets($gate)),
             default => throw InvalidCircuitException::unknownGateType($type),
         };
@@ -470,8 +607,10 @@ class CircuitBuilder
      *
      * Measure gates store their targets under the `targets` key, which may
      * be `null` (meaning "all qubits", and therefore always valid). Every
-     * other gate stores qubit indices as plain int params, with the sole
-     * exception of the `angle` param used by rotation gates.
+     * other gate stores qubit indices as plain int params. The non-index
+     * params are the float angle params (angle, theta, phi, lambda), which
+     * the is_int() filter correctly excludes because they are float|Angle
+     * (widened to float by Gate before serialization).
      *
      * @return int[]
      */

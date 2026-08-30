@@ -599,6 +599,17 @@ it('fromArray round trips a circuit with every gate type', function () {
         ->cz(1, 2)
         ->swap(0, 3)
         ->ccnot(0, 1, 2)
+        ->crx(0, 1, 0.1)
+        ->cry(1, 2, 0.2)
+        ->crz(2, 3, 0.3)
+        ->cphaseshift(0, 1, 0.4)
+        ->phaseshift(0, 0.5)
+        ->u(0, 0.1, 0.2, 0.3)
+        ->cswap(0, 1, 2)
+        ->iswap(0, 1)
+        ->xx(0, 1, 0.1)
+        ->yy(1, 2, 0.2)
+        ->zz(2, 3, 0.3)
         ->measure([0, 2])
         ->shots(2048);
 
@@ -690,3 +701,78 @@ it('queue throws when no measurement', function () use (&$builder): void {
     expect(fn () => $builder->qubits(1)->h(0)->queue())
         ->toThrow(InvalidCircuitException::class);
 });
+
+it('fluent api works for new gates', function () use (&$builder): void {
+    $builder->qubits(3)
+        ->crx(0, 1, 0.5)
+        ->cry(0, 1, 0.5)
+        ->crz(0, 1, 0.5)
+        ->cphaseshift(0, 1, 0.5)
+        ->phaseshift(0, 0.5)
+        ->u(0, 0.1, 0.2, 0.3)
+        ->cswap(0, 1, 2)
+        ->iswap(0, 1)
+        ->xx(0, 1, 0.5)
+        ->yy(0, 1, 0.5)
+        ->zz(0, 1, 0.5);
+
+    expect($builder->toArray()['gates'])->toHaveCount(11);
+});
+
+it('throws when target out of range for new gates', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->cswap(0, 1, 2))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('serialises new gates exactly to the wire contract', function (Closure $build, array $expected): void {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(4);
+    $build($builder);
+
+    expect($builder->toArray()['gates'][0])->toBe($expected);
+})->with([
+    'crx' => [fn ($b) => $b->crx(0, 1, 0.5), ['type' => 'crx', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'cry' => [fn ($b) => $b->cry(0, 1, 0.5), ['type' => 'cry', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'crz' => [fn ($b) => $b->crz(0, 1, 0.5), ['type' => 'crz', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'cphaseshift' => [
+        fn ($b) => $b->cphaseshift(0, 1, 0.5),
+        ['type' => 'cphaseshift', 'control' => 0, 'target' => 1, 'angle' => 0.5],
+    ],
+    'phaseshift' => [fn ($b) => $b->phaseshift(0, 0.5), ['type' => 'phaseshift', 'target' => 0, 'angle' => 0.5]],
+    'u' => [
+        fn ($b) => $b->u(0, 0.1, 0.2, 0.3),
+        ['type' => 'u', 'target' => 0, 'theta' => 0.1, 'phi' => 0.2, 'lambda' => 0.3],
+    ],
+    'cswap' => [fn ($b) => $b->cswap(0, 1, 2), ['type' => 'cswap', 'control' => 0, 'target0' => 1, 'target1' => 2]],
+    'iswap' => [fn ($b) => $b->iswap(0, 1), ['type' => 'iswap', 'target0' => 0, 'target1' => 1]],
+    'xx' => [fn ($b) => $b->xx(0, 1, 0.5), ['type' => 'xx', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+    'yy' => [fn ($b) => $b->yy(0, 1, 0.5), ['type' => 'yy', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+    'zz' => [fn ($b) => $b->zz(0, 1, 0.5), ['type' => 'zz', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+]);
+
+it('throws when new multi-qubit gates have out of range parameters', function (Closure $build): void {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(2);
+
+    $build($builder);
+})->with([
+    'crx control' => [fn ($b) => $b->crx(5, 1, 0.5)],
+    'crx target' => [fn ($b) => $b->crx(0, 5, 0.5)],
+    'cry control' => [fn ($b) => $b->cry(5, 1, 0.5)],
+    'cry target' => [fn ($b) => $b->cry(0, 5, 0.5)],
+    'crz control' => [fn ($b) => $b->crz(5, 1, 0.5)],
+    'crz target' => [fn ($b) => $b->crz(0, 5, 0.5)],
+    'cphaseshift control' => [fn ($b) => $b->cphaseshift(5, 1, 0.5)],
+    'cphaseshift target' => [fn ($b) => $b->cphaseshift(0, 5, 0.5)],
+    'cswap control' => [fn ($b) => $b->qubits(3)->cswap(5, 1, 2)],
+    'cswap target0' => [fn ($b) => $b->qubits(3)->cswap(0, 5, 2)],
+    'cswap target1' => [fn ($b) => $b->qubits(3)->cswap(0, 1, 5)],
+    'iswap target0' => [fn ($b) => $b->iswap(5, 1)],
+    'iswap target1' => [fn ($b) => $b->iswap(0, 5)],
+    'xx target0' => [fn ($b) => $b->xx(5, 1, 0.5)],
+    'xx target1' => [fn ($b) => $b->xx(0, 5, 0.5)],
+    'yy target0' => [fn ($b) => $b->yy(5, 1, 0.5)],
+    'yy target1' => [fn ($b) => $b->yy(0, 5, 0.5)],
+    'zz target0' => [fn ($b) => $b->zz(5, 1, 0.5)],
+    'zz target1' => [fn ($b) => $b->zz(0, 5, 0.5)],
+])->throws(InvalidCircuitException::class);

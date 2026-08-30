@@ -72,7 +72,7 @@ final readonly class Gate
     {
         return new self('rx', [
             'target' => $target,
-            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+            'angle' => self::radians($angle),
         ]);
     }
 
@@ -83,7 +83,7 @@ final readonly class Gate
     {
         return new self('ry', [
             'target' => $target,
-            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+            'angle' => self::radians($angle),
         ]);
     }
 
@@ -94,7 +94,7 @@ final readonly class Gate
     {
         return new self('rz', [
             'target' => $target,
-            'angle' => $angle instanceof Angle ? $angle->radians : $angle,
+            'angle' => self::radians($angle),
         ]);
     }
 
@@ -117,9 +117,9 @@ final readonly class Gate
     /**
      * Create a SWAP gate.
      */
-    public static function swap(int $target0, int $target1): self
+    public static function swap(int $qubit0, int $qubit1): self
     {
-        return new self('swap', ['target0' => $target0, 'target1' => $target1]);
+        return new self('swap', ['target0' => $qubit0, 'target1' => $qubit1]);
     }
 
     /**
@@ -128,6 +128,134 @@ final readonly class Gate
     public static function ccnot(int $control0, int $control1, int $target): self
     {
         return new self('ccnot', ['control0' => $control0, 'control1' => $control1, 'target' => $target]);
+    }
+
+    /**
+     * Create a Controlled-RX gate.
+     */
+    public static function crx(int $control, int $target, float|Angle $angle): self
+    {
+        return new self('crx', [
+            'control' => $control,
+            'target' => $target,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a Controlled-RY gate.
+     */
+    public static function cry(int $control, int $target, float|Angle $angle): self
+    {
+        return new self('cry', [
+            'control' => $control,
+            'target' => $target,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a Controlled-RZ gate.
+     */
+    public static function crz(int $control, int $target, float|Angle $angle): self
+    {
+        return new self('crz', [
+            'control' => $control,
+            'target' => $target,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a Controlled-PhaseShift gate.
+     */
+    public static function cphaseshift(int $control, int $target, float|Angle $angle): self
+    {
+        return new self('cphaseshift', [
+            'control' => $control,
+            'target' => $target,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a PhaseShift gate.
+     */
+    public static function phaseshift(int $target, float|Angle $angle): self
+    {
+        return new self('phaseshift', [
+            'target' => $target,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a U gate.
+     */
+    public static function u(int $target, float|Angle $theta, float|Angle $phi, float|Angle $lambda): self
+    {
+        return new self('u', [
+            'target' => $target,
+            'theta' => self::radians($theta),
+            'phi' => self::radians($phi),
+            'lambda' => self::radians($lambda),
+        ]);
+    }
+
+    /**
+     * Create a Controlled-SWAP (Fredkin) gate.
+     */
+    public static function cswap(int $control, int $qubit0, int $qubit1): self
+    {
+        return new self('cswap', [
+            'control' => $control,
+            'target0' => $qubit0,
+            'target1' => $qubit1,
+        ]);
+    }
+
+    /**
+     * Create an iSWAP gate.
+     */
+    public static function iswap(int $qubit0, int $qubit1): self
+    {
+        return new self('iswap', ['target0' => $qubit0, 'target1' => $qubit1]);
+    }
+
+    /**
+     * Create an XX gate.
+     */
+    public static function xx(int $qubit0, int $qubit1, float|Angle $angle): self
+    {
+        return new self('xx', [
+            'target0' => $qubit0,
+            'target1' => $qubit1,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a YY gate.
+     */
+    public static function yy(int $qubit0, int $qubit1, float|Angle $angle): self
+    {
+        return new self('yy', [
+            'target0' => $qubit0,
+            'target1' => $qubit1,
+            'angle' => self::radians($angle),
+        ]);
+    }
+
+    /**
+     * Create a ZZ gate.
+     */
+    public static function zz(int $qubit0, int $qubit1, float|Angle $angle): self
+    {
+        return new self('zz', [
+            'target0' => $qubit0,
+            'target1' => $qubit1,
+            'angle' => self::radians($angle),
+        ]);
     }
 
     /**
@@ -154,5 +282,23 @@ final readonly class Gate
     public function toArray(): array
     {
         return array_merge(['type' => $this->type], $this->params);
+    }
+
+    /**
+     * Normalise an angle parameter to a finite float in radians.
+     *
+     * Angle already rejects non-finite values in its constructor; this guard
+     * gives raw floats the same treatment so a NAN or INF fails here with a
+     * clear message instead of inside json_encode() in the Python bridge.
+     */
+    private static function radians(float|Angle $angle): float
+    {
+        $radians = $angle instanceof Angle ? $angle->radians : $angle;
+
+        if (! is_finite($radians)) {
+            throw new \InvalidArgumentException('Angle must be a finite float.');
+        }
+
+        return $radians;
     }
 }
