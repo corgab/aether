@@ -18,23 +18,14 @@ use Illuminate\Foundation\Queue\Queueable;
 /**
  * Polls an asynchronous quantum task until it reaches a terminal state.
  *
- * Re-dispatches itself with an incremented attempt counter while the task
- * is still in flight, up to `aether.max_poll_attempts`. Once the task
- * completes, fires {@see CircuitCompleted}; a non-successful terminal state
- * raises {@see TaskFailedException}.
+ * Uses Laravel's native job release mechanism to check the task status
+ * repeatedly up to `aether.max_poll_attempts`. Once the task completes,
+ * fires {@see CircuitCompleted}; a non-successful terminal state raises
+ * {@see TaskFailedException}.
  */
 class PollQuantumTask implements ShouldQueue
 {
     use Queueable;
-
-    /**
-     * The number of times the job may be attempted.
-     *
-     * The job manages its own retry/backoff loop by re-dispatching itself
-     * (see `attempt`/`max_poll_attempts`), so the queue's own retry
-     * mechanism is left at 1 to avoid attempt counters diverging.
-     */
-    public int $tries = 1;
 
     /**
      * Create a new job instance.
@@ -42,15 +33,21 @@ class PollQuantumTask implements ShouldQueue
      * @param  string  $taskArn  The task identifier returned by submitCircuit().
      * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The original CircuitBuilder::toArray() payload.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
-     * @param  int  $attempt  The 1-indexed number of this poll attempt.
      */
     public function __construct(
         public readonly string $taskArn,
         public readonly array $circuit,
         public readonly ?string $driver = null,
-        public readonly int $attempt = 1,
     ) {
         $this->onQueue(config('aether.queue'));
+    }
+
+    /**
+     * Determine the number of times the job may be attempted.
+     */
+    public function tries(): int
+    {
+        return (int) config('aether.max_poll_attempts', 720);
     }
 
     /**
@@ -68,15 +65,13 @@ class PollQuantumTask implements ShouldQueue
         $snapshot = $device->checkTask($this->taskArn);
 
         if (! $snapshot->status->isTerminal()) {
-            $maxAttempts = (int) config('aether.max_poll_attempts', 720);
-            $nextAttempt = $this->attempt + 1;
+            $maxAttempts = $this->tries();
 
-            if ($nextAttempt > $maxAttempts) {
-                throw QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempt);
+            if ($this->attempts() >= $maxAttempts) {
+                throw QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts());
             }
 
-            self::dispatch($this->taskArn, $this->circuit, $this->driver, $nextAttempt)
-                ->delay((int) config('aether.poll_interval', 5));
+            $this->release((int) config('aether.poll_interval', 5));
 
             return;
         }

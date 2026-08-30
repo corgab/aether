@@ -25,7 +25,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     protected function requiredConfig(): array
     {
-        return ['region', 'device_arn'];
+        return ['region', 'device_arn', 'bucket'];
     }
 
     protected function beforeExecution(): void

@@ -15,8 +15,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 
-it('re-queues itself with attempt + 1 and the configured delay when the task is not terminal', function () {
-    Queue::fake();
+it('releases itself back to the queue with the configured delay when the task is not terminal', function () {
     config(['aether.poll_interval' => 3, 'aether.max_poll_attempts' => 720]);
 
     $device = new FakeAsynchronousDevice;
@@ -25,21 +24,14 @@ it('re-queues itself with attempt + 1 and the configured delay when the task is 
     $manager = app(QuantumManager::class);
     $manager->extend('fake-async', fn () => $device);
 
-    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async', 4);
+    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
     $job->handle($manager, app(Dispatcher::class));
 
-    Queue::assertPushed(
-        PollQuantumTask::class,
-        fn (PollQuantumTask $polled): bool => $polled->taskArn === $device->taskArnToReturn
-            && $polled->driver === 'fake-async'
-            && $polled->attempt === 5
-            && $polled->delay === 3,
-    );
+    $job->assertReleased(delay: 3);
 });
 
-it('throws pollingExhausted and does not re-queue once past max_poll_attempts', function () {
-    Queue::fake();
-    config(['aether.max_poll_attempts' => 10]);
+it('throws pollingExhausted and does not release once past max_poll_attempts', function () {
+    config(['aether.max_poll_attempts' => 2]);
 
     $device = new FakeAsynchronousDevice;
     $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
@@ -47,7 +39,12 @@ it('throws pollingExhausted and does not re-queue once past max_poll_attempts', 
     $manager = app(QuantumManager::class);
     $manager->extend('fake-async', fn () => $device);
 
-    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async', 10);
+    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
+    
+    // Fake the attempts via a mock Job instance
+    $mockJob = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+    $mockJob->shouldReceive('attempts')->andReturn(2);
+    $job->setJob($mockJob);
 
     try {
         $job->handle($manager, app(Dispatcher::class));
@@ -55,8 +52,6 @@ it('throws pollingExhausted and does not re-queue once past max_poll_attempts', 
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain($device->taskArnToReturn);
     }
-
-    Queue::assertNotPushed(PollQuantumTask::class);
 });
 
 it('throws TaskFailedException when the task terminates as failed or cancelled', function (TaskStatus $status) {

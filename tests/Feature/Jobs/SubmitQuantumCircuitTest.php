@@ -30,7 +30,6 @@ it('submits the circuit and queues a poll job with the configured delay', functi
         PollQuantumTask::class,
         fn (PollQuantumTask $polled): bool => $polled->taskArn === $device->taskArnToReturn
             && $polled->driver === 'fake-async'
-            && $polled->attempt === 1
             && $polled->delay === 7,
     );
 });
