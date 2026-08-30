@@ -12,8 +12,22 @@ use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Aether\Tests\Feature\Jobs\FakeSynchronousOnlyDevice;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Queue;
+
+it('allows a single exception so a genuine failure is not retried by the worker', function () {
+    $job = new PollQuantumTask('arn:fake', ['qubits' => 1, 'gates' => [], 'shots' => 1]);
+
+    expect($job->maxExceptions)->toBe(1);
+});
+
+it('budgets its attempts from the configured max_poll_attempts', function () {
+    config(['aether.max_poll_attempts' => 42]);
+
+    $job = new PollQuantumTask('arn:fake', ['qubits' => 1, 'gates' => [], 'shots' => 1]);
+
+    expect($job->tries())->toBe(42);
+});
 
 it('releases itself back to the queue with the configured delay when the task is not terminal', function () {
     config(['aether.poll_interval' => 3, 'aether.max_poll_attempts' => 720]);
@@ -39,11 +53,12 @@ it('throws pollingExhausted and does not release once past max_poll_attempts', f
     $manager = app(QuantumManager::class);
     $manager->extend('fake-async', fn () => $device);
 
-    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
-    
-    // Fake the attempts via a mock Job instance
-    $mockJob = Mockery::mock(\Illuminate\Contracts\Queue\Job::class);
+    // A real queue Job double lets us drive attempts() past the configured budget.
+    $mockJob = Mockery::mock(Job::class);
     $mockJob->shouldReceive('attempts')->andReturn(2);
+    $mockJob->shouldNotReceive('release');
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob($mockJob);
 
     try {

@@ -30,7 +30,8 @@ beforeEach(function () {
         });
     $this->config = [
         'region' => 'us-east-1',
-        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', 'bucket' => 'test-bucket',
+        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+        'bucket' => 'test-bucket',
         'synchronous_safe' => true,
     ];
 });

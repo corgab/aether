@@ -55,8 +55,10 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
 
     if driver == "aws":
         bucket = driver_config.get("bucket")
-        if bucket:
-            run_kwargs["s3_destination_folder"] = (bucket, "results")
+        if not bucket:
+            raise ValueError("Driver 'aws' requires a non-empty 'bucket' in driver_config.")
+
+        run_kwargs["s3_destination_folder"] = (bucket, "results")
 
     task = device.run(circuit, **run_kwargs)
     result = task.result()

@@ -22,10 +22,24 @@ use Illuminate\Foundation\Queue\Queueable;
  * repeatedly up to `aether.max_poll_attempts`. Once the task completes,
  * fires {@see CircuitCompleted}; a non-successful terminal state raises
  * {@see TaskFailedException}.
+ *
+ * The high attempt allowance exists purely to budget the polling loop, so
+ * genuine failures are capped separately by {@see $maxExceptions}.
  */
 class PollQuantumTask implements ShouldQueue
 {
     use Queueable;
+
+    /**
+     * The maximum number of unhandled exceptions before failing the job.
+     *
+     * Polling re-queues the job through release(), which does not increment
+     * the exception count, so every attempt budgeted by tries() stays
+     * available for the loop. A thrown exception, by contrast, always signals
+     * a genuine failure and must fail the job outright instead of being
+     * retried hundreds of times with no backoff.
+     */
+    public int $maxExceptions = 1;
 
     /**
      * Create a new job instance.

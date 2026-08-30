@@ -49,6 +49,8 @@ AETHER_S3_BUCKET=your-bucket
 AETHER_DEVICE_ARN=arn:aws:braket:::device/quantum-simulator/amazon/sv1
 ```
 
+`AETHER_S3_BUCKET` is required by the `aws` driver, together with the region and the device ARN: a missing or empty value throws an `InvalidDriverConfigException` on every call, including a synchronous `->run()` against the SV1 simulator. Braket writes the task results to `s3://<bucket>/results`.
+
 ## Usage
 
 ### Quantum Circuits
@@ -122,7 +124,9 @@ AETHER_POLL_INTERVAL=5
 AETHER_MAX_POLL_ATTEMPTS=720
 ```
 
-A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console.
+`PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
+
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
 
