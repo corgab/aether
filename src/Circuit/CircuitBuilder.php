@@ -512,7 +512,7 @@ class CircuitBuilder
      *
      * @throws InvalidCircuitException
      */
-    private function validate(): void
+    public function validate(): static
     {
         if ($this->qubitCount === 0) {
             throw InvalidCircuitException::noQubits();
@@ -521,6 +521,8 @@ class CircuitBuilder
         if (! $this->hasMeasurement) {
             throw InvalidCircuitException::noMeasurement();
         }
+
+        return $this;
     }
 
     /**

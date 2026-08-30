@@ -73,4 +73,14 @@ class QuantumExecutionException extends AetherException
             "Quantum task [{$taskArn}] did not reach a terminal state after {$attempts} poll attempts. Inspect the task in the AWS Braket console."
         );
     }
+
+    /**
+     * Create an exception for drivers that do not support batch execution.
+     */
+    public static function batchUnsupported(string $driver): self
+    {
+        return new self(
+            "Driver [{$driver}] does not support batch execution. Implement Aether\Contracts\BatchableDevice to enable Quantum::batch()."
+        );
+    }
 }

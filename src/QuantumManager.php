@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether;
 
 use Aether\Bridge\PythonBridge;
+use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
@@ -53,6 +54,20 @@ class QuantumManager extends Manager
     {
         return new CircuitBuilder(
             $this->driver($driver),
+            $driver ?? $this->getDefaultDriver(),
+        );
+    }
+
+    /**
+     * Create a BatchBuilder backed by the given (or default) driver.
+     *
+     * @param  CircuitBuilder[]  $circuits
+     */
+    public function batch(array $circuits, ?string $driver = null): BatchBuilder
+    {
+        return new BatchBuilder(
+            $this->driver($driver),
+            $circuits,
             $driver ?? $this->getDefaultDriver(),
         );
     }

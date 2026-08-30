@@ -81,6 +81,29 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+### Batch Execution
+
+Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.
+
+```php
+use Aether\Facades\Quantum;
+
+$batch = Quantum::batch([$circuitA, $circuitB])->run();
+
+foreach ($batch as $index => $result) {
+    $result->counts(); // array<string, int>
+}
+
+$batch->get(1)->mostFrequent();
+$batch[0]->probabilities();
+```
+
+* **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
+* **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
+* **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
+* **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver marked `synchronous_safe: false` throws, exactly like a single `->run()`.
+* **Contracts**: batch-capable drivers implement `Aether\Contracts\BatchableDevice`; `Quantum::batch()` on a driver that does not throws `QuantumExecutionException::batchUnsupported`. The core `Aether\Contracts\QuantumDevice` contract is unchanged, so third-party drivers keep working.
+
 ### Asynchronous Execution
 
 Real QPU tasks queue for minutes or hours, so a synchronous `->run()` would block the request. Use `->dispatch()` instead: the circuit is submitted by a queued job, polled until it reaches a terminal state, and the result is delivered through an event.
@@ -194,6 +217,15 @@ $fake = Quantum::fake();
 $fake->assertCircuitRan();
 $fake->assertCircuitRan(fn ($circuit) => $circuit->qubitCount() === 2);
 $fake->assertEntropyGenerated(256);
+```
+
+Batch executions are recorded as well. Every circuit in a batch also counts as an executed circuit, so `assertCircuitRan()` sees it:
+
+```php
+$fake->assertBatchRan();
+$fake->assertBatchRan(fn (array $circuits) => count($circuits) === 2);
+$fake->assertBatchNotRan();
+$fake->assertBatchRanTimes(1);
 ```
 
 Asynchronously dispatched circuits are recorded separately:

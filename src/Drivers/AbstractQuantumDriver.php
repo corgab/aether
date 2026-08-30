@@ -5,16 +5,18 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
+use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 
 /**
  * Base driver with shared circuit execution and entropy generation logic.
  */
-abstract class AbstractQuantumDriver implements QuantumDevice
+abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
     /**
      * @param  array<string, mixed>  $config
@@ -96,6 +98,56 @@ abstract class AbstractQuantumDriver implements QuantumDevice
         if ($missing !== []) {
             throw InvalidDriverConfigException::missingKeys($this->driverName(), $missing);
         }
+    }
+
+    /**
+     * Execute the given circuits in batch on the device and return the measurement results.
+     *
+     * @param  CircuitBuilder[]  $circuits
+     */
+    public function executeBatch(array $circuits): BatchResult
+    {
+        $this->preflight();
+
+        $payload = [
+            'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
+            'driver' => $this->driverName(),
+            'driver_config' => $this->config,
+        ];
+
+        $response = $this->bridge->execute('batch.py', $payload, $this->config);
+
+        if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
+            throw QuantumExecutionException::malformedResponse(
+                'batch.py',
+                'expected the "results" key to be present and hold an array.'
+            );
+        }
+
+        if (count($response['results']) !== count($circuits)) {
+            throw QuantumExecutionException::malformedResponse(
+                'batch.py',
+                'expected exactly '.count($circuits).' results, got '.count($response['results']).'.'
+            );
+        }
+
+        $circuitResults = [];
+        foreach ($response['results'] as $result) {
+            if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
+                throw QuantumExecutionException::malformedResponse(
+                    'batch.py',
+                    'expected each result to have a "counts" array.'
+                );
+            }
+
+            $counts = [];
+            foreach ($result['counts'] as $bitstring => $count) {
+                $counts[(string) $bitstring] = $count;
+            }
+            $circuitResults[] = new CircuitResult($counts);
+        }
+
+        return new BatchResult($circuitResults);
     }
 
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult

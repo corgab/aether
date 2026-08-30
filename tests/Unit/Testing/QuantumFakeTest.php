@@ -6,6 +6,7 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
+use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
@@ -598,4 +599,68 @@ it('fails when the entropy generation count does not match', function () {
 
     expect(fn () => $fake->assertEntropyGeneratedTimes(3))
         ->toThrow(AssertionFailedError::class);
+});
+
+// -------------------------------------------------------------------------
+// Batch execution
+// -------------------------------------------------------------------------
+
+it('assertBatchRan passes when batch was executed', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->executeBatch([$c]);
+
+    $fake->assertBatchRan();
+    $fake->assertBatchRan(fn ($b) => count($b) === 1);
+});
+
+it('assertBatchNotRan passes when no batches executed', function () {
+    $fake = new QuantumFake;
+    $fake->assertBatchNotRan();
+});
+
+it('assertBatchNotRan fails when batch was executed', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $fake->executeBatch([$c]);
+
+    expect(fn () => $fake->assertBatchNotRan())->toThrow(AssertionFailedError::class);
+});
+
+it('assertBatchRanTimes verifies count', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeBatch([$c]);
+    $fake->executeBatch([$c]);
+
+    $fake->assertBatchRanTimes(2);
+});
+
+it('records individual circuits from batch', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeBatch([$c]);
+
+    $fake->assertCircuitRan();
+});
+
+it('assertCircuitNotRan fails after batch', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeBatch([$c]);
+
+    expect(fn () => $fake->assertCircuitNotRan())->toThrow(AssertionFailedError::class);
+});
+
+it('returns correct counts from executeBatch', function () {
+    $fake = new QuantumFake;
+    $c = (new CircuitBuilder($fake))->qubits(1)->shots(100)->measure();
+
+    $result = $fake->executeBatch([$c]);
+
+    expect($result)->toBeInstanceOf(BatchResult::class);
+    expect($result->get(0)->counts())->toBe(['0' => 50, '1' => 50]);
 });

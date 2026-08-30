@@ -6,7 +6,9 @@ namespace Aether\Testing;
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
@@ -16,10 +18,13 @@ use PHPUnit\Framework\Assert;
 /**
  * Test double for QuantumDevice (and AsynchronousDevice) that records interactions.
  */
-class QuantumFake implements AsynchronousDevice, QuantumDevice
+class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 {
     /** @var CircuitBuilder[] */
     private array $recordedCircuits = [];
+
+    /** @var array<int, CircuitBuilder[]> */
+    private array $recordedBatches = [];
 
     /** @var int[] */
     private array $recordedEntropy = [];
@@ -48,6 +53,27 @@ class QuantumFake implements AsynchronousDevice, QuantumDevice
         $this->recordedCircuits[] = $circuit;
 
         return new CircuitResult($this->resolveCounts($circuit));
+    }
+
+    /**
+     * Record the batch and return one fake result per circuit. Every circuit
+     * is also recorded individually, so the circuit-level assertions see
+     * batched executions exactly like single ones.
+     *
+     * @param  CircuitBuilder[]  $circuits
+     */
+    public function executeBatch(array $circuits): BatchResult
+    {
+        $this->recordedBatches[] = $circuits;
+
+        $results = [];
+
+        foreach ($circuits as $circuit) {
+            $this->recordedCircuits[] = $circuit;
+            $results[] = new CircuitResult($this->resolveCounts($circuit));
+        }
+
+        return new BatchResult($results);
     }
 
     /**
@@ -184,6 +210,16 @@ class QuantumFake implements AsynchronousDevice, QuantumDevice
     }
 
     /**
+     * Return all recorded batches, each as the list of CircuitBuilder instances it contained.
+     *
+     * @return array<int, CircuitBuilder[]>
+     */
+    public function recordedBatches(): array
+    {
+        return $this->recordedBatches;
+    }
+
+    /**
      * Assert that at least one circuit was executed, optionally matching a callback.
      */
     public function assertCircuitRan(?Closure $callback = null): void
@@ -308,6 +344,50 @@ class QuantumFake implements AsynchronousDevice, QuantumDevice
             $count,
             $this->dispatchedCircuits,
             "Expected {$count} circuit(s) to be dispatched, got ".count($this->dispatchedCircuits).'.',
+        );
+    }
+
+    /**
+     * Assert that at least one batch was executed, optionally matching a callback
+     * that receives the list of CircuitBuilder instances in the batch.
+     */
+    public function assertBatchRan(?Closure $callback = null): void
+    {
+        Assert::assertNotEmpty(
+            $this->recordedBatches,
+            'No batches were executed.',
+        );
+
+        if ($callback !== null) {
+            $matched = array_filter($this->recordedBatches, $callback);
+
+            Assert::assertNotEmpty(
+                $matched,
+                'No recorded batch matched the given callback.',
+            );
+        }
+    }
+
+    /**
+     * Assert that no batches were executed.
+     */
+    public function assertBatchNotRan(): void
+    {
+        Assert::assertEmpty(
+            $this->recordedBatches,
+            'Unexpected batches were executed.',
+        );
+    }
+
+    /**
+     * Assert that exactly the given number of batches were executed.
+     */
+    public function assertBatchRanTimes(int $count): void
+    {
+        Assert::assertCount(
+            $count,
+            $this->recordedBatches,
+            "Expected {$count} batch(es) to be executed, got ".count($this->recordedBatches).'.',
         );
     }
 

@@ -83,4 +83,14 @@ class InvalidCircuitException extends AetherException
             "Unknown gate type [{$type}] encountered while rebuilding a circuit from its array definition."
         );
     }
+
+    /**
+     * Create an exception when a circuit in a batch has a driver pinned that does not match the batch driver.
+     */
+    public static function batchDriverMismatch(string $expected, string $actual): self
+    {
+        return new self(
+            "Batch is targeting driver [{$expected}], but circuit is pinned to driver [{$actual}]."
+        );
+    }
 }

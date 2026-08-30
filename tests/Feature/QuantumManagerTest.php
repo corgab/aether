@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Exceptions\DriverNotFoundException;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\QuantumManager;
 
 it('resolves the default driver as LocalSimulatorDriver', function () {
@@ -38,6 +40,32 @@ it('returns a CircuitBuilder for the default driver', function () {
 it('returns an EntropyGenerator for a named driver', function () {
     expect(app(QuantumManager::class)->entropy('aws'))->toBeInstanceOf(EntropyGenerator::class);
 });
+
+it('returns a BatchBuilder for the default driver', function () {
+    $manager = app(QuantumManager::class);
+    $circuit = $manager->circuit()->qubits(1)->measure();
+
+    expect($manager->batch([$circuit]))->toBeInstanceOf(BatchBuilder::class);
+});
+
+it('runs a batch through the faked default driver', function () {
+    $manager = app(QuantumManager::class);
+    $fake = $manager->fake();
+    $circuit = $manager->circuit()->qubits(1)->measure();
+
+    $result = $manager->batch([$circuit])->run();
+
+    expect($result)->toHaveCount(1);
+    $fake->assertBatchRan();
+});
+
+it('rejects a batch containing a circuit pinned to another driver', function () {
+    $manager = app(QuantumManager::class);
+    $manager->fake();
+    $circuit = $manager->circuit('aws')->qubits(1)->measure();
+
+    $manager->batch([$circuit], 'local');
+})->throws(InvalidCircuitException::class);
 
 it('registers and resolves a custom driver via extend()', function () {
     $manager = app(QuantumManager::class);

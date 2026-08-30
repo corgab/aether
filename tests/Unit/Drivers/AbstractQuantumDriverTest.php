@@ -8,6 +8,7 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AbstractQuantumDriver;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
+use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 
 beforeEach(function () {
@@ -277,3 +278,65 @@ it('clamps entropy_qubits to 16 when configured as negative', function () {
 
     $driver->generateEntropy(8);
 });
+
+// -------------------------------------------------------------------------
+// Malformed batch.py responses
+// -------------------------------------------------------------------------
+
+it('sends every circuit to batch.py and maps the results back in order', function () {
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'batch.py',
+            $this->callback(fn (array $p) => $p['driver'] === 'test'
+                && $p['driver_config'] === ['key' => 'value']
+                && $p['circuits'] === [
+                    ['qubits' => 1, 'gates' => [], 'shots' => 1000],
+                    ['qubits' => 2, 'gates' => [], 'shots' => 10],
+                ]),
+            ['key' => 'value']
+        )
+        ->willReturn(['results' => [
+            ['counts' => ['0' => 500, '1' => 500]],
+            ['counts' => ['00' => 10]],
+        ]]);
+
+    $first = $this->createMock(CircuitBuilder::class);
+    $first->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+    $second = $this->createMock(CircuitBuilder::class);
+    $second->method('toArray')->willReturn(['qubits' => 2, 'gates' => [], 'shots' => 10]);
+
+    $result = $this->driver->executeBatch([$first, $second]);
+
+    expect($result)->toBeInstanceOf(BatchResult::class)
+        ->and($result->get(0)->counts())->toBe(['0' => 500, '1' => 500])
+        ->and($result->get(1)->counts())->toBe(['00' => 10]);
+});
+
+it('throws when batch.py omits the results key', function () {
+    $this->bridge->method('execute')->willReturn(['counts' => []]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    $this->driver->executeBatch([$circuit]);
+})->throws(QuantumExecutionException::class, '"results" key');
+
+it('throws when a batch.py result lacks a counts array', function () {
+    $this->bridge->method('execute')->willReturn(['results' => [['status' => 'ok']]]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    $this->driver->executeBatch([$circuit]);
+})->throws(QuantumExecutionException::class, '"counts" array');
+
+it('throws when batch.py results count does not match circuits count', function () {
+    $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 500]]]]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    // Pass 2 circuits, but mock returns 1 result
+    $this->driver->executeBatch([$circuit, $circuit]);
+})->throws(QuantumExecutionException::class, 'exactly 2 results, got 1');
