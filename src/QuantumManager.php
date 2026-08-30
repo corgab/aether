@@ -61,13 +61,13 @@ class QuantumManager extends Manager
     /**
      * Create a BatchBuilder backed by the given (or default) driver.
      *
-     * @param  CircuitBuilder[]  $circuits
+     * @param  array<array-key, CircuitBuilder>  $circuits
      */
     public function batch(array $circuits, ?string $driver = null): BatchBuilder
     {
         return new BatchBuilder(
             $this->driver($driver),
-            $circuits,
+            array_values($circuits),
             $driver ?? $this->getDefaultDriver(),
         );
     }

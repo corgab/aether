@@ -153,6 +153,28 @@ A task that fails or is cancelled throws `TaskFailedException` from the polling 
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
 
+#### Task Persistence
+
+You can optionally record every asynchronously dispatched task into a database table.
+
+```bash
+php artisan vendor:publish --tag=aether-migrations
+php artisan migrate
+```
+
+Set `AETHER_PERSIST_TASKS=true` in your `.env`.
+
+When enabled, Aether inserts a row into `quantum_tasks` containing the circuit, shots, and driver when a task is dispatched, and updates its `status` and `counts` as the polling job progresses. The `status` always mirrors the backend's real state. Polling problems (like exhaustion or malformed responses) are logged in `error` and `failed_at`.
+
+Since persistence is strictly best-effort, a database failure never affects queue behaviour or prevents the `CircuitCompleted` event from being emitted.
+
+```php
+use Aether\Models\QuantumTask;
+use Aether\Tasks\TaskStatus;
+
+$runningTasks = QuantumTask::where('status', TaskStatus::Running)->get();
+```
+
 ### Switching Drivers
 
 ```php

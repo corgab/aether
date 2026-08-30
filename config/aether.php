@@ -81,6 +81,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Persist Asynchronous Tasks
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, Aether will record every asynchronously dispatched task
+    | into a `quantum_tasks` database table, updating its status and counts
+    | as the polling job progresses. You must run the published migration
+    | before enabling this feature.
+    |
+    */
+
+    'persist_tasks' => env('AETHER_PERSIST_TASKS', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Quantum Drivers
     |--------------------------------------------------------------------------
     |

@@ -41,6 +41,10 @@ class AetherServiceProvider extends ServiceProvider
                 __DIR__.'/../config/aether.php' => config_path('aether.php'),
             ], 'aether-config');
 
+            $this->publishesMigrations([
+                __DIR__.'/../database/migrations' => database_path('migrations'),
+            ], 'aether-migrations');
+
             $this->commands([Commands\AetherInstallCommand::class]);
         }
 
