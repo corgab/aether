@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Aether\Circuit\Angle;
 use Aether\Circuit\Gate;
+use Aether\Circuit\GateType;
+use Aether\Exceptions\InvalidCircuitException;
 
 // -------------------------------------------------------------------------
 // Factory: single-target gates
@@ -274,4 +276,83 @@ it('throws InvalidArgumentException when given NAN', function (): void {
 
 it('throws InvalidArgumentException when given INF', function (): void {
     expect(fn () => Gate::u(0, INF, 0.0, 0.0))->toThrow(InvalidArgumentException::class);
+});
+
+// -------------------------------------------------------------------------
+// fromArray() — metadata-driven round trip for every gate type
+// -------------------------------------------------------------------------
+
+it('round trips every gate type through fromArray/toArray', function (GateType $type): void {
+    $shape = $type->shape();
+    $definition = ['type' => $type->value];
+
+    foreach ($shape->qubitKeys() as $index => $key) {
+        $definition[$key] = $index;
+    }
+
+    $angleValues = [0.5, 0.25, 0.125];
+    foreach ($shape->angleKeys() as $index => $key) {
+        $definition[$key] = $angleValues[$index];
+    }
+
+    expect(Gate::fromArray($definition)->toArray())->toBe($definition);
+})->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
+
+it('round trips a measure gate with explicit targets through fromArray/toArray', function (): void {
+    $definition = ['type' => 'measure', 'targets' => [0, 2]];
+
+    expect(Gate::fromArray($definition)->toArray())->toBe($definition);
+});
+
+it('round trips a measure gate with null targets through fromArray/toArray', function (): void {
+    $definition = ['type' => 'measure', 'targets' => null];
+
+    expect(Gate::fromArray($definition)->toArray())->toBe($definition);
+});
+
+// -------------------------------------------------------------------------
+// fromArray() — error handling
+// -------------------------------------------------------------------------
+
+it('fromArray throws for an unknown gate type', function (): void {
+    expect(fn () => Gate::fromArray(['type' => 'not-a-real-gate', 'target' => 0]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('fromArray throws when the type key is not a string', function (): void {
+    expect(fn () => Gate::fromArray(['type' => 42, 'target' => 0]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('fromArray throws when the type key is missing', function (): void {
+    expect(fn () => Gate::fromArray(['target' => 0]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('fromArray throws missingGateParameter when a qubit key is missing', function (): void {
+    expect(fn () => Gate::fromArray(['type' => 'cnot', 'control' => 0]))
+        ->toThrow(InvalidCircuitException::class, 'missing required parameter [target]');
+});
+
+it('fromArray throws missingGateParameter when an angle key is missing', function (): void {
+    expect(fn () => Gate::fromArray(['type' => 'rx', 'target' => 0]))
+        ->toThrow(InvalidCircuitException::class, 'missing required parameter [angle]');
+});
+
+// -------------------------------------------------------------------------
+// qubitIndices()
+// -------------------------------------------------------------------------
+
+it('qubitIndices returns the qubit-index params for non-measure gates', function (): void {
+    expect(Gate::cnot(0, 1)->qubitIndices())->toBe([0, 1]);
+    expect(Gate::ccnot(0, 1, 2)->qubitIndices())->toBe([0, 1, 2]);
+    expect(Gate::rx(3, 1.0)->qubitIndices())->toBe([3]);
+});
+
+it('qubitIndices returns explicit targets for a measure gate', function (): void {
+    expect(Gate::measure([0, 2])->qubitIndices())->toBe([0, 2]);
+});
+
+it('qubitIndices returns an empty array for a measure-all gate', function (): void {
+    expect(Gate::measure()->qubitIndices())->toBe([]);
 });

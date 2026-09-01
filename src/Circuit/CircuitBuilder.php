@@ -60,7 +60,7 @@ class CircuitBuilder
         }
 
         foreach ($this->gates as $gate) {
-            foreach ($this->gateTargets($gate) as $target) {
+            foreach ($gate->qubitIndices() as $target) {
                 if ($target >= $count) {
                     throw InvalidCircuitException::qubitCountBelowExistingGates(
                         strtoupper($gate->type),
@@ -97,10 +97,7 @@ class CircuitBuilder
      */
     public function h(int $target): static
     {
-        $this->validateTargets('H', $target);
-        $this->gates[] = Gate::h($target);
-
-        return $this;
+        return $this->push(Gate::h($target));
     }
 
     /**
@@ -110,10 +107,7 @@ class CircuitBuilder
      */
     public function x(int $target): static
     {
-        $this->validateTargets('X', $target);
-        $this->gates[] = Gate::x($target);
-
-        return $this;
+        return $this->push(Gate::x($target));
     }
 
     /**
@@ -123,10 +117,7 @@ class CircuitBuilder
      */
     public function y(int $target): static
     {
-        $this->validateTargets('Y', $target);
-        $this->gates[] = Gate::y($target);
-
-        return $this;
+        return $this->push(Gate::y($target));
     }
 
     /**
@@ -136,10 +127,7 @@ class CircuitBuilder
      */
     public function z(int $target): static
     {
-        $this->validateTargets('Z', $target);
-        $this->gates[] = Gate::z($target);
-
-        return $this;
+        return $this->push(Gate::z($target));
     }
 
     /**
@@ -149,10 +137,7 @@ class CircuitBuilder
      */
     public function i(int $target): static
     {
-        $this->validateTargets('I', $target);
-        $this->gates[] = Gate::i($target);
-
-        return $this;
+        return $this->push(Gate::i($target));
     }
 
     /**
@@ -162,10 +147,7 @@ class CircuitBuilder
      */
     public function cnot(int $control, int $target): static
     {
-        $this->validateTargets('CNOT', $control, $target);
-        $this->gates[] = Gate::cnot($control, $target);
-
-        return $this;
+        return $this->push(Gate::cnot($control, $target));
     }
 
     /**
@@ -175,10 +157,7 @@ class CircuitBuilder
      */
     public function s(int $target): static
     {
-        $this->validateTargets('S', $target);
-        $this->gates[] = Gate::s($target);
-
-        return $this;
+        return $this->push(Gate::s($target));
     }
 
     /**
@@ -188,10 +167,7 @@ class CircuitBuilder
      */
     public function si(int $target): static
     {
-        $this->validateTargets('SI', $target);
-        $this->gates[] = Gate::si($target);
-
-        return $this;
+        return $this->push(Gate::si($target));
     }
 
     /**
@@ -201,10 +177,7 @@ class CircuitBuilder
      */
     public function t(int $target): static
     {
-        $this->validateTargets('T', $target);
-        $this->gates[] = Gate::t($target);
-
-        return $this;
+        return $this->push(Gate::t($target));
     }
 
     /**
@@ -214,10 +187,7 @@ class CircuitBuilder
      */
     public function ti(int $target): static
     {
-        $this->validateTargets('TI', $target);
-        $this->gates[] = Gate::ti($target);
-
-        return $this;
+        return $this->push(Gate::ti($target));
     }
 
     /**
@@ -227,10 +197,7 @@ class CircuitBuilder
      */
     public function rx(int $target, float|Angle $angle): static
     {
-        $this->validateTargets('RX', $target);
-        $this->gates[] = Gate::rx($target, $angle);
-
-        return $this;
+        return $this->push(Gate::rx($target, $angle));
     }
 
     /**
@@ -240,10 +207,7 @@ class CircuitBuilder
      */
     public function ry(int $target, float|Angle $angle): static
     {
-        $this->validateTargets('RY', $target);
-        $this->gates[] = Gate::ry($target, $angle);
-
-        return $this;
+        return $this->push(Gate::ry($target, $angle));
     }
 
     /**
@@ -253,10 +217,7 @@ class CircuitBuilder
      */
     public function rz(int $target, float|Angle $angle): static
     {
-        $this->validateTargets('RZ', $target);
-        $this->gates[] = Gate::rz($target, $angle);
-
-        return $this;
+        return $this->push(Gate::rz($target, $angle));
     }
 
     /**
@@ -266,10 +227,7 @@ class CircuitBuilder
      */
     public function swap(int $qubit0, int $qubit1): static
     {
-        $this->validateTargets('SWAP', $qubit0, $qubit1);
-        $this->gates[] = Gate::swap($qubit0, $qubit1);
-
-        return $this;
+        return $this->push(Gate::swap($qubit0, $qubit1));
     }
 
     /**
@@ -279,10 +237,7 @@ class CircuitBuilder
      */
     public function cz(int $control, int $target): static
     {
-        $this->validateTargets('CZ', $control, $target);
-        $this->gates[] = Gate::cz($control, $target);
-
-        return $this;
+        return $this->push(Gate::cz($control, $target));
     }
 
     /**
@@ -292,10 +247,7 @@ class CircuitBuilder
      */
     public function cy(int $control, int $target): static
     {
-        $this->validateTargets('CY', $control, $target);
-        $this->gates[] = Gate::cy($control, $target);
-
-        return $this;
+        return $this->push(Gate::cy($control, $target));
     }
 
     /**
@@ -305,10 +257,7 @@ class CircuitBuilder
      */
     public function ccnot(int $control0, int $control1, int $target): static
     {
-        $this->validateTargets('CCNOT', $control0, $control1, $target);
-        $this->gates[] = Gate::ccnot($control0, $control1, $target);
-
-        return $this;
+        return $this->push(Gate::ccnot($control0, $control1, $target));
     }
 
     /**
@@ -318,10 +267,7 @@ class CircuitBuilder
      */
     public function crx(int $control, int $target, float|Angle $angle): static
     {
-        $this->validateTargets('CRX', $control, $target);
-        $this->gates[] = Gate::crx($control, $target, $angle);
-
-        return $this;
+        return $this->push(Gate::crx($control, $target, $angle));
     }
 
     /**
@@ -331,10 +277,7 @@ class CircuitBuilder
      */
     public function cry(int $control, int $target, float|Angle $angle): static
     {
-        $this->validateTargets('CRY', $control, $target);
-        $this->gates[] = Gate::cry($control, $target, $angle);
-
-        return $this;
+        return $this->push(Gate::cry($control, $target, $angle));
     }
 
     /**
@@ -344,10 +287,7 @@ class CircuitBuilder
      */
     public function crz(int $control, int $target, float|Angle $angle): static
     {
-        $this->validateTargets('CRZ', $control, $target);
-        $this->gates[] = Gate::crz($control, $target, $angle);
-
-        return $this;
+        return $this->push(Gate::crz($control, $target, $angle));
     }
 
     /**
@@ -357,10 +297,7 @@ class CircuitBuilder
      */
     public function cphaseshift(int $control, int $target, float|Angle $angle): static
     {
-        $this->validateTargets('CPHASESHIFT', $control, $target);
-        $this->gates[] = Gate::cphaseshift($control, $target, $angle);
-
-        return $this;
+        return $this->push(Gate::cphaseshift($control, $target, $angle));
     }
 
     /**
@@ -370,10 +307,7 @@ class CircuitBuilder
      */
     public function phaseshift(int $target, float|Angle $angle): static
     {
-        $this->validateTargets('PHASESHIFT', $target);
-        $this->gates[] = Gate::phaseshift($target, $angle);
-
-        return $this;
+        return $this->push(Gate::phaseshift($target, $angle));
     }
 
     /**
@@ -383,10 +317,7 @@ class CircuitBuilder
      */
     public function u(int $target, float|Angle $theta, float|Angle $phi, float|Angle $lambda): static
     {
-        $this->validateTargets('U', $target);
-        $this->gates[] = Gate::u($target, $theta, $phi, $lambda);
-
-        return $this;
+        return $this->push(Gate::u($target, $theta, $phi, $lambda));
     }
 
     /**
@@ -396,10 +327,7 @@ class CircuitBuilder
      */
     public function cswap(int $control, int $qubit0, int $qubit1): static
     {
-        $this->validateTargets('CSWAP', $control, $qubit0, $qubit1);
-        $this->gates[] = Gate::cswap($control, $qubit0, $qubit1);
-
-        return $this;
+        return $this->push(Gate::cswap($control, $qubit0, $qubit1));
     }
 
     /**
@@ -409,10 +337,7 @@ class CircuitBuilder
      */
     public function iswap(int $qubit0, int $qubit1): static
     {
-        $this->validateTargets('ISWAP', $qubit0, $qubit1);
-        $this->gates[] = Gate::iswap($qubit0, $qubit1);
-
-        return $this;
+        return $this->push(Gate::iswap($qubit0, $qubit1));
     }
 
     /**
@@ -422,10 +347,7 @@ class CircuitBuilder
      */
     public function xx(int $qubit0, int $qubit1, float|Angle $angle): static
     {
-        $this->validateTargets('XX', $qubit0, $qubit1);
-        $this->gates[] = Gate::xx($qubit0, $qubit1, $angle);
-
-        return $this;
+        return $this->push(Gate::xx($qubit0, $qubit1, $angle));
     }
 
     /**
@@ -435,10 +357,7 @@ class CircuitBuilder
      */
     public function yy(int $qubit0, int $qubit1, float|Angle $angle): static
     {
-        $this->validateTargets('YY', $qubit0, $qubit1);
-        $this->gates[] = Gate::yy($qubit0, $qubit1, $angle);
-
-        return $this;
+        return $this->push(Gate::yy($qubit0, $qubit1, $angle));
     }
 
     /**
@@ -448,10 +367,7 @@ class CircuitBuilder
      */
     public function zz(int $qubit0, int $qubit1, float|Angle $angle): static
     {
-        $this->validateTargets('ZZ', $qubit0, $qubit1);
-        $this->gates[] = Gate::zz($qubit0, $qubit1, $angle);
-
-        return $this;
+        return $this->push(Gate::zz($qubit0, $qubit1, $angle));
     }
 
     /**
@@ -485,8 +401,8 @@ class CircuitBuilder
 
         // Gate is an immutable value object and the fragment's gates were
         // already validated against its own (not larger) qubit count, so they
-        // can be shared directly without a toArray()/applyGateDefinition()
-        // round trip that would re-serialize and re-validate every gate.
+        // can be shared directly without a toArray()/Gate::fromArray() round
+        // trip that would re-serialize and re-validate every gate.
         foreach ($fragment->gates as $gate) {
             if (! $gate->isMeasurement()) {
                 $this->gates[] = $gate;
@@ -507,20 +423,11 @@ class CircuitBuilder
      */
     public function measure(int|array|null $targets = null): static
     {
-        if (is_int($targets)) {
-            $this->validateTargets('Measure', $targets);
-        } elseif (is_array($targets)) {
-            if ($targets === []) {
-                throw InvalidCircuitException::emptyMeasurementTargets();
-            }
-
-            $this->validateTargets('Measure', ...$targets);
+        if (is_array($targets) && $targets === []) {
+            throw InvalidCircuitException::emptyMeasurementTargets();
         }
 
-        $this->gates[] = Gate::measure($targets);
-        $this->hasMeasurement = true;
-
-        return $this;
+        return $this->push(Gate::measure($targets));
     }
 
     /**
@@ -630,7 +537,7 @@ class CircuitBuilder
 
         /** @var array<string, mixed> $gate */
         foreach ($definition['gates'] ?? [] as $gate) {
-            $builder->applyGateDefinition($gate);
+            $builder->push(Gate::fromArray($gate));
         }
 
         $builder->shots((int) ($definition['shots'] ?? 1000));
@@ -658,72 +565,23 @@ class CircuitBuilder
     }
 
     /**
-     * Apply a single serialized gate definition (as produced by Gate::toArray())
-     * to this builder, dispatching to the matching fluent method by gate type.
-     *
-     * @param  array<string, mixed>  $gate
+     * Validate a gate against the circuit's qubit range, append it, and
+     * track measurement state. The single append primitive behind every
+     * fluent gate method and fromArray().
      *
      * @throws InvalidCircuitException
      */
-    private function applyGateDefinition(array $gate): void
+    private function push(Gate $gate): static
     {
-        $type = is_string($gate['type'] ?? null) ? $gate['type'] : '';
+        $this->validateTargets(strtoupper($gate->type), ...$gate->qubitIndices());
 
-        match ($type) {
-            'h' => $this->h((int) $gate['target']),
-            'x' => $this->x((int) $gate['target']),
-            'y' => $this->y((int) $gate['target']),
-            'z' => $this->z((int) $gate['target']),
-            'i' => $this->i((int) $gate['target']),
-            's' => $this->s((int) $gate['target']),
-            'si' => $this->si((int) $gate['target']),
-            't' => $this->t((int) $gate['target']),
-            'ti' => $this->ti((int) $gate['target']),
-            'rx' => $this->rx((int) $gate['target'], (float) $gate['angle']),
-            'ry' => $this->ry((int) $gate['target'], (float) $gate['angle']),
-            'rz' => $this->rz((int) $gate['target'], (float) $gate['angle']),
-            'cnot' => $this->cnot((int) $gate['control'], (int) $gate['target']),
-            'cz' => $this->cz((int) $gate['control'], (int) $gate['target']),
-            'cy' => $this->cy((int) $gate['control'], (int) $gate['target']),
-            'swap' => $this->swap((int) $gate['target0'], (int) $gate['target1']),
-            'ccnot' => $this->ccnot((int) $gate['control0'], (int) $gate['control1'], (int) $gate['target']),
-            'crx' => $this->crx((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
-            'cry' => $this->cry((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
-            'crz' => $this->crz((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
-            'cphaseshift' => $this->cphaseshift((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),
-            'phaseshift' => $this->phaseshift((int) $gate['target'], (float) $gate['angle']),
-            'u' => $this->u(
-                (int) $gate['target'],
-                (float) $gate['theta'],
-                (float) $gate['phi'],
-                (float) $gate['lambda']
-            ),
-            'cswap' => $this->cswap((int) $gate['control'], (int) $gate['target0'], (int) $gate['target1']),
-            'iswap' => $this->iswap((int) $gate['target0'], (int) $gate['target1']),
-            'xx' => $this->xx((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
-            'yy' => $this->yy((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
-            'zz' => $this->zz((int) $gate['target0'], (int) $gate['target1'], (float) $gate['angle']),
-            'measure' => $this->measure($this->decodeMeasureTargets($gate)),
-            default => throw InvalidCircuitException::unknownGateType($type),
-        };
-    }
+        $this->gates[] = $gate;
 
-    /**
-     * Decode the `targets` value of a serialized measure gate back into the
-     * int[]|null shape expected by measure().
-     *
-     * @param  array<string, mixed>  $gate
-     * @return int[]|null
-     */
-    private function decodeMeasureTargets(array $gate): ?array
-    {
-        $targets = $gate['targets'] ?? null;
-
-        if (! is_array($targets)) {
-            return null;
+        if ($gate->isMeasurement()) {
+            $this->hasMeasurement = true;
         }
 
-        return array_map(static fn (mixed $target): int => (int) $target, $targets);
+        return $this;
     }
 
     /**
@@ -738,30 +596,5 @@ class CircuitBuilder
                 throw InvalidCircuitException::gateTargetOutOfRange($gate, $qubit, $this->qubitCount);
             }
         }
-    }
-
-    /**
-     * Return the qubit indices referenced by a gate.
-     *
-     * Measure gates store their targets under the `targets` key, which may
-     * be `null` (meaning "all qubits", and therefore always valid). Every
-     * other gate stores qubit indices as plain int params. The non-index
-     * params are the float angle params (angle, theta, phi, lambda), which
-     * the is_int() filter correctly excludes because they are float|Angle
-     * (widened to float by Gate before serialization).
-     *
-     * @return int[]
-     */
-    private function gateTargets(Gate $gate): array
-    {
-        if ($gate->isMeasurement()) {
-            return $gate->params['targets'] ?? [];
-        }
-
-        return array_values(array_filter(
-            $gate->params,
-            static fn (mixed $value, string $key): bool => $key !== 'angle' && is_int($value),
-            ARRAY_FILTER_USE_BOTH
-        ));
     }
 }
