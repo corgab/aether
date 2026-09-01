@@ -78,7 +78,7 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
         elif gate_type == "x":
             circuit.x(gate["target"])
 
-        elif gate_type in ("y", "z", "s", "t"):
+        elif gate_type in ("y", "z", "s", "t", "i", "si", "ti"):
             getattr(circuit, gate_type)(gate["target"])
 
         elif gate_type in ("rx", "ry", "rz", "phaseshift"):
@@ -109,8 +109,8 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
         elif gate_type == "cnot":
             circuit.cnot(gate["control"], gate["target"])
 
-        elif gate_type == "cz":
-            circuit.cz(gate["control"], gate["target"])
+        elif gate_type in ("cz", "cy"):
+            getattr(circuit, gate_type)(gate["control"], gate["target"])
 
         elif gate_type in ("swap", "iswap"):
             getattr(circuit, gate_type)(gate["target0"], gate["target1"])

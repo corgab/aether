@@ -143,6 +143,19 @@ class CircuitBuilder
     }
 
     /**
+     * Add an Identity gate on the given qubit.
+     *
+     * @throws InvalidCircuitException
+     */
+    public function i(int $target): static
+    {
+        $this->validateTargets('I', $target);
+        $this->gates[] = Gate::i($target);
+
+        return $this;
+    }
+
+    /**
      * Add a Controlled-NOT gate.
      *
      * @throws InvalidCircuitException
@@ -167,12 +180,34 @@ class CircuitBuilder
     }
 
     /**
+     * Add a Phase-S† (adjoint S) gate on the given qubit.
+     */
+    public function si(int $target): static
+    {
+        $this->validateTargets('SI', $target);
+        $this->gates[] = Gate::si($target);
+
+        return $this;
+    }
+
+    /**
      * Add a Phase-T gate on the given qubit.
      */
     public function t(int $target): static
     {
         $this->validateTargets('T', $target);
         $this->gates[] = Gate::t($target);
+
+        return $this;
+    }
+
+    /**
+     * Add a Phase-T† (adjoint T) gate on the given qubit.
+     */
+    public function ti(int $target): static
+    {
+        $this->validateTargets('TI', $target);
+        $this->gates[] = Gate::ti($target);
 
         return $this;
     }
@@ -228,6 +263,17 @@ class CircuitBuilder
     {
         $this->validateTargets('CZ', $control, $target);
         $this->gates[] = Gate::cz($control, $target);
+
+        return $this;
+    }
+
+    /**
+     * Add a Controlled-Y gate.
+     */
+    public function cy(int $control, int $target): static
+    {
+        $this->validateTargets('CY', $control, $target);
+        $this->gates[] = Gate::cy($control, $target);
 
         return $this;
     }
@@ -360,6 +406,39 @@ class CircuitBuilder
     {
         $this->validateTargets('ZZ', $qubit0, $qubit1);
         $this->gates[] = Gate::zz($qubit0, $qubit1, $angle);
+
+        return $this;
+    }
+
+    /**
+     * Append another circuit or a callable fragment to this circuit.
+     *
+     * If a CircuitBuilder is passed, its gates (except measurements) are copied over.
+     * If a callable is passed, it receives a new, isolated CircuitBuilder (with the same qubit count).
+     *
+     * @throws InvalidCircuitException if the appended circuit requires more qubits than are available.
+     */
+    public function append(self|callable $fragment): static
+    {
+        if (is_callable($fragment)) {
+            $builder = new static($this->device, $this->driverName);
+            $builder->qubits($this->qubitCount);
+            $fragment($builder);
+            $fragment = $builder;
+        }
+
+        if ($fragment->qubitCount() > $this->qubitCount) {
+            throw InvalidCircuitException::appendedCircuitTooLarge(
+                $fragment->qubitCount(),
+                $this->qubitCount
+            );
+        }
+
+        foreach ($fragment->toArray()['gates'] as $gateDef) {
+            if (($gateDef['type'] ?? '') !== 'measure') {
+                $this->applyGateDefinition($gateDef);
+            }
+        }
 
         return $this;
     }
@@ -542,13 +621,17 @@ class CircuitBuilder
             'x' => $this->x((int) $gate['target']),
             'y' => $this->y((int) $gate['target']),
             'z' => $this->z((int) $gate['target']),
+            'i' => $this->i((int) $gate['target']),
             's' => $this->s((int) $gate['target']),
+            'si' => $this->si((int) $gate['target']),
             't' => $this->t((int) $gate['target']),
+            'ti' => $this->ti((int) $gate['target']),
             'rx' => $this->rx((int) $gate['target'], (float) $gate['angle']),
             'ry' => $this->ry((int) $gate['target'], (float) $gate['angle']),
             'rz' => $this->rz((int) $gate['target'], (float) $gate['angle']),
             'cnot' => $this->cnot((int) $gate['control'], (int) $gate['target']),
             'cz' => $this->cz((int) $gate['control'], (int) $gate['target']),
+            'cy' => $this->cy((int) $gate['control'], (int) $gate['target']),
             'swap' => $this->swap((int) $gate['target0'], (int) $gate['target1']),
             'ccnot' => $this->ccnot((int) $gate['control0'], (int) $gate['control1'], (int) $gate['target']),
             'crx' => $this->crx((int) $gate['control'], (int) $gate['target'], (float) $gate['angle']),

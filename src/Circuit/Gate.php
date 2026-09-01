@@ -50,6 +50,14 @@ final readonly class Gate
     }
 
     /**
+     * Create an Identity gate on the given qubit.
+     */
+    public static function i(int $target): self
+    {
+        return new self('i', ['target' => $target]);
+    }
+
+    /**
      * Create a Phase-S gate on the given qubit.
      */
     public static function s(int $target): self
@@ -58,11 +66,27 @@ final readonly class Gate
     }
 
     /**
+     * Create a Phase-S† (adjoint S) gate on the given qubit.
+     */
+    public static function si(int $target): self
+    {
+        return new self('si', ['target' => $target]);
+    }
+
+    /**
      * Create a Phase-T gate on the given qubit.
      */
     public static function t(int $target): self
     {
         return new self('t', ['target' => $target]);
+    }
+
+    /**
+     * Create a Phase-T† (adjoint T) gate on the given qubit.
+     */
+    public static function ti(int $target): self
+    {
+        return new self('ti', ['target' => $target]);
     }
 
     /**
@@ -112,6 +136,14 @@ final readonly class Gate
     public static function cz(int $control, int $target): self
     {
         return new self('cz', ['control' => $control, 'target' => $target]);
+    }
+
+    /**
+     * Create a Controlled-Y gate.
+     */
+    public static function cy(int $control, int $target): self
+    {
+        return new self('cy', ['control' => $control, 'target' => $target]);
     }
 
     /**

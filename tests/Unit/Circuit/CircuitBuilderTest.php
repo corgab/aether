@@ -512,6 +512,21 @@ it('t throws when target is out of range', function () use (&$builder): void {
         ->toThrow(InvalidCircuitException::class);
 });
 
+it('ti throws when target is out of range', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->ti(5))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('i throws when target is out of range', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->i(5))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('si throws when target is out of range', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->si(5))
+        ->toThrow(InvalidCircuitException::class);
+});
+
 it('rx throws when target is out of range', function () use (&$builder): void {
     expect(fn () => $builder->qubits(2)->rx(5, M_PI))
         ->toThrow(InvalidCircuitException::class);
@@ -549,6 +564,16 @@ it('cz throws when control is out of range', function () use (&$builder): void {
 
 it('cz throws when target is out of range', function () use (&$builder): void {
     expect(fn () => $builder->qubits(2)->cz(0, 5))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('cy throws when control is out of range', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->cy(5, 1))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('cy throws when target is out of range', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->cy(0, 5))
         ->toThrow(InvalidCircuitException::class);
 });
 
@@ -590,13 +615,17 @@ it('fromArray round trips a circuit with every gate type', function () {
         ->x(1)
         ->y(2)
         ->z(3)
+        ->i(0)
         ->s(0)
+        ->si(0)
         ->t(1)
+        ->ti(1)
         ->rx(0, M_PI / 2)
         ->ry(1, M_PI / 4)
         ->rz(2, 1.23)
         ->cnot(0, 1)
         ->cz(1, 2)
+        ->cy(2, 3)
         ->swap(0, 3)
         ->ccnot(0, 1, 2)
         ->crx(0, 1, 0.1)
@@ -776,3 +805,60 @@ it('throws when new multi-qubit gates have out of range parameters', function (C
     'zz target0' => [fn ($b) => $b->zz(5, 1, 0.5)],
     'zz target1' => [fn ($b) => $b->zz(0, 5, 0.5)],
 ])->throws(InvalidCircuitException::class);
+
+// -------------------------------------------------------------------------
+// append() - composition
+// -------------------------------------------------------------------------
+
+it('append copies gates from another circuit builder', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $sub = (new CircuitBuilder($device))->qubits(2)->h(0)->cnot(0, 1)->measure();
+
+    $builder = (new CircuitBuilder($device))->qubits(2)->x(0);
+    $builder->append($sub);
+
+    $gates = $builder->toArray()['gates'];
+    expect($gates)->toHaveCount(3); // x, h, cnot. measure is dropped.
+    expect($gates[0]['type'])->toBe('x');
+    expect($gates[1]['type'])->toBe('h');
+    expect($gates[2]['type'])->toBe('cnot');
+});
+
+it('append executes a closure fragment on a new builder', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(2)->x(0);
+
+    $builder->append(fn (CircuitBuilder $c) => $c->h(0)->cnot(0, 1));
+
+    $gates = $builder->toArray()['gates'];
+    expect($gates)->toHaveCount(3);
+    expect($gates[0]['type'])->toBe('x');
+    expect($gates[1]['type'])->toBe('h');
+    expect($gates[2]['type'])->toBe('cnot');
+});
+
+it('append throws if fragment requires more qubits than available', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $sub = (new CircuitBuilder($device))->qubits(3)->ccnot(0, 1, 2);
+
+    $builder = (new CircuitBuilder($device))->qubits(2);
+    expect(fn () => $builder->append($sub))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+// -------------------------------------------------------------------------
+// Issue 10 - Missing Gates
+// -------------------------------------------------------------------------
+
+it('serializes new issue 10 gates exactly to the wire contract', function (Closure $build, array $expected): void {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = (new CircuitBuilder($device))->qubits(2);
+    $build($builder);
+
+    expect($builder->toArray()['gates'][0])->toBe($expected);
+})->with([
+    'i' => [fn ($b) => $b->i(0), ['type' => 'i', 'target' => 0]],
+    'si' => [fn ($b) => $b->si(0), ['type' => 'si', 'target' => 0]],
+    'ti' => [fn ($b) => $b->ti(0), ['type' => 'ti', 'target' => 0]],
+    'cy' => [fn ($b) => $b->cy(0, 1), ['type' => 'cy', 'control' => 0, 'target' => 1]],
+]);

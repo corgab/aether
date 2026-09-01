@@ -64,6 +64,16 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for appending a circuit that requires more qubits than are available.
+     */
+    public static function appendedCircuitTooLarge(int $fragmentQubits, int $qubits): self
+    {
+        return new self(
+            "Cannot append a fragment requiring {$fragmentQubits} qubits into a circuit with only {$qubits} qubits."
+        );
+    }
+
+    /**
      * Create an exception for a measurement operation with an empty target list.
      */
     public static function emptyMeasurementTargets(): self
