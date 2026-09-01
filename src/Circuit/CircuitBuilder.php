@@ -461,7 +461,7 @@ class CircuitBuilder
      * If a callable is passed, it receives a new, isolated CircuitBuilder (with the same qubit count).
      *
      * @throws InvalidCircuitException if this circuit has no qubits yet, or the
-     *                                  appended circuit requires more qubits than are available.
+     *                                 appended circuit requires more qubits than are available.
      */
     public function append(self|callable $fragment): static
     {
