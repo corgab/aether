@@ -8,6 +8,7 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\BatchResult;
@@ -101,13 +102,51 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
+     * Guard against a circuit that requests more qubits than the driver's
+     * configured `max_qubits` ceiling allows.
+     *
+     * Statevector simulation memory doubles with every additional qubit, so
+     * an unbounded circuit can exhaust host memory well before it would ever
+     * reach a remote device's own limits. A null/absent `max_qubits` means
+     * unlimited — the default for every driver, so existing configs keep
+     * working unchanged.
+     *
+     * Called from executeCircuit() and executeBatch(), the two entry points
+     * every synchronous and asynchronous execution path funnels through
+     * (submitCircuit() on the local driver runs the circuit synchronously via
+     * executeCircuit(), so ->dispatch() is covered too).
+     *
+     * @throws InvalidCircuitException
+     */
+    private function assertWithinQubitCeiling(CircuitBuilder $circuit): void
+    {
+        $ceiling = $this->config['max_qubits'] ?? null;
+
+        if ($ceiling === null) {
+            return;
+        }
+
+        $requested = $circuit->qubitCount();
+
+        if ($requested > (int) $ceiling) {
+            throw InvalidCircuitException::qubitCeilingExceeded($requested, (int) $ceiling, $this->driverName());
+        }
+    }
+
+    /**
      * Execute the given circuits in batch on the device and return the measurement results.
      *
      * @param  CircuitBuilder[]  $circuits
+     *
+     * @throws InvalidCircuitException
      */
     public function executeBatch(array $circuits): BatchResult
     {
         $this->preflight();
+
+        foreach ($circuits as $circuit) {
+            $this->assertWithinQubitCeiling($circuit);
+        }
 
         $payload = [
             'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
@@ -150,9 +189,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         return new BatchResult($circuitResults);
     }
 
+    /**
+     * @throws InvalidCircuitException
+     */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
         $this->preflight();
+        $this->assertWithinQubitCeiling($circuit);
 
         $payload = array_merge($circuit->toArray(), [
             'driver' => $this->driverName(),

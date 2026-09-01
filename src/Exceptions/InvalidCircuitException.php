@@ -114,4 +114,19 @@ class InvalidCircuitException extends AetherException
             "Gate [{$type}] is missing required parameter [{$key}] in its array definition."
         );
     }
+
+    /**
+     * Create an exception for a circuit requesting more qubits than the
+     * driver's configured `max_qubits` ceiling allows.
+     */
+    public static function qubitCeilingExceeded(int $requested, int $ceiling, string $driver): self
+    {
+        return new self(
+            "Circuit requires {$requested} qubit(s), which exceeds the [{$driver}] driver's configured ".
+            "max_qubits ceiling of {$ceiling}. Statevector simulation memory doubles with every additional ".
+            'qubit, so this ceiling protects the host from exhausting its memory. Raise the `max_qubits` '.
+            "entry in the driver's config (e.g. the AETHER_MAX_QUBITS env var for the local driver) if the ".
+            'host has enough memory to spare, or set it to null to remove the ceiling entirely.'
+        );
+    }
 }

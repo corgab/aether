@@ -7,6 +7,7 @@ use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
@@ -202,4 +203,35 @@ it('checkTask reports Failed for an unknown task key', function () {
 it('checkTask rejects a task arn that is not in local: form', function () {
     expect(fn () => $this->driver->checkTask('arn:aws:braket:us-east-1:123456789012:quantum-task/abc'))
         ->toThrow(QuantumExecutionException::class);
+});
+
+// -------------------------------------------------------------------------
+// max_qubits ceiling: dispatch() / submitCircuit() path
+// -------------------------------------------------------------------------
+
+it('rejects submitCircuit when the circuit exceeds max_qubits', function () use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(6);
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->submitCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('allows submitCircuit when the circuit is within max_qubits', function () use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(5);
+    $circuit->method('toArray')->willReturn(['qubits' => 5, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toStartWith('local:');
 });

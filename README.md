@@ -334,6 +334,20 @@ When using real QPU hardware, requests can take minutes. Set `synchronous_safe` 
 
 This will throw a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission is never blocked by this flag — that is the path the flag is steering you toward.
 
+## Qubit Ceiling
+
+The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling (default `25`, roughly 512 MB) on every `->run()`, `->dispatch()`, and `Quantum::batch()` call:
+
+```php
+// config/aether.php
+'local' => [
+    'max_qubits' => env('AETHER_MAX_QUBITS', 25),
+    // ...
+],
+```
+
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` to remove the ceiling entirely. The `aws` driver has no ceiling by default — Braket enforces its own per-device qubit limits.
+
 ## License
 
 MIT

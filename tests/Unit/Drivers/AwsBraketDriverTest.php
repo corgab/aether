@@ -429,6 +429,37 @@ it('throws QuantumExecutionException when check.py status is missing', function 
         ->toThrow(QuantumExecutionException::class, 'status');
 });
 
+// -------------------------------------------------------------------------
+// max_qubits ceiling: unaffected by default (matches config/aether.php,
+// where the aws driver has no max_qubits configured)
+// -------------------------------------------------------------------------
+
+it('does not enforce a qubit ceiling on executeCircuit by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 30, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('does not enforce a qubit ceiling on submitCircuit by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 30, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/big']);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/big');
+});
+
 it('throws QuantumExecutionException when check.py status is unknown', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
 
