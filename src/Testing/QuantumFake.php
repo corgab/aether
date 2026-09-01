@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Aether\Testing;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Concerns\DispatchesLifecycleEvents;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Events\CircuitExecuted;
+use Aether\Events\EntropyGenerated;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
@@ -17,9 +20,25 @@ use PHPUnit\Framework\Assert;
 
 /**
  * Test double for QuantumDevice (and AsynchronousDevice) that records interactions.
+ *
+ * Also dispatches CircuitExecuted and EntropyGenerated exactly like the real
+ * drivers (through the same guarded DispatchesLifecycleEvents trait), so
+ * Event::fake() assertions on those events keep working for code under test
+ * even when Quantum::fake() stands in for the backend — the same fake/event
+ * parity Http::fake() gives Http-driven code.
  */
 class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 {
+    use DispatchesLifecycleEvents;
+
+    /**
+     * Driver name reported on CircuitExecuted/EntropyGenerated when the fake
+     * has no better one to use — generateEntropy() receives no CircuitBuilder
+     * to read a pinned driver name from, and the fake itself stands in for
+     * whichever driver alias was resolved, not a specific one.
+     */
+    private const FAKE_DRIVER = 'fake';
+
     /** @var CircuitBuilder[] */
     private array $recordedCircuits = [];
 
@@ -52,7 +71,11 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     {
         $this->recordedCircuits[] = $circuit;
 
-        return new CircuitResult($this->resolveCounts($circuit));
+        $result = new CircuitResult($this->resolveCounts($circuit));
+
+        $this->dispatchEvent(new CircuitExecuted($circuit->driverName() ?? self::FAKE_DRIVER, $circuit->toArray(), $result));
+
+        return $result;
     }
 
     /**
@@ -95,6 +118,8 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
         for ($i = 0, $length = (int) ceil($bits / 8); $i < $length; $i++) {
             $bytes .= chr($this->entropyCounter++ & 0xFF);
         }
+
+        $this->dispatchEvent(new EntropyGenerated(self::FAKE_DRIVER, $bits));
 
         return $bytes;
     }
