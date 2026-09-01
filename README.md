@@ -66,9 +66,24 @@ $result = Quantum::circuit()
     ->shots(1024)
     ->run();
 
-$result->counts();        // ['00' => 512, '11' => 512]
-$result->probabilities(); // ['00' => 0.5, '11' => 0.5]
-$result->mostFrequent();  // '00'
+$result->counts();          // ['00' => 512, '11' => 512]
+$result->probabilities();   // ['00' => 0.5, '11' => 0.5]
+$result->mostFrequent();    // '00'
+
+$result->count('00');       // 512 — measurement count for a single bitstring
+$result->count();           // 2   — number of distinct outcomes (Countable)
+$result->probability('00'); // 0.5 — probability of a single bitstring
+$result->shots();           // 1024 — total measurements
+$result->outcomes();        // ['00', '11'] — bitstrings sorted by count, descending
+```
+
+`CircuitBuilder` exposes read-only introspection on the circuit being built:
+
+```php
+$builder = Quantum::circuit()->qubits(2)->h(0)->cnot(0, 1)->measure();
+
+$builder->gateCount(); // 2 — number of gates, excluding measurement
+$builder->depth();     // 2 — number of sequential layers, excluding measurement
 ```
 
 ### Entropy Generation

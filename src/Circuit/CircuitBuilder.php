@@ -457,6 +457,50 @@ class CircuitBuilder
     }
 
     /**
+     * Return the number of gates in the circuit, excluding measurement.
+     */
+    public function gateCount(): int
+    {
+        return count(array_filter(
+            $this->gates,
+            static fn (Gate $gate): bool => ! $gate->isMeasurement(),
+        ));
+    }
+
+    /**
+     * Return the circuit depth: the number of sequential layers needed to
+     * run the circuit, where gates on disjoint qubits can share a layer but
+     * a gate must wait for every qubit it touches to be free. Measurement
+     * is excluded. Returns 0 for a circuit with no gates.
+     */
+    public function depth(): int
+    {
+        /** @var array<int, int> $qubitLayers Last occupied layer per qubit index. */
+        $qubitLayers = [];
+        $depth = 0;
+
+        foreach ($this->gates as $gate) {
+            if ($gate->isMeasurement()) {
+                continue;
+            }
+
+            $layer = 1 + array_reduce(
+                $gate->qubitIndices(),
+                static fn (int $carry, int $qubit): int => max($carry, $qubitLayers[$qubit] ?? 0),
+                0,
+            );
+
+            foreach ($gate->qubitIndices() as $qubit) {
+                $qubitLayers[$qubit] = $layer;
+            }
+
+            $depth = max($depth, $layer);
+        }
+
+        return $depth;
+    }
+
+    /**
      * Validate and execute the circuit on the configured device.
      *
      * @throws InvalidCircuitException

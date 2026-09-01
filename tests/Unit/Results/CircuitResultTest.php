@@ -209,3 +209,85 @@ it('normalizes integer count keys to strings', function () {
 
     expect($result->counts())->toBe(['10' => 500, '11' => 500]);
 });
+
+// -------------------------------------------------------------------------
+// probability()
+// -------------------------------------------------------------------------
+
+it('probability returns count over total shots for a known bitstring', function () {
+    $result = new CircuitResult(['00' => 600, '11' => 400]);
+
+    expect($result->probability('00'))->toEqualWithDelta(0.6, 0.00001);
+});
+
+it('probability returns 0.0 for a bitstring that was never measured', function () {
+    $result = new CircuitResult(['00' => 600, '11' => 400]);
+
+    expect($result->probability('01'))->toBe(0.0);
+});
+
+it('probability returns 0.0 when total shots is zero', function () {
+    $result = new CircuitResult(['00' => 0]);
+
+    expect($result->probability('00'))->toBe(0.0);
+});
+
+// -------------------------------------------------------------------------
+// count() — optional bitstring argument
+// -------------------------------------------------------------------------
+
+it('count with no argument still returns the number of distinct outcomes', function () {
+    $result = new CircuitResult(['00' => 503, '01' => 10, '11' => 497]);
+
+    expect($result->count())->toBe(3);
+});
+
+it('count with a bitstring returns its measurement count', function () {
+    $result = new CircuitResult(['00' => 503, '11' => 497]);
+
+    expect($result->count('00'))->toBe(503);
+});
+
+it('count with an absent bitstring returns 0', function () {
+    $result = new CircuitResult(['00' => 503, '11' => 497]);
+
+    expect($result->count('01'))->toBe(0);
+});
+
+// -------------------------------------------------------------------------
+// shots()
+// -------------------------------------------------------------------------
+
+it('shots returns the sum of all counts', function () {
+    $result = new CircuitResult(['00' => 503, '11' => 497]);
+
+    expect($result->shots())->toBe(1000);
+});
+
+it('shots is zero for empty counts', function () {
+    $result = new CircuitResult([]);
+
+    expect($result->shots())->toBe(0);
+});
+
+// -------------------------------------------------------------------------
+// outcomes()
+// -------------------------------------------------------------------------
+
+it('outcomes are ordered by count descending', function () {
+    $result = new CircuitResult(['01' => 10, '00' => 503, '11' => 487]);
+
+    expect($result->outcomes())->toBe(['00', '11', '01']);
+});
+
+it('outcomes keeps insertion order on ties', function () {
+    $result = new CircuitResult(['11' => 500, '00' => 500, '01' => 500]);
+
+    expect($result->outcomes())->toBe(['11', '00', '01']);
+});
+
+it('outcomes is empty for empty counts', function () {
+    $result = new CircuitResult([]);
+
+    expect($result->outcomes())->toBe([]);
+});

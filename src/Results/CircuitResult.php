@@ -69,6 +69,23 @@ class CircuitResult implements \Stringable, Arrayable, Countable, Jsonable, Json
     }
 
     /**
+     * Return the probability of a single outcome (count / total shots).
+     *
+     * Returns 0.0 when the bitstring was never measured, or when there are
+     * no shots at all — the same zero-total guard as probabilities().
+     */
+    public function probability(string $bitstring): float
+    {
+        $total = $this->shots();
+
+        if ($total === 0) {
+            return 0.0;
+        }
+
+        return ($this->counts[$bitstring] ?? 0) / $total;
+    }
+
+    /**
      * Return the bitstring with the highest measurement count.
      * On a tie, the first key (in insertion order) is returned.
      *
@@ -94,11 +111,50 @@ class CircuitResult implements \Stringable, Arrayable, Countable, Jsonable, Json
     }
 
     /**
-     * Return the number of distinct measured outcomes.
+     * Return the bitstrings observed, sorted by measurement count in
+     * descending order. Ties keep their relative insertion order (PHP's
+     * sort functions have been stable since PHP 8.0).
+     *
+     * @return list<string>
      */
-    public function count(): int
+    public function outcomes(): array
     {
-        return count($this->counts);
+        $counts = $this->counts;
+
+        arsort($counts);
+
+        // array_keys() would otherwise hand back PHP's own int keys for
+        // canonical-integer bitstrings (e.g. "11" decays to 11), the same
+        // coercion the constructor and mostFrequent() guard against.
+        return array_map(static fn (int|string $bitstring): string => (string) $bitstring, array_keys($counts));
+    }
+
+    /**
+     * Return the total number of measurements (the sum of all counts).
+     */
+    public function shots(): int
+    {
+        return array_sum($this->counts);
+    }
+
+    /**
+     * Return the number of distinct measured outcomes, or — when a
+     * bitstring is given — the measurement count for that specific
+     * outcome (0 when it was never measured).
+     *
+     * The optional parameter keeps this signature-compatible with
+     * Countable::count(): calling count($result) still returns the
+     * original distinct-outcome count.
+     */
+    public function count(?string $bitstring = null): int
+    {
+        if ($bitstring === null) {
+            return count($this->counts);
+        }
+
+        // Countable::count() is typed int<0, max> by PHPStan's builtin stub;
+        // guard non-negative rather than trust plain array<string, int>.
+        return max(0, $this->counts[$bitstring] ?? 0);
     }
 
     /**
