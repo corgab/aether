@@ -7,19 +7,21 @@
     "authors": [
         {
             "name": "corgab",
+            "email": "corbanigabriele@gmail.com",
             "homepage": "https://github.com/corgab"
         }
     ],
     "homepage": "https://github.com/corgab/aether",
+    "support": {
+        "issues": "https://github.com/corgab/aether/issues",
+        "source": "https://github.com/corgab/aether"
+    },
     "require": {
         "php": "^8.3",
-        "illuminate/bus": "^12.0|^13.0",
-        "illuminate/console": "^12.0|^13.0",
-        "illuminate/contracts": "^12.0|^13.0",
-        "illuminate/database": "^12.0|^13.0",
-        "illuminate/events": "^12.0|^13.0",
-        "illuminate/queue": "^12.0|^13.0",
-        "illuminate/support": "^12.0|^13.0",
+        "illuminate/console": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/support": "^13.0",
         "symfony/process": "^7.0"
     },
     "require-dev": {
