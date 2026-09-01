@@ -170,6 +170,8 @@ class CircuitBuilder
 
     /**
      * Add a Phase-S gate on the given qubit.
+     *
+     * @throws InvalidCircuitException
      */
     public function s(int $target): static
     {
@@ -181,6 +183,8 @@ class CircuitBuilder
 
     /**
      * Add a Phase-S† (adjoint S) gate on the given qubit.
+     *
+     * @throws InvalidCircuitException
      */
     public function si(int $target): static
     {
@@ -192,6 +196,8 @@ class CircuitBuilder
 
     /**
      * Add a Phase-T gate on the given qubit.
+     *
+     * @throws InvalidCircuitException
      */
     public function t(int $target): static
     {
@@ -203,6 +209,8 @@ class CircuitBuilder
 
     /**
      * Add a Phase-T† (adjoint T) gate on the given qubit.
+     *
+     * @throws InvalidCircuitException
      */
     public function ti(int $target): static
     {
@@ -214,6 +222,8 @@ class CircuitBuilder
 
     /**
      * Add a rotation around the X-axis.
+     *
+     * @throws InvalidCircuitException
      */
     public function rx(int $target, float|Angle $angle): static
     {
@@ -225,6 +235,8 @@ class CircuitBuilder
 
     /**
      * Add a rotation around the Y-axis.
+     *
+     * @throws InvalidCircuitException
      */
     public function ry(int $target, float|Angle $angle): static
     {
@@ -236,6 +248,8 @@ class CircuitBuilder
 
     /**
      * Add a rotation around the Z-axis.
+     *
+     * @throws InvalidCircuitException
      */
     public function rz(int $target, float|Angle $angle): static
     {
@@ -247,6 +261,8 @@ class CircuitBuilder
 
     /**
      * Add a SWAP gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function swap(int $qubit0, int $qubit1): static
     {
@@ -258,6 +274,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-Z gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function cz(int $control, int $target): static
     {
@@ -269,6 +287,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-Y gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function cy(int $control, int $target): static
     {
@@ -280,6 +300,8 @@ class CircuitBuilder
 
     /**
      * Add a Toffoli (CCNOT) gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function ccnot(int $control0, int $control1, int $target): static
     {
@@ -291,6 +313,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-RX gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function crx(int $control, int $target, float|Angle $angle): static
     {
@@ -302,6 +326,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-RY gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function cry(int $control, int $target, float|Angle $angle): static
     {
@@ -313,6 +339,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-RZ gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function crz(int $control, int $target, float|Angle $angle): static
     {
@@ -324,6 +352,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-PhaseShift gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function cphaseshift(int $control, int $target, float|Angle $angle): static
     {
@@ -335,6 +365,8 @@ class CircuitBuilder
 
     /**
      * Add a PhaseShift gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function phaseshift(int $target, float|Angle $angle): static
     {
@@ -346,6 +378,8 @@ class CircuitBuilder
 
     /**
      * Add a U gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function u(int $target, float|Angle $theta, float|Angle $phi, float|Angle $lambda): static
     {
@@ -357,6 +391,8 @@ class CircuitBuilder
 
     /**
      * Add a Controlled-SWAP (Fredkin) gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function cswap(int $control, int $qubit0, int $qubit1): static
     {
@@ -368,6 +404,8 @@ class CircuitBuilder
 
     /**
      * Add an iSWAP gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function iswap(int $qubit0, int $qubit1): static
     {
@@ -379,6 +417,8 @@ class CircuitBuilder
 
     /**
      * Add an XX gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function xx(int $qubit0, int $qubit1, float|Angle $angle): static
     {
@@ -390,6 +430,8 @@ class CircuitBuilder
 
     /**
      * Add a YY gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function yy(int $qubit0, int $qubit1, float|Angle $angle): static
     {
@@ -401,6 +443,8 @@ class CircuitBuilder
 
     /**
      * Add a ZZ gate.
+     *
+     * @throws InvalidCircuitException
      */
     public function zz(int $qubit0, int $qubit1, float|Angle $angle): static
     {
@@ -416,10 +460,15 @@ class CircuitBuilder
      * If a CircuitBuilder is passed, its gates (except measurements) are copied over.
      * If a callable is passed, it receives a new, isolated CircuitBuilder (with the same qubit count).
      *
-     * @throws InvalidCircuitException if the appended circuit requires more qubits than are available.
+     * @throws InvalidCircuitException if this circuit has no qubits yet, or the
+     *                                  appended circuit requires more qubits than are available.
      */
     public function append(self|callable $fragment): static
     {
+        if ($this->qubitCount === 0) {
+            throw InvalidCircuitException::noQubits();
+        }
+
         if (is_callable($fragment)) {
             $builder = new static($this->device, $this->driverName);
             $builder->qubits($this->qubitCount);
@@ -434,9 +483,13 @@ class CircuitBuilder
             );
         }
 
-        foreach ($fragment->toArray()['gates'] as $gateDef) {
-            if (($gateDef['type'] ?? '') !== 'measure') {
-                $this->applyGateDefinition($gateDef);
+        // Gate is an immutable value object and the fragment's gates were
+        // already validated against its own (not larger) qubit count, so they
+        // can be shared directly without a toArray()/applyGateDefinition()
+        // round trip that would re-serialize and re-validate every gate.
+        foreach ($fragment->gates as $gate) {
+            if (! $gate->isMeasurement()) {
+                $this->gates[] = $gate;
             }
         }
 
@@ -701,7 +754,7 @@ class CircuitBuilder
      */
     private function gateTargets(Gate $gate): array
     {
-        if ($gate->type === 'measure') {
+        if ($gate->isMeasurement()) {
             return $gate->params['targets'] ?? [];
         }
 

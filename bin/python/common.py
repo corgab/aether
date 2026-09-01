@@ -48,7 +48,7 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
 def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
 
-    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``s``, ``t``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``swap``, ``ccnot``, ``crx``, ``cry``, ``crz``, ``cphaseshift``, ``phaseshift``, ``u``, ``cswap``, ``iswap``, ``xx``, ``yy``, ``zz``, ``measure``.
+    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``i``, ``s``, ``si``, ``t``, ``ti``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``cy``, ``swap``, ``ccnot``, ``crx``, ``cry``, ``crz``, ``cphaseshift``, ``phaseshift``, ``u``, ``cswap``, ``iswap``, ``xx``, ``yy``, ``zz``, ``measure``.
     For ``measure`` gates, a ``null`` / missing ``targets`` field means
     *measure all qubits* (indices 0 through ``qubits-1``).
 

@@ -203,8 +203,11 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `x($qubit)` | Pauli-X (NOT) |
 | `y($qubit)` | Pauli-Y |
 | `z($qubit)` | Pauli-Z |
+| `i($qubit)` | Identity |
 | `s($qubit)` | Phase-S |
+| `si($qubit)` | Phase-S† (adjoint S) |
 | `t($qubit)` | Phase-T |
+| `ti($qubit)` | Phase-T† (adjoint T) |
 | `rx($qubit, $angle)` | Rotation around the X-axis (`float` radians or `Angle`) |
 | `ry($qubit, $angle)` | Rotation around the Y-axis (`float` radians or `Angle`) |
 | `rz($qubit, $angle)` | Rotation around the Z-axis (`float` radians or `Angle`) |
@@ -212,6 +215,7 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `u($qubit, $theta, $phi, $lambda)` | Universal single-qubit rotation |
 | `cnot($control, $target)` | Controlled-NOT |
 | `cz($control, $target)` | Controlled-Z |
+| `cy($control, $target)` | Controlled-Y |
 | `crx($control, $target, $angle)` | Controlled-RX (`float` radians or `Angle`) |
 | `cry($control, $target, $angle)` | Controlled-RY (`float` radians or `Angle`) |
 | `crz($control, $target, $angle)` | Controlled-RZ (`float` radians or `Angle`) |
@@ -224,6 +228,23 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 | `ccnot($control0, $control1, $target)` | Toffoli (CCNOT) |
 | `cswap($control, $qubit0, $qubit1)` | Controlled-SWAP (Fredkin) |
 | `measure($targets)` | Measurement (null = all qubits) |
+
+### Circuit Composition
+
+Reusable sub-circuits can be appended to a circuit with `append()`, passing either another builder or a closure that receives an isolated builder with the same qubit count. Measurement gates in the fragment are dropped, so the parent circuit decides where to measure:
+
+```php
+$bell = Quantum::circuit()->qubits(2)->h(0)->cnot(0, 1);
+
+$result = Quantum::circuit()
+    ->qubits(2)
+    ->append($bell)
+    ->append(fn ($c) => $c->rz(0, M_PI / 4))
+    ->measure()
+    ->run();
+```
+
+Appending a fragment that requires more qubits than the circuit has throws an `InvalidCircuitException`.
 
 ## Testing
 

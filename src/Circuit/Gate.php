@@ -307,6 +307,14 @@ final readonly class Gate
     }
 
     /**
+     * Determine whether this gate is a measurement operation.
+     */
+    public function isMeasurement(): bool
+    {
+        return $this->type === 'measure';
+    }
+
+    /**
      * Serialize the gate to a flat array suitable for JSON encoding.
      *
      * @return array<string, mixed>

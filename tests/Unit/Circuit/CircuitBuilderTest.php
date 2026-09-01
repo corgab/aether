@@ -846,6 +846,14 @@ it('append throws if fragment requires more qubits than available', function () 
         ->toThrow(InvalidCircuitException::class);
 });
 
+it('append throws when the circuit has no qubits yet', function () {
+    $device = $this->createMock(QuantumDevice::class);
+    $builder = new CircuitBuilder($device);
+
+    expect(fn () => $builder->append(fn (CircuitBuilder $c) => $c->h(0)))
+        ->toThrow(InvalidCircuitException::class, 'The circuit must have at least one qubit');
+});
+
 // -------------------------------------------------------------------------
 // Issue 10 - Missing Gates
 // -------------------------------------------------------------------------
