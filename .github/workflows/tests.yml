@@ -41,3 +41,28 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/pest
+
+  python-tests:
+    runs-on: ubuntu-latest
+
+    name: Python ${{ matrix.python }} — bin/python
+
+    strategy:
+      fail-fast: true
+      matrix:
+        python: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pytest amazon-braket-sdk
+
+      - name: Run tests
+        run: pytest tests/python/ -v
