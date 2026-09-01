@@ -20,10 +20,11 @@ Output (JSON on stdout)::
 
     {"results": [{"counts": {"00": 503, "11": 497}}, {"counts": {"1": 500}}]}
 
-Shots are honoured per circuit. ``AwsDevice.run_batch`` accepts one shot count
-per task natively; ``LocalSimulator.run_batch`` does not, so mixed shot counts
-on the local driver fall back to running the circuits sequentially inside this
-same process.
+Shots are honoured per circuit. Providers with a ``run_batch`` hook (the aws
+provider uses ``AwsDevice.run_batch``, which accepts one shot count per task
+natively) control batching themselves; for the rest the default strategy runs
+one ``device.run_batch`` call for uniform shot counts and falls back to
+running the circuits sequentially inside this same process for mixed ones.
 
 On error the script writes ``{"error": "<message>"}`` to stderr and exits
 with code 1.
@@ -33,7 +34,7 @@ import json
 import sys
 from typing import Any
 
-from common import build_circuit, resolve_device
+from common import build_circuit, default_run_batch, load_provider, provider_run_options
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -47,28 +48,20 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     circuits = [build_circuit(c["qubits"], c["gates"]) for c in circuits_data]
     shots_list = [int(c.get("shots", 1000)) for c in circuits_data]
 
-    device = resolve_device(driver, driver_config)
+    provider = load_provider(driver, driver_config)
+    device = provider.resolve_device(driver_config)
 
-    if driver == "aws":
-        bucket = driver_config.get("bucket")
-        if not bucket:
-            raise ValueError("Driver 'aws' requires a non-empty 'bucket' in driver_config.")
+    run_batch = getattr(provider, "run_batch", None)
 
-        batch = device.run_batch(
-            circuits,
-            shots=shots_list,
-            s3_destination_folder=(bucket, "results"),
-        )
-        # Without fail_unsuccessful the SDK returns None for FAILED/CANCELLED
-        # tasks; let it raise a clear RuntimeError instead.
-        results = batch.results(fail_unsuccessful=True)
-    elif len(set(shots_list)) == 1:
-        results = device.run_batch(circuits, shots=shots_list[0]).results()
+    if callable(run_batch):
+        results = run_batch(device, circuits, shots_list, driver_config)
     else:
-        results = [
-            device.run(circuit, shots=shots).result()
-            for circuit, shots in zip(circuits, shots_list)
-        ]
+        results = default_run_batch(
+            device,
+            circuits,
+            shots_list,
+            provider_run_options(provider, driver_config),
+        )
 
     return {"results": [{"counts": dict(result.measurement_counts)} for result in results]}
 
