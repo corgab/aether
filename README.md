@@ -348,6 +348,47 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 
 A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` to remove the ceiling entirely. The `aws` driver has no ceiling by default — Braket enforces its own per-device qubit limits.
 
+## Cost Estimation
+
+The `aws` driver can estimate the cost of a circuit before it runs, from configured pricing — no AWS Pricing API call is made:
+
+```php
+$estimate = Quantum::driver('aws')->circuit()
+    ->qubits(2)
+    ->h(0)
+    ->cnot(0, 1)
+    ->measure()
+    ->shots(1000)
+    ->estimateCost();
+
+$estimate->amount;     // 0.65
+$estimate->currency;   // 'USD'
+$estimate->shots;      // 1000
+$estimate->breakdown;  // ['per_task' => 0.30, 'per_shot' => 0.35]
+(string) $estimate;    // '0.65 USD'
+```
+
+The rates live in `config/aether.php` and mirror AWS Braket QPU list prices (task + shot) at the time of writing — **verify against current AWS pricing** before relying on them for budgeting, and override via env vars without a package release:
+
+```env
+AETHER_AWS_PRICE_PER_TASK=0.30
+AETHER_AWS_PRICE_PER_SHOT=0.00035
+```
+
+Managed simulators (e.g. SV1) bill per-minute instead, so treat simulator estimates as a rough proxy rather than an exact figure. `estimateCost()` is only available on drivers implementing `EstimatesCost`; calling it on the `local` driver (which is free) throws a `QuantumExecutionException`.
+
+Set `AETHER_AWS_MAX_COST` (or `max_cost_per_task` in config) to reject a circuit or batch whose estimated cost exceeds it, before any AWS call:
+
+```php
+// config/aether.php
+'aws' => [
+    'max_cost_per_task' => env('AETHER_AWS_MAX_COST', null),
+    // ...
+],
+```
+
+The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost). It throws an `InvalidCircuitException`. `null` (the default) means unlimited — existing configs keep working unchanged.
+
 ## License
 
 MIT

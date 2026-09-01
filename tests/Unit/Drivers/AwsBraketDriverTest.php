@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
+use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 
@@ -33,6 +36,11 @@ beforeEach(function () {
         'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
         'bucket' => 'test-bucket',
         'synchronous_safe' => true,
+        'pricing' => [
+            'per_task' => 0.30,
+            'per_shot' => 0.00035,
+            'currency' => 'USD',
+        ],
     ];
 });
 
@@ -467,4 +475,177 @@ it('throws QuantumExecutionException when check.py status is unknown', function 
 
     expect(fn () => $driver->checkTask('arn:...'))
         ->toThrow(QuantumExecutionException::class, 'status');
+});
+
+// -------------------------------------------------------------------------
+// estimateCost()
+// -------------------------------------------------------------------------
+
+it('implements EstimatesCost interface', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    expect($driver)->toBeInstanceOf(EstimatesCost::class);
+});
+
+it('estimates cost from configured pricing for a single task', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $estimate = $driver->estimateCost(1000);
+
+    expect($estimate)->toBeInstanceOf(CostEstimate::class);
+    expect(round($estimate->amount, 10))->toBe(0.65);
+    expect($estimate->currency)->toBe('USD');
+    expect($estimate->shots)->toBe(1000);
+    expect($estimate->breakdown)->toBe(['per_task' => 0.30, 'per_shot' => 0.35]);
+});
+
+it('scales the per_task component by the given task count', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $estimate = $driver->estimateCost(2000, tasks: 2);
+
+    expect($estimate->breakdown['per_task'])->toBe(0.60);
+    expect($estimate->breakdown['per_shot'])->toBe(0.70);
+    expect(round($estimate->amount, 10))->toBe(1.30);
+});
+
+it('falls back to zero-cost rates when pricing config is absent', function () {
+    $driver = new AwsBraketDriver($this->bridge, [
+        'region' => 'us-east-1',
+        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+        'bucket' => 'test-bucket',
+    ]);
+
+    $estimate = $driver->estimateCost(1000);
+
+    expect($estimate->amount)->toBe(0.0);
+    expect($estimate->currency)->toBe('USD');
+});
+
+// -------------------------------------------------------------------------
+// max_cost_per_task guard
+// -------------------------------------------------------------------------
+
+it('does not enforce a cost ceiling on executeCircuit by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1_000_000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('throws InvalidCircuitException on executeCircuit when the estimated cost exceeds max_cost_per_task', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 0.5]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(1000); // 0.30 + 0.35 = 0.65 > 0.5
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('allows executeCircuit when the estimated cost is exactly at the max_cost_per_task boundary', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 0.65]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(1000); // exactly 0.65
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1000]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('throws InvalidCircuitException on submitCircuit when the estimated cost exceeds max_cost_per_task', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 0.5]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(1000);
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->submitCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('allows submitCircuit when the estimated cost is within max_cost_per_task', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 1.0]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(1000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/ok']);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/ok');
+});
+
+it('throws InvalidCircuitException on executeBatch when the total estimated cost exceeds max_cost_per_task', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 1.0]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $first = $this->createMock(CircuitBuilder::class);
+    $first->method('shotCount')->willReturn(1000);
+    $second = $this->createMock(CircuitBuilder::class);
+    $second->method('shotCount')->willReturn(1000);
+    // 2 tasks * 0.30 + 2000 shots * 0.00035 = 0.60 + 0.70 = 1.30 > 1.0
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeBatch([$first, $second]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('allows executeBatch when the total estimated cost is within max_cost_per_task', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => 2.0]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $first = $this->createMock(CircuitBuilder::class);
+    $first->method('shotCount')->willReturn(1000);
+    $first->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+    $second = $this->createMock(CircuitBuilder::class);
+    $second->method('shotCount')->willReturn(1000);
+    $second->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn([
+        'results' => [
+            ['counts' => ['0' => 1000]],
+            ['counts' => ['0' => 1000]],
+        ],
+    ]);
+
+    $result = $driver->executeBatch([$first, $second]);
+
+    expect($result->count())->toBe(2);
+});
+
+it('does not enforce a cost ceiling when max_cost_per_task is null', function () {
+    $config = array_merge($this->config, ['max_cost_per_task' => null]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1_000_000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
 });

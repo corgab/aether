@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Aether\Circuit;
 
+use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\Results\CircuitResult;
+use Aether\Results\CostEstimate;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Support\Traits\Conditionable;
 use Illuminate\Support\Traits\Tappable;
@@ -510,6 +513,22 @@ class CircuitBuilder
         $this->validate();
 
         return $this->device->executeCircuit($this);
+    }
+
+    /**
+     * Estimate the cost of running this circuit, delegating to the
+     * configured device's own pricing. No network call is made and the
+     * circuit is not executed.
+     *
+     * @throws QuantumExecutionException When the device does not implement EstimatesCost.
+     */
+    public function estimateCost(): CostEstimate
+    {
+        if (! $this->device instanceof EstimatesCost) {
+            throw QuantumExecutionException::costEstimationUnsupported($this->driverName ?? 'unknown');
+        }
+
+        return $this->device->estimateCost($this->shots);
     }
 
     /**
