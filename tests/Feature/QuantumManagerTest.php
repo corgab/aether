@@ -82,6 +82,14 @@ it('fake returns same instance for any driver name', function () {
     expect($manager->driver('anything'))->toBe($fake);
 });
 
+it('fake threads a stub through to the QuantumFake it creates', function () {
+    $manager = app(QuantumManager::class);
+    $fake = $manager->fake(['00' => 700, '11' => 324]);
+    $circuit = $manager->circuit()->qubits(2)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['00' => 700, '11' => 324]);
+});
+
 it('custom driver takes precedence over built-in', function () {
     $manager = app(QuantumManager::class);
     $stub = $this->createMock(QuantumDevice::class);
