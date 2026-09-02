@@ -16,6 +16,8 @@ use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
+use Aether\Tasks\TaskSnapshot;
+use Aether\Tasks\TaskStatus;
 
 /**
  * Base driver with shared circuit execution and entropy generation logic.
@@ -60,6 +62,26 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     protected function beforeExecution(): void {}
 
     /**
+     * Admission checks every circuit must pass before it reaches Python.
+     *
+     * This is the single funnel for per-circuit guards: executeCircuit(),
+     * executeBatch() and submitTask() all call it, so a guard added here (or
+     * in an override) holds on ->run(), Quantum::batch() and ->dispatch()
+     * alike. Concrete drivers extend it by overriding and calling the parent
+     * first — see AwsBraketDriver::validateCircuits() for the cost ceiling.
+     *
+     * @param  list<CircuitBuilder>  $circuits
+     *
+     * @throws InvalidCircuitException
+     */
+    protected function validateCircuits(array $circuits): void
+    {
+        foreach ($circuits as $circuit) {
+            $this->assertWithinQubitCeiling($circuit);
+        }
+    }
+
+    /**
      * Run the mandatory pre-flight steps before spawning a *synchronous*
      * Python subprocess (executeCircuit()/generateEntropy()).
      *
@@ -67,11 +89,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * beforeExecution() so a driver overriding the hook cannot silently skip
      * validation by forgetting to call the parent implementation.
      *
-     * Asynchronous methods (submitCircuit()/checkTask()) must NOT go through
-     * this method: submitting a task or polling it never blocks on the QPU,
-     * so the synchronous-safety hook (e.g. AwsBraketDriver::beforeExecution())
-     * must not fire for them. They call assertConfigured() directly instead —
-     * see its docblock for why that still enforces validation.
+     * Asynchronous paths (submitTask()/pollTask()) must NOT go through this
+     * method: submitting a task or polling it never blocks on the QPU, so the
+     * synchronous-safety hook (e.g. AwsBraketDriver::beforeExecution()) must
+     * not fire for them. They call assertConfigured() directly instead — see
+     * its docblock for why that still enforces validation.
      */
     private function preflight(): void
     {
@@ -84,7 +106,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * with a clear message before any Python subprocess is spawned.
      *
      * Protected (rather than folded into beforeExecution()) so both the
-     * synchronous preflight() and the asynchronous submitCircuit()/checkTask()
+     * synchronous preflight() and the asynchronous submitTask()/pollTask()
      * paths enforce it directly. A driver cannot skip config validation by
      * only overriding beforeExecution(), because that hook is never the one
      * responsible for running this check.
@@ -112,14 +134,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * Statevector simulation memory doubles with every additional qubit, so
      * an unbounded circuit can exhaust host memory well before it would ever
-     * reach a remote device's own limits. A null/absent `max_qubits` means
-     * unlimited — the default for every driver, so existing configs keep
+     * reach a remote device's own limits. A blank `max_qubits` (absent, null,
+     * or an empty string — what env() yields for `AETHER_MAX_QUBITS=`) means
+     * unlimited, the default for every driver, so existing configs keep
      * working unchanged.
-     *
-     * Called from executeCircuit() and executeBatch(), the two entry points
-     * every synchronous and asynchronous execution path funnels through
-     * (submitCircuit() on the local driver runs the circuit synchronously via
-     * executeCircuit(), so ->dispatch() is covered too).
      *
      * @throws InvalidCircuitException
      */
@@ -127,7 +145,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $ceiling = $this->config['max_qubits'] ?? null;
 
-        if ($ceiling === null) {
+        if (blank($ceiling)) {
             return;
         }
 
@@ -136,6 +154,21 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         if ($requested > (int) $ceiling) {
             throw InvalidCircuitException::qubitCeilingExceeded($requested, (int) $ceiling, $this->driverName());
         }
+    }
+
+    /**
+     * Wrap script input in the envelope every bin/python script expects: the
+     * data itself plus the driver name and config the provider layer reads.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function payload(array $data): array
+    {
+        return array_merge($data, [
+            'driver' => $this->driverName(),
+            'driver_config' => $this->config,
+        ]);
     }
 
     /**
@@ -148,16 +181,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     public function executeBatch(array $circuits): BatchResult
     {
         $this->preflight();
+        $this->validateCircuits(array_values($circuits));
 
-        foreach ($circuits as $circuit) {
-            $this->assertWithinQubitCeiling($circuit);
-        }
-
-        $payload = [
+        $payload = $this->payload([
             'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
-            'driver' => $this->driverName(),
-            'driver_config' => $this->config,
-        ];
+        ]);
 
         $response = $this->bridge->execute('batch.py', $payload, $this->config);
 
@@ -184,32 +212,68 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
                 );
             }
 
-            $counts = [];
-            foreach ($result['counts'] as $bitstring => $count) {
-                $counts[(string) $bitstring] = $count;
-            }
-            $circuitResults[] = new CircuitResult($counts);
+            $circuitResults[] = new CircuitResult($result['counts']);
+        }
+
+        // Announced only once the whole response has been validated, so a
+        // malformed batch dispatches nothing — the same all-or-nothing
+        // contract executeCircuit() gives listeners for a single run.
+        foreach (array_values($circuits) as $index => $circuit) {
+            $this->dispatchEvent(new CircuitExecuted($this->driverName(), $circuit->toArray(), $circuitResults[$index]));
         }
 
         return new BatchResult($circuitResults);
     }
 
     /**
+     * Execute the circuit synchronously and announce it via CircuitExecuted.
+     *
      * @throws InvalidCircuitException
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
         $this->preflight();
-        $this->assertWithinQubitCeiling($circuit);
+        $this->validateCircuits([$circuit]);
 
-        $circuitPayload = $circuit->toArray();
+        $definition = $circuit->toArray();
+        $result = $this->runDefinition($definition);
 
-        $payload = array_merge($circuitPayload, [
-            'driver' => $this->driverName(),
-            'driver_config' => $this->config,
-        ]);
+        $this->dispatchEvent(new CircuitExecuted($this->driverName(), $definition, $result));
 
-        $response = $this->bridge->execute('circuit.py', $payload, $this->config);
+        return $result;
+    }
+
+    /**
+     * Run the circuit synchronously through circuit.py and return its result,
+     * without dispatching CircuitExecuted.
+     *
+     * Drivers that only *simulate* asynchronous submission by running the
+     * circuit inline (see LocalSimulatorDriver::submitCircuit()) use this so a
+     * ->dispatch() does not also fire the synchronous ->run() event: the
+     * asynchronous path already announces completion via CircuitCompleted
+     * from the polling job.
+     *
+     * @throws InvalidCircuitException
+     */
+    protected function runCircuit(CircuitBuilder $circuit): CircuitResult
+    {
+        $this->preflight();
+        $this->validateCircuits([$circuit]);
+
+        return $this->runDefinition($circuit->toArray());
+    }
+
+    /**
+     * Send an already-validated circuit definition to circuit.py and parse
+     * the measurement counts it returns.
+     *
+     * @param  array<string, mixed>  $definition  The CircuitBuilder::toArray() shape.
+     *
+     * @throws QuantumExecutionException When the response carries no usable counts.
+     */
+    private function runDefinition(array $definition): CircuitResult
+    {
+        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
 
         if (! array_key_exists('counts', $response) || ! is_array($response['counts'])) {
             throw QuantumExecutionException::malformedResponse(
@@ -218,20 +282,66 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             );
         }
 
-        // json_decode() turns numeric-string keys (e.g. "10") into int keys,
-        // which would silently break the array<string, int> contract of
-        // CircuitResult::counts(). Normalize them back to strings here.
-        $counts = [];
+        return new CircuitResult($response['counts']);
+    }
 
-        foreach ($response['counts'] as $bitstring => $count) {
-            $counts[(string) $bitstring] = $count;
+    /**
+     * Submit the circuit through submit.py and return the backend's task
+     * identifier, without waiting for the result.
+     *
+     * Shared implementation for drivers exposing it via
+     * AsynchronousDevice::submitCircuit(). Runs config validation and the
+     * circuit admission checks only — submitting never blocks on the QPU, so
+     * the synchronous-safety hook in beforeExecution() deliberately does not
+     * fire here.
+     *
+     * @throws InvalidCircuitException
+     * @throws QuantumExecutionException When submit.py returns no usable task identifier.
+     */
+    protected function submitTask(CircuitBuilder $circuit): string
+    {
+        $this->assertConfigured();
+        $this->validateCircuits([$circuit]);
+
+        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config);
+
+        $taskArn = $response['task_arn'] ?? null;
+
+        if (! is_string($taskArn) || trim($taskArn) === '') {
+            throw QuantumExecutionException::malformedResponse(
+                'submit.py',
+                'expected the "task_arn" key to be present and hold a non-empty string.'
+            );
         }
 
-        $result = new CircuitResult($counts);
+        return $taskArn;
+    }
 
-        $this->dispatchEvent(new CircuitExecuted($this->driverName(), $circuitPayload, $result));
+    /**
+     * Poll a previously submitted task through check.py.
+     *
+     * Shared implementation for drivers exposing it via
+     * AsynchronousDevice::checkTask(). Like submitTask(), polling never
+     * blocks, so only config validation runs — not beforeExecution().
+     *
+     * @throws QuantumExecutionException When check.py returns no valid status.
+     */
+    protected function pollTask(string $taskArn): TaskSnapshot
+    {
+        $this->assertConfigured();
 
-        return $result;
+        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
+
+        $status = $response['status'] ?? null;
+
+        if (! is_string($status) || TaskStatus::tryFrom($status) === null) {
+            throw QuantumExecutionException::malformedResponse(
+                'check.py',
+                'expected the "status" key to be present and hold a valid task status value.'
+            );
+        }
+
+        return TaskSnapshot::fromResponse($response);
     }
 
     public function generateEntropy(int $bits): string
@@ -249,12 +359,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $shots = (int) ceil($bits / $qubits);
 
-        $payload = [
+        $payload = $this->payload([
             'qubits' => $qubits,
             'shots' => $shots,
-            'driver' => $this->driverName(),
-            'driver_config' => $this->config,
-        ];
+        ]);
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config);
 

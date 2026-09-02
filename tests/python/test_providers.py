@@ -16,7 +16,7 @@ from common import (
     default_run_batch,
     load_provider,
     provider_run_options,
-    resolve_device,
+    resolve_run_target,
 )
 from providers import aws as aws_provider
 
@@ -95,6 +95,37 @@ class TestLoadProvider:
         ):
             load_provider("custom", {"python_provider": str(broken)})
 
+    def test_file_provider_is_registered_in_sys_modules_while_executing(self, tmp_path):
+        # dataclasses (and pickle, typing.get_type_hints, ...) look a class's
+        # module up via sys.modules[cls.__module__]; a module executed without
+        # being registered first makes that lookup return None and blow up.
+        provider_file = tmp_path / "dataclass_provider.py"
+        provider_file.write_text(
+            "from __future__ import annotations\n"
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass\n"
+            "class Settings:\n"
+            "    arn: str\n"
+            "\n"
+            "def resolve_device(config):\n"
+            "    return Settings(arn=config.get('device_arn', 'none'))\n"
+        )
+
+        provider = load_provider("custom", {"python_provider": str(provider_file)})
+
+        assert sys.modules[provider.__name__] is provider
+        assert provider.resolve_device({"device_arn": "x"}).arn == "x"
+
+    def test_failing_file_provider_is_not_left_in_sys_modules(self, tmp_path):
+        provider_file = tmp_path / "exploding_provider.py"
+        provider_file.write_text("raise RuntimeError('boom')\n")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            load_provider("custom", {"python_provider": str(provider_file)})
+
+        assert "aether_provider_exploding_provider" not in sys.modules
+
 
 class TestProviderRunOptions:
     def test_defaults_to_empty_dict_when_hook_is_absent(self):
@@ -145,9 +176,26 @@ class TestDefaultRunBatch:
         assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
 
 
-@requires_braket
-class TestResolveDeviceWrapper:
+class TestResolveRunTarget:
+    def test_returns_the_provider_device_and_its_run_options(self):
+        device, run_options = resolve_run_target("custom", {"python_provider": FAKE_PROVIDER_PATH, "tag": "abc"})
+
+        assert device.run("circuit", shots=1).id == "stub-task-1"
+        assert run_options == {"tag": "abc"}
+
+    def test_run_options_default_to_an_empty_dict(self, tmp_path):
+        bare = tmp_path / "bare_provider.py"
+        bare.write_text("def resolve_device(config):\n    return 'device'\n")
+
+        device, run_options = resolve_run_target("custom", {"python_provider": str(bare)})
+
+        assert device == "device"
+        assert run_options == {}
+
+    @requires_braket
     def test_local_driver_resolves_the_local_simulator(self):
         from braket.devices import LocalSimulator
 
-        assert isinstance(resolve_device("local", {}), LocalSimulator)
+        device, _ = resolve_run_target("local", {})
+
+        assert isinstance(device, LocalSimulator)

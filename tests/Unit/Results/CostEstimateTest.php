@@ -76,8 +76,19 @@ it('formats __toString as "amount currency" with two decimals', function () {
     expect((string) $estimate)->toBe('0.65 USD');
 });
 
-it('rounds __toString to two decimals', function () {
-    $estimate = new CostEstimate(0.653333, 'USD', 1000, ['per_task' => 0.30, 'per_shot' => 0.353333]);
+it('pads __toString to at least two decimals', function () {
+    $estimate = new CostEstimate(0.6, 'USD', 1000, ['per_task' => 0.30, 'per_shot' => 0.30]);
 
-    expect((string) $estimate)->toBe('0.65 USD');
+    expect((string) $estimate)->toBe('0.60 USD');
+});
+
+it('keeps sub-cent precision in __toString instead of collapsing to 0.00', function () {
+    $estimate = new CostEstimate(0.0035, 'USD', 10, ['per_task' => 0.0, 'per_shot' => 0.0035]);
+
+    expect((string) $estimate)->toBe('0.0035 USD');
+});
+
+it('formats a zero amount with two decimals', function () {
+    expect(CostEstimate::formatAmount(0.0, 'USD'))->toBe('0.00 USD')
+        ->and(CostEstimate::formatAmount(12.5, 'EUR'))->toBe('12.50 EUR');
 });

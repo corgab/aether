@@ -8,11 +8,13 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Concerns\DispatchesLifecycleEvents;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\BatchableDevice;
+use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitExecuted;
 use Aether\Events\EntropyGenerated;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
+use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\Concerns\ValidatesCounts;
@@ -40,20 +42,34 @@ use PHPUnit\Framework\Assert;
  * A stub closure returning null falls through to the default deterministic
  * result for that call, exactly like Http::fake()'s closure stubs.
  *
+ * The fake also implements EstimatesCost, so application code calling
+ * CircuitBuilder::estimateCost() stays testable when the backend is faked:
+ * by default every estimate is free (0.00 USD); respondCostWith() stubs a
+ * specific CostEstimate or a closure computing one.
+ *
  * @phpstan-type CircuitStub array<string, int>|CircuitResult|Closure(CircuitBuilder): (array<string, int>|CircuitResult|null)|ResultSequence
  */
-class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
+class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost, QuantumDevice
 {
     use DispatchesLifecycleEvents;
     use ValidatesCounts;
 
     /**
      * Driver name reported on CircuitExecuted/EntropyGenerated when the fake
-     * has no better one to use — generateEntropy() receives no CircuitBuilder
-     * to read a pinned driver name from, and the fake itself stands in for
-     * whichever driver alias was resolved, not a specific one.
+     * has no better one to use: no pinned name on the circuit and no driver
+     * alias resolved through the manager yet (see resolvedAs()).
      */
     private const FAKE_DRIVER = 'fake';
+
+    /**
+     * The driver alias most recently resolved through QuantumManager::driver()
+     * while this fake was installed, so events report the same name the real
+     * driver would have (Quantum::entropy('aws') reports 'aws', not 'fake').
+     */
+    private ?string $resolvedDriver = null;
+
+    /** @var array<string, CircuitResult> Task ARN => result resolved on its first successful poll. */
+    private array $taskResults = [];
 
     /** @var CircuitBuilder[] */
     private array $recordedCircuits = [];
@@ -76,6 +92,9 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     private array|CircuitResult|Closure|ResultSequence|null $circuitStub = null;
 
     private ?TaskStatus $stubbedTaskStatus = null;
+
+    /** @var CostEstimate|Closure(int, int): CostEstimate|null */
+    private CostEstimate|Closure|null $costStub = null;
 
     /** @var string|Closure(int): (string|null)|null */
     private string|Closure|null $entropyStub = null;
@@ -105,16 +124,17 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
         $result = $this->resolveResult($circuit);
 
-        $this->dispatchEvent(new CircuitExecuted($circuit->driverName() ?? self::FAKE_DRIVER, $circuit->toArray(), $result));
+        $this->dispatchEvent(new CircuitExecuted($this->driverNameFor($circuit), $circuit->toArray(), $result));
 
         return $result;
     }
 
     /**
      * Record the batch and return one fake result per circuit. Every circuit
-     * is also recorded individually, so the circuit-level assertions see
-     * batched executions exactly like single ones. Each circuit resolves its
-     * own stub independently — a ResultSequence advances once per circuit.
+     * is also recorded individually and announced with its own
+     * CircuitExecuted, so circuit-level assertions and listeners see batched
+     * executions exactly like single ones. Each circuit resolves its own stub
+     * independently — a ResultSequence advances once per circuit.
      *
      * @param  CircuitBuilder[]  $circuits
      */
@@ -126,10 +146,24 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
         foreach ($circuits as $circuit) {
             $this->recordedCircuits[] = $circuit;
-            $results[] = $this->resolveResult($circuit);
+            $result = $this->resolveResult($circuit);
+            $results[] = $result;
+
+            $this->dispatchEvent(new CircuitExecuted($this->driverNameFor($circuit), $circuit->toArray(), $result));
         }
 
         return new BatchResult($results);
+    }
+
+    /**
+     * Remember which driver alias the manager resolved to this fake, so the
+     * events it dispatches carry that name instead of the generic 'fake'.
+     */
+    public function resolvedAs(string $driver): static
+    {
+        $this->resolvedDriver = $driver;
+
+        return $this;
     }
 
     /**
@@ -151,7 +185,7 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
         $bytes = $this->resolveEntropy($bits);
 
-        $this->dispatchEvent(new EntropyGenerated(self::FAKE_DRIVER, $bits));
+        $this->dispatchEvent(new EntropyGenerated($this->driverNameFor(null), $bits));
 
         return $bytes;
     }
@@ -175,7 +209,10 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
      * Return a deterministic snapshot for the given task.
      *
      * Defaults to Completed with the same result executeCircuit() would
-     * produce for the submitted circuit (stubbed or deterministic). Use
+     * produce for the submitted circuit (stubbed or deterministic). The
+     * result is resolved on the first successful poll and kept for the task,
+     * so repeated polling of one task consumes a single ResultSequence entry
+     * and always reports the same counts — like a real completed task. Use
      * respondWithTaskStatus() to simulate a non-terminal or failed status
      * instead, for testing polling logic.
      */
@@ -189,10 +226,41 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
         $circuit = $this->tasksByArn[$taskArn] ?? null;
 
-        $result = $this->evaluateCircuitStub($circuit)
-            ?? ($circuit !== null ? $this->deterministicResult($circuit) : null);
+        if ($circuit === null) {
+            return new TaskSnapshot($status);
+        }
 
-        return new TaskSnapshot($status, $result?->counts());
+        $this->taskResults[$taskArn] ??= $this->resolveResult($circuit);
+
+        return new TaskSnapshot($status, $this->taskResults[$taskArn]->counts());
+    }
+
+    /**
+     * The driver name to report on events: the circuit's pinned name, else
+     * the alias the manager resolved to this fake, else the generic 'fake'.
+     */
+    private function driverNameFor(?CircuitBuilder $circuit): string
+    {
+        return $circuit?->driverName() ?? $this->resolvedDriver ?? self::FAKE_DRIVER;
+    }
+
+    /**
+     * Return the stubbed cost estimate, or a free (0.00 USD) one when nothing
+     * was stubbed, so code paths that budget a circuit before running it stay
+     * testable through the fake.
+     */
+    public function estimateCost(int $shots, int $tasks = 1): CostEstimate
+    {
+        if ($this->costStub instanceof Closure) {
+            return ($this->costStub)($shots, $tasks);
+        }
+
+        return $this->costStub ?? new CostEstimate(
+            amount: 0.0,
+            currency: 'USD',
+            shots: $shots,
+            breakdown: ['per_task' => 0.0, 'per_shot' => 0.0],
+        );
     }
 
     /**
@@ -262,6 +330,20 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     public function respondWithTaskStatus(TaskStatus $status): static
     {
         $this->stubbedTaskStatus = $status;
+
+        return $this;
+    }
+
+    /**
+     * Stub the estimate returned by estimateCost(), overriding the default
+     * free estimate. Pass a fixed CostEstimate, or a closure receiving the
+     * requested shot and task counts and returning one.
+     *
+     * @param  CostEstimate|Closure(int, int): CostEstimate  $estimate
+     */
+    public function respondCostWith(CostEstimate|Closure $estimate): static
+    {
+        $this->costStub = $estimate;
 
         return $this;
     }

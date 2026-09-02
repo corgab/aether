@@ -14,6 +14,10 @@ use InvalidArgumentException;
  * ResultSequence::whenEmpty(), QuantumFake::result()) rejects malformed
  * stubs at the point they are set, rather than failing later with a
  * confusing error deep inside CircuitResult or a consumer under test.
+ *
+ * An empty array is deliberately accepted: CircuitResult([]) is a legal
+ * value (zero shots, mostFrequent() unavailable) and tests need to be able
+ * to stub that branch.
  */
 trait ValidatesCounts
 {
@@ -22,12 +26,6 @@ trait ValidatesCounts
      */
     private static function assertValidCounts(array $counts): void
     {
-        if ($counts === []) {
-            throw new InvalidArgumentException(
-                'Stubbed counts cannot be empty — provide at least one bitstring outcome.'
-            );
-        }
-
         foreach ($counts as $bitstring => $count) {
             if (! preg_match('/^[01]+$/', (string) $bitstring)) {
                 throw new InvalidArgumentException(

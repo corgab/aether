@@ -59,21 +59,4 @@ enum GateType: string
             self::Measure => GateShape::Measure,
         };
     }
-
-    /**
-     * The parameter keys expected in this gate's wire array, in order
-     * (excluding the leading `type` key).
-     *
-     * @return string[]
-     */
-    public function paramKeys(): array
-    {
-        if ($this === self::Measure) {
-            return ['targets'];
-        }
-
-        $shape = $this->shape();
-
-        return [...$shape->qubitKeys(), ...$shape->angleKeys()];
-    }
 }

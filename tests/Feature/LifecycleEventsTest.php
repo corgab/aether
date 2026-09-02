@@ -52,6 +52,26 @@ it('does not dispatch CircuitExecuted when the circuit fails to execute', functi
     Event::assertNotDispatched(CircuitExecuted::class);
 });
 
+it('does not dispatch CircuitExecuted when a circuit is dispatched asynchronously on the local driver', function () {
+    Event::fake([CircuitExecuted::class]);
+
+    $bridge = $this->createMock(PythonExecutor::class);
+    $bridge->method('execute')->willReturn(['counts' => ['0' => 48, '1' => 52]]);
+
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::forgetDrivers();
+
+    // The local driver simulates submission by running the circuit inline; to
+    // the caller that is still an asynchronous dispatch, announced only by
+    // CircuitCompleted from the polling job — never by the synchronous event.
+    $taskArn = Quantum::driver('local')->submitCircuit(
+        Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100)
+    );
+
+    expect($taskArn)->toStartWith('local:');
+    Event::assertNotDispatched(CircuitExecuted::class);
+});
+
 // -------------------------------------------------------------------------
 // Real driver — successful entropy generation
 // -------------------------------------------------------------------------
@@ -116,6 +136,71 @@ it('dispatches EntropyGenerated through Quantum::fake() for Event::fake() parity
 
     $fake->assertEntropyGenerated(128);
     Event::assertDispatched(EntropyGenerated::class, fn (EntropyGenerated $event): bool => $event->bits === 128);
+});
+
+it('reports the resolved driver alias on EntropyGenerated through Quantum::fake()', function () {
+    Event::fake([EntropyGenerated::class]);
+    Quantum::fake();
+
+    Quantum::entropy('aws')->generate(64);
+
+    Event::assertDispatched(EntropyGenerated::class, fn (EntropyGenerated $event): bool => $event->driver === 'aws');
+});
+
+// -------------------------------------------------------------------------
+// Batch execution — one CircuitExecuted per circuit, real driver and fake
+// -------------------------------------------------------------------------
+
+it('dispatches one CircuitExecuted per circuit when a batch executes', function () {
+    Event::fake([CircuitExecuted::class]);
+
+    $bridge = $this->createMock(PythonExecutor::class);
+    $bridge->method('execute')->willReturn(['results' => [
+        ['counts' => ['0' => 100]],
+        ['counts' => ['1' => 100]],
+    ]]);
+
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::forgetDrivers();
+
+    $first = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
+    $second = Quantum::circuit('local')->qubits(1)->x(0)->measure()->shots(100);
+
+    Quantum::batch([$first, $second])->run();
+
+    Event::assertDispatchedTimes(CircuitExecuted::class, 2);
+    Event::assertDispatched(
+        CircuitExecuted::class,
+        fn (CircuitExecuted $event): bool => $event->circuit === $second->toArray() && $event->result->counts() === ['1' => 100]
+    );
+});
+
+it('does not dispatch CircuitExecuted when a batch response is malformed', function () {
+    Event::fake([CircuitExecuted::class]);
+
+    $bridge = $this->createMock(PythonExecutor::class);
+    $bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 100]]]]);
+
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::forgetDrivers();
+
+    $first = Quantum::circuit('local')->qubits(1)->h(0)->measure();
+    $second = Quantum::circuit('local')->qubits(1)->x(0)->measure();
+
+    expect(fn () => Quantum::batch([$first, $second])->run())->toThrow(QuantumExecutionException::class);
+    Event::assertNotDispatched(CircuitExecuted::class);
+});
+
+it('dispatches one CircuitExecuted per circuit through Quantum::fake() batches', function () {
+    Event::fake([CircuitExecuted::class]);
+    Quantum::fake();
+
+    $first = Quantum::circuit('local')->qubits(1)->h(0)->measure();
+    $second = Quantum::circuit('local')->qubits(1)->x(0)->measure();
+
+    Quantum::batch([$first, $second])->run();
+
+    Event::assertDispatchedTimes(CircuitExecuted::class, 2);
 });
 
 // -------------------------------------------------------------------------

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
+use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
@@ -693,9 +695,14 @@ it('respondWith returns self for chaining', function () {
     expect($fake->respondWith(['0' => 1]))->toBe($fake);
 });
 
-it('rejects an empty counts array with a clear message', function () {
-    expect(fn () => new QuantumFake([]))
-        ->toThrow(InvalidArgumentException::class, 'Stubbed counts cannot be empty');
+it('accepts an empty counts array so the empty-result branch can be stubbed', function () {
+    $fake = new QuantumFake([]);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $result = $fake->executeCircuit($circuit);
+
+    expect($result->counts())->toBe([])
+        ->and($result->shots())->toBe(0);
 });
 
 it('rejects a counts array with a non-bitstring key', function () {
@@ -901,13 +908,24 @@ it('checkTask honours a closure stub for the submitted circuit', function () {
     expect($snapshot->counts)->toBe(['0' => 250]);
 });
 
-it('checkTask consumes one sequence entry per call', function () {
+it('checkTask resolves a sequence entry once per task and keeps it across polls', function () {
     $fake = new QuantumFake(QuantumFake::sequence([['0' => 1], ['1' => 1]]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $first = $fake->submitCircuit($circuit);
+    $second = $fake->submitCircuit($circuit);
+
+    expect($fake->checkTask($first)->counts)->toBe(['0' => 1])
+        ->and($fake->checkTask($first)->counts)->toBe(['0' => 1])
+        ->and($fake->checkTask($second)->counts)->toBe(['1' => 1]);
+});
+
+it('checkTask does not consume a sequence entry for an unknown task', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([['0' => 1]]));
     $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
     $arn = $fake->submitCircuit($circuit);
 
-    expect($fake->checkTask($arn)->counts)->toBe(['0' => 1])
-        ->and($fake->checkTask($arn)->counts)->toBe(['1' => 1]);
+    expect($fake->checkTask('arn:aws:braket:::fake-task/unknown')->counts)->toBeNull()
+        ->and($fake->checkTask($arn)->counts)->toBe(['0' => 1]);
 });
 
 // -------------------------------------------------------------------------
@@ -1014,4 +1032,53 @@ it('assertCircuitRan still passes when a canned stub is configured', function ()
     $fake->executeCircuit($circuit);
 
     $fake->assertCircuitRan(fn (CircuitBuilder $c) => $c->qubitCount() === 1);
+});
+
+// -------------------------------------------------------------------------
+// estimateCost() — EstimatesCost parity with the aws driver
+// -------------------------------------------------------------------------
+
+it('implements EstimatesCost', function () {
+    expect(new QuantumFake)->toBeInstanceOf(EstimatesCost::class);
+});
+
+it('estimateCost defaults to a free estimate covering the requested shots', function () {
+    $estimate = (new QuantumFake)->estimateCost(1000);
+
+    expect($estimate)->toBeInstanceOf(CostEstimate::class)
+        ->and($estimate->amount)->toBe(0.0)
+        ->and($estimate->currency)->toBe('USD')
+        ->and($estimate->shots)->toBe(1000)
+        ->and($estimate->breakdown)->toBe(['per_task' => 0.0, 'per_shot' => 0.0]);
+});
+
+it('respondCostWith stubs a fixed CostEstimate', function () {
+    $stub = new CostEstimate(amount: 0.65, currency: 'USD', shots: 1000, breakdown: ['per_task' => 0.30, 'per_shot' => 0.35]);
+    $fake = (new QuantumFake)->respondCostWith($stub);
+
+    expect($fake->estimateCost(1))->toBe($stub);
+});
+
+it('respondCostWith accepts a closure receiving shots and tasks', function () {
+    $fake = (new QuantumFake)->respondCostWith(
+        fn (int $shots, int $tasks): CostEstimate => new CostEstimate(
+            amount: $tasks * 0.30 + $shots * 0.001,
+            currency: 'EUR',
+            shots: $shots,
+            breakdown: ['per_task' => $tasks * 0.30, 'per_shot' => $shots * 0.001],
+        )
+    );
+
+    $estimate = $fake->estimateCost(100, 2);
+
+    expect($estimate->amount)->toBe(0.7)
+        ->and($estimate->currency)->toBe('EUR')
+        ->and($estimate->shots)->toBe(100);
+});
+
+it('lets CircuitBuilder::estimateCost run against the fake', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake, 'aws'))->qubits(2)->h(0)->measure()->shots(500);
+
+    expect($circuit->estimateCost()->shots)->toBe(500);
 });

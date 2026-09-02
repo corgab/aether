@@ -20,9 +20,11 @@ use Illuminate\Support\Str;
  * submitCircuit()/checkTask() workflow used against real QPUs while
  * developing locally, this driver *simulates* asynchronous execution:
  *
- *  - submitCircuit() runs the circuit synchronously (via executeCircuit()),
- *    caches the resulting counts under a synthetic "local:<uuid>" identifier,
- *    and returns that identifier as if it were a task ARN.
+ *  - submitCircuit() runs the circuit synchronously (via runCircuit(), so the
+ *    synchronous CircuitExecuted event does not fire for what is, to the
+ *    caller, an asynchronous dispatch), caches the resulting counts under a
+ *    synthetic "local:<uuid>" identifier, and returns that identifier as if
+ *    it were a task ARN.
  *  - checkTask() looks the identifier up in the cache and immediately
  *    reports it as Completed (or Failed if the key is missing/expired).
  *
@@ -42,7 +44,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
     public function submitCircuit(CircuitBuilder $circuit): string
     {
-        $result = $this->executeCircuit($circuit);
+        $result = $this->runCircuit($circuit);
 
         $taskArn = self::ARN_PREFIX.(string) Str::uuid();
 

@@ -76,6 +76,19 @@ final readonly class CostEstimate implements Arrayable, Jsonable, JsonSerializab
      */
     public function __toString(): string
     {
-        return number_format($this->amount, 2).' '.$this->currency;
+        return self::formatAmount($this->amount, $this->currency);
+    }
+
+    /**
+     * Format a monetary amount with at least two decimals, keeping as many
+     * more as needed so sub-cent values (per-shot rates are fractions of a
+     * cent) never collapse to "0.00" in messages.
+     */
+    public static function formatAmount(float $amount, string $currency): string
+    {
+        $formatted = rtrim(number_format($amount, 8, '.', ''), '0');
+        [$whole, $decimals] = explode('.', $formatted.'.');
+
+        return $whole.'.'.str_pad($decimals, 2, '0').' '.$currency;
     }
 }

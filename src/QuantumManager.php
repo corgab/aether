@@ -14,9 +14,11 @@ use Aether\Exceptions\DriverNotFoundException;
 use Aether\Results\CircuitResult;
 use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
+use BackedEnum;
 use Closure;
 use Illuminate\Support\Manager;
 use Illuminate\Support\Str;
+use UnitEnum;
 
 /**
  * Manages quantum backend driver resolution and caching.
@@ -40,10 +42,24 @@ class QuantumManager extends Manager
     public function driver($driver = null)
     {
         if ($this->fakeInstance !== null) {
-            return $this->fakeInstance;
+            return $this->fakeInstance->resolvedAs($this->driverAlias($driver));
         }
 
         return parent::driver($driver);
+    }
+
+    /**
+     * The string alias for a driver argument, which Manager also accepts as an
+     * enum; the fake reports this on the events it dispatches.
+     */
+    private function driverAlias(string|UnitEnum|null $driver): string
+    {
+        return match (true) {
+            $driver === null => $this->getDefaultDriver(),
+            $driver instanceof BackedEnum => (string) $driver->value,
+            $driver instanceof UnitEnum => $driver->name,
+            default => $driver,
+        };
     }
 
     /**

@@ -56,6 +56,20 @@ class TestValidateGates:
         ):
             validate_gates(2, [{"type": "x", "target": 2}])
 
+    def test_missing_qubit_key_raises_a_clear_error(self):
+        with pytest.raises(
+            ValueError,
+            match=r"^Gate 'cnot' is missing required parameter 'target'\.$",
+        ):
+            validate_gates(2, [{"type": "cnot", "control": 0}])
+
+    def test_missing_angle_key_raises_a_clear_error(self):
+        with pytest.raises(
+            ValueError,
+            match=r"^Gate 'rx' is missing required parameter 'angle'\.$",
+        ):
+            validate_gates(2, [{"type": "rx", "target": 0}])
+
     def test_negative_index_raises(self):
         with pytest.raises(ValueError, match=r"references qubit -1"):
             validate_gates(2, [{"type": "h", "target": -1}])

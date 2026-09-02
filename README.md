@@ -7,8 +7,8 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 ## Requirements
 
 - PHP 8.3+
-- Laravel 12 or 13
-- Python 3.8+ with `amazon-braket-sdk`
+- Laravel 13
+- Python 3.11+ with `amazon-braket-sdk` (CI runs 3.11 and 3.12)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation
@@ -328,7 +328,7 @@ Aether dispatches events at each execution choke point, so application code can 
 
 | Event | When | Payload |
 |-------|------|---------|
-| `CircuitExecuted` | A circuit finishes executing synchronously (`->run()`) | `driver` (`string`), `circuit` (the `toArray()` definition), `result` (`CircuitResult`) |
+| `CircuitExecuted` | A circuit finishes executing synchronously (`->run()`, or once per circuit of a `Quantum::batch()->run()`) | `driver` (`string`), `circuit` (the `toArray()` definition), `result` (`CircuitResult`) |
 | `EntropyGenerated` | A device generates entropy (`EntropyGenerator::generate()`/`hex()`/`integer()`) | `driver` (`string`), `bits` (`int`, the requested bit count) |
 | `CircuitCompleted` | An asynchronously dispatched task (`->dispatch()`) reaches a terminal state | `driver` (`string`), `circuit`, `result` (`CircuitResult`), `taskArn` (`?string`) — see [Asynchronous Execution](#asynchronous-execution) |
 
@@ -352,7 +352,7 @@ Event::listen(function (EntropyGenerated $event) {
 });
 ```
 
-`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked.
+`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked. `CircuitExecuted` fires only for synchronous execution (`->run()` and `Quantum::batch()->run()`): a local `->dispatch()` runs the simulator inline but announces itself through `CircuitCompleted` alone, like the `aws` driver.
 
 ## Testing
 
@@ -411,9 +411,9 @@ $fake = Quantum::fake(
 );
 ```
 
-All forms above can also be set after `fake()` (or changed later) with `respondWith()`, and `respondWithCounts(array $counts)` remains available as a shorthand for the plain counts-array form. Calling `checkTask()` for an asynchronously submitted circuit honours the same stub.
+All forms above can also be set after `fake()` (or changed later) with `respondWith()`, and `respondWithCounts(array $counts)` remains available as a shorthand for the plain counts-array form. Calling `checkTask()` for an asynchronously submitted circuit honours the same stub: the result is resolved on the first successful poll and kept for that task, so polling it repeatedly consumes a single sequence entry, like a real completed task.
 
-Stubbed counts must be shaped like real measurement counts — non-empty, with bitstring keys ("00", "1", ...) and non-negative integer values — or `Quantum::fake()` / `respondWith()` throw an `InvalidArgumentException` immediately.
+Stubbed counts must be shaped like real measurement counts — bitstring keys ("00", "1", ...) and non-negative integer values — or `Quantum::fake()` / `respondWith()` throw an `InvalidArgumentException` immediately. An empty array is accepted, so the empty-result branch (`mostFrequent()` unavailable, zero shots) can be exercised too.
 
 Entropy can be stubbed independently of circuit results:
 
@@ -461,14 +461,14 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` to remove the ceiling entirely. The `aws` driver has no ceiling by default — Braket enforces its own per-device qubit limits.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default — Braket enforces its own per-device qubit limits — but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()` and `Quantum::batch()` alike.
 
 ## Cost Estimation
 
 The `aws` driver can estimate the cost of a circuit before it runs, from configured pricing — no AWS Pricing API call is made:
 
 ```php
-$estimate = Quantum::driver('aws')->circuit()
+$estimate = Quantum::circuit('aws')
     ->qubits(2)
     ->h(0)
     ->cnot(0, 1)
@@ -490,19 +490,19 @@ AETHER_AWS_PRICE_PER_TASK=0.30
 AETHER_AWS_PRICE_PER_SHOT=0.00035
 ```
 
-Managed simulators (e.g. SV1) bill per-minute instead, so treat simulator estimates as a rough proxy rather than an exact figure. `estimateCost()` is only available on drivers implementing `EstimatesCost`; calling it on the `local` driver (which is free) throws a `QuantumExecutionException`.
+Managed simulators (e.g. SV1) bill per-minute instead, so treat simulator estimates as a rough proxy rather than an exact figure. `estimateCost()` is only available on drivers implementing `EstimatesCost`; calling it on the `local` driver (which is free) throws a `QuantumExecutionException`. `Quantum::fake()` implements the contract too — every estimate is free by default, and `$fake->respondCostWith($estimate)` (a `CostEstimate` or a `fn (int $shots, int $tasks): CostEstimate` closure) stubs a specific one, so budgeting code stays testable.
 
-Set `AETHER_AWS_MAX_COST` (or `max_cost_per_task` in config) to reject a circuit or batch whose estimated cost exceeds it, before any AWS call:
+Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit or batch whose estimated cost exceeds it, before any AWS call:
 
 ```php
 // config/aether.php
 'aws' => [
-    'max_cost_per_task' => env('AETHER_AWS_MAX_COST', null),
+    'max_cost_per_run' => env('AETHER_AWS_MAX_COST', null),
     // ...
 ],
 ```
 
-The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost). It throws an `InvalidCircuitException`. `null` (the default) means unlimited — existing configs keep working unchanged.
+The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
 
 ## License
 

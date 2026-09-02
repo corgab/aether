@@ -295,10 +295,25 @@ final readonly class Gate
     /**
      * Create a measurement gate.
      *
+     * - Pass null (default) to measure all qubits.
+     * - Pass an int to measure a single qubit.
+     * - Pass a non-empty array to measure the specified qubits.
+     *
+     * The empty-targets guard lives here rather than in CircuitBuilder so
+     * every construction path — the fluent measure(), fromArray() on a
+     * queued definition, or a fragment appended from another builder —
+     * rejects a measurement that would measure nothing.
+     *
      * @param  int|int[]|null  $targets
+     *
+     * @throws InvalidCircuitException
      */
     public static function measure(int|array|null $targets = null): self
     {
+        if ($targets === []) {
+            throw InvalidCircuitException::emptyMeasurementTargets();
+        }
+
         $resolved = match (true) {
             $targets === null => null,
             is_int($targets) => [$targets],
@@ -428,7 +443,7 @@ final readonly class Gate
         $radians = $angle instanceof Angle ? $angle->radians : $angle;
 
         if (! is_finite($radians)) {
-            throw new \InvalidArgumentException('Angle must be a finite float.');
+            throw InvalidCircuitException::nonFiniteAngle($radians);
         }
 
         return $radians;

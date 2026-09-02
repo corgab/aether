@@ -86,25 +86,6 @@ it('maps each gate type to its shape', function (GateType $type, GateShape $shap
 ]);
 
 // -------------------------------------------------------------------------
-// GateType: paramKeys() order
-// -------------------------------------------------------------------------
-
-it('resolves paramKeys() in qubitKeys + angleKeys wire order', function (GateType $type, array $expected): void {
-    expect($type->paramKeys())->toBe($expected);
-})->with([
-    'h' => [GateType::H, ['target']],
-    'cnot' => [GateType::CNOT, ['control', 'target']],
-    'rx' => [GateType::RX, ['target', 'angle']],
-    'crx' => [GateType::CRX, ['control', 'target', 'angle']],
-    'swap' => [GateType::Swap, ['target0', 'target1']],
-    'xx' => [GateType::XX, ['target0', 'target1', 'angle']],
-    'cswap' => [GateType::CSwap, ['control', 'target0', 'target1']],
-    'ccnot' => [GateType::CCNOT, ['control0', 'control1', 'target']],
-    'u' => [GateType::U, ['target', 'theta', 'phi', 'lambda']],
-    'measure' => [GateType::Measure, ['targets']],
-]);
-
-// -------------------------------------------------------------------------
 // GateType: wire values match case backing strings
 // -------------------------------------------------------------------------
 

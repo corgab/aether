@@ -468,6 +468,19 @@ it('does not enforce a qubit ceiling on submitCircuit by default', function () {
     expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/big');
 });
 
+it('enforces a configured max_qubits on submitCircuit as well as executeCircuit', function () {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['max_qubits' => 10]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(20);
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->submitCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class, 'max_qubits');
+});
+
 it('throws QuantumExecutionException when check.py status is unknown', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
 
@@ -523,7 +536,7 @@ it('falls back to zero-cost rates when pricing config is absent', function () {
 });
 
 // -------------------------------------------------------------------------
-// max_cost_per_task guard
+// max_cost_per_run guard
 // -------------------------------------------------------------------------
 
 it('does not enforce a cost ceiling on executeCircuit by default', function () {
@@ -539,8 +552,39 @@ it('does not enforce a cost ceiling on executeCircuit by default', function () {
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
-it('throws InvalidCircuitException on executeCircuit when the estimated cost exceeds max_cost_per_task', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 0.5]);
+it('fails fast when max_cost_per_run is set without pricing rates', function () {
+    // Without rates every estimate is 0.00 and the ceiling would never trip
+    // while looking configured — a misconfiguration, not an unlimited budget.
+    $config = array_merge($this->config, ['max_cost_per_run' => 1.0, 'pricing' => []]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(10);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidDriverConfigException::class, 'pricing.per_task, pricing.per_shot');
+});
+
+it('treats an empty-string max_cost_per_run (a blank env var) as no ceiling', function () {
+    // env('AETHER_AWS_MAX_COST') yields '' for `AETHER_AWS_MAX_COST=` in .env,
+    // which must not collapse into a ceiling of (float) '' === 0.0.
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['max_cost_per_run' => '']));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(1_000_000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1_000_000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('throws InvalidCircuitException on executeCircuit when the estimated cost exceeds max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.5]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -553,8 +597,8 @@ it('throws InvalidCircuitException on executeCircuit when the estimated cost exc
         ->toThrow(InvalidCircuitException::class);
 });
 
-it('allows executeCircuit when the estimated cost is exactly at the max_cost_per_task boundary', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 0.65]);
+it('allows executeCircuit when the estimated cost is exactly at the max_cost_per_run boundary', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.65]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -568,8 +612,8 @@ it('allows executeCircuit when the estimated cost is exactly at the max_cost_per
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
-it('throws InvalidCircuitException on submitCircuit when the estimated cost exceeds max_cost_per_task', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 0.5]);
+it('throws InvalidCircuitException on submitCircuit when the estimated cost exceeds max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.5]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -582,8 +626,8 @@ it('throws InvalidCircuitException on submitCircuit when the estimated cost exce
         ->toThrow(InvalidCircuitException::class);
 });
 
-it('allows submitCircuit when the estimated cost is within max_cost_per_task', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 1.0]);
+it('allows submitCircuit when the estimated cost is within max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 1.0]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -597,8 +641,8 @@ it('allows submitCircuit when the estimated cost is within max_cost_per_task', f
     expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/ok');
 });
 
-it('throws InvalidCircuitException on executeBatch when the total estimated cost exceeds max_cost_per_task', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 1.0]);
+it('throws InvalidCircuitException on executeBatch when the total estimated cost exceeds max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 1.0]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $first = $this->createMock(CircuitBuilder::class);
@@ -613,8 +657,8 @@ it('throws InvalidCircuitException on executeBatch when the total estimated cost
         ->toThrow(InvalidCircuitException::class);
 });
 
-it('allows executeBatch when the total estimated cost is within max_cost_per_task', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => 2.0]);
+it('allows executeBatch when the total estimated cost is within max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 2.0]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $first = $this->createMock(CircuitBuilder::class);
@@ -636,8 +680,8 @@ it('allows executeBatch when the total estimated cost is within max_cost_per_tas
     expect($result->count())->toBe(2);
 });
 
-it('does not enforce a cost ceiling when max_cost_per_task is null', function () {
-    $config = array_merge($this->config, ['max_cost_per_task' => null]);
+it('does not enforce a cost ceiling when max_cost_per_run is null', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => null]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $circuit = $this->createMock(CircuitBuilder::class);
