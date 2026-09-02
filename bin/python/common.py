@@ -3,11 +3,45 @@
 
 from typing import Any
 
-# Gate parameter keys that hold a qubit index (``measure`` is handled
-# separately because its targets live in a list). Keep in sync with the gate
-# branches in build_circuit(); an allowlist is used deliberately rather than
-# "every int parameter" because params such as ``angle`` may deserialise as int.
-_QUBIT_INDEX_KEYS = ("target", "control", "control0", "control1", "target0", "target1")
+# The single Python source of truth for the wire-format gate parameters.
+# Each entry maps a gate type to the ordered qubit-index keys and angle keys
+# expected in its JSON definition (qubit keys always precede angle keys, in
+# wire order). Mirrors the ``GateType`` / ``GateShape`` enums in src/Circuit;
+# bin/python/list_gates.py exports this table as JSON and
+# tests/Feature/GateParityTest.php asserts parity with the PHP side.
+# ``measure`` carries a ``targets`` list instead and is handled by a special
+# builder, so it declares no keys here.
+GATE_PARAMS: dict[str, dict[str, tuple[str, ...]]] = {
+    "h": {"qubits": ("target",), "angles": ()},
+    "x": {"qubits": ("target",), "angles": ()},
+    "y": {"qubits": ("target",), "angles": ()},
+    "z": {"qubits": ("target",), "angles": ()},
+    "i": {"qubits": ("target",), "angles": ()},
+    "s": {"qubits": ("target",), "angles": ()},
+    "si": {"qubits": ("target",), "angles": ()},
+    "t": {"qubits": ("target",), "angles": ()},
+    "ti": {"qubits": ("target",), "angles": ()},
+    "rx": {"qubits": ("target",), "angles": ("angle",)},
+    "ry": {"qubits": ("target",), "angles": ("angle",)},
+    "rz": {"qubits": ("target",), "angles": ("angle",)},
+    "phaseshift": {"qubits": ("target",), "angles": ("angle",)},
+    "cnot": {"qubits": ("control", "target"), "angles": ()},
+    "cz": {"qubits": ("control", "target"), "angles": ()},
+    "cy": {"qubits": ("control", "target"), "angles": ()},
+    "crx": {"qubits": ("control", "target"), "angles": ("angle",)},
+    "cry": {"qubits": ("control", "target"), "angles": ("angle",)},
+    "crz": {"qubits": ("control", "target"), "angles": ("angle",)},
+    "cphaseshift": {"qubits": ("control", "target"), "angles": ("angle",)},
+    "swap": {"qubits": ("target0", "target1"), "angles": ()},
+    "iswap": {"qubits": ("target0", "target1"), "angles": ()},
+    "xx": {"qubits": ("target0", "target1"), "angles": ("angle",)},
+    "yy": {"qubits": ("target0", "target1"), "angles": ("angle",)},
+    "zz": {"qubits": ("target0", "target1"), "angles": ("angle",)},
+    "cswap": {"qubits": ("control", "target0", "target1"), "angles": ()},
+    "ccnot": {"qubits": ("control0", "control1", "target"), "angles": ()},
+    "u": {"qubits": ("target",), "angles": ("theta", "phi", "lambda")},
+    "measure": {"qubits": (), "angles": ()},
+}
 
 
 def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
@@ -23,12 +57,17 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
         gates:  Ordered list of gate-definition dicts.
 
     Raises:
-        ValueError: When a gate references a qubit outside ``[0, qubits)``.
+        ValueError: When a gate type is not in :data:`GATE_PARAMS`, or when a
+            gate references a qubit outside ``[0, qubits)``.
     """
     for gate in gates:
         gate_type = gate.get("type", "")
 
-        indices = [gate[key] for key in _QUBIT_INDEX_KEYS if gate.get(key) is not None]
+        spec = GATE_PARAMS.get(gate_type)
+        if spec is None:
+            raise ValueError(f"Unknown gate type: {gate_type!r}")
+
+        indices = [gate[key] for key in spec["qubits"] if gate.get(key) is not None]
 
         if gate_type == "measure":
             targets = gate.get("targets")
@@ -45,12 +84,56 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
                 )
 
 
+# The Braket SDK does not natively support crx, cry, and crz.
+# We decompose them into native gates so they run identically
+# on the local simulator, SV1, and real QPUs without relying on
+# OpenQASM features that may not be supported on real hardware.
+def _apply_crx(circuit: "Circuit", gate: dict[str, Any], qubits: int) -> None:
+    """Apply a controlled-RX gate as a native-gate decomposition."""
+    c, t, theta = gate["control"], gate["target"], gate["angle"]
+    circuit.h(t).rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t).h(t)
+
+
+def _apply_cry(circuit: "Circuit", gate: dict[str, Any], qubits: int) -> None:
+    """Apply a controlled-RY gate as a native-gate decomposition."""
+    c, t, theta = gate["control"], gate["target"], gate["angle"]
+    circuit.ry(t, theta / 2).cnot(c, t).ry(t, -theta / 2).cnot(c, t)
+
+
+def _apply_crz(circuit: "Circuit", gate: dict[str, Any], qubits: int) -> None:
+    """Apply a controlled-RZ gate as a native-gate decomposition."""
+    c, t, theta = gate["control"], gate["target"], gate["angle"]
+    circuit.rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t)
+
+
+def _apply_measure(circuit: "Circuit", gate: dict[str, Any], qubits: int) -> None:
+    """Measure the gate's ``targets``, or every qubit when ``targets`` is null."""
+    targets = gate.get("targets")
+    qubit_indices = targets if targets is not None else list(range(qubits))
+    circuit.measure(qubit_indices)
+
+
+# Gate types that cannot go through the generic ``getattr`` dispatch in
+# build_circuit(): the controlled rotations need a decomposition and
+# ``measure`` needs the circuit width to expand a null target list.
+_SPECIAL_BUILDERS = {
+    "crx": _apply_crx,
+    "cry": _apply_cry,
+    "crz": _apply_crz,
+    "measure": _apply_measure,
+}
+
+
 def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     """Build a Braket :class:`~braket.circuits.Circuit` from a gate list.
 
-    Supported gate types: ``h``, ``x``, ``y``, ``z``, ``i``, ``s``, ``si``, ``t``, ``ti``, ``rx``, ``ry``, ``rz``, ``cnot``, ``cz``, ``cy``, ``swap``, ``ccnot``, ``crx``, ``cry``, ``crz``, ``cphaseshift``, ``phaseshift``, ``u``, ``cswap``, ``iswap``, ``xx``, ``yy``, ``zz``, ``measure``.
-    For ``measure`` gates, a ``null`` / missing ``targets`` field means
-    *measure all qubits* (indices 0 through ``qubits-1``).
+    The supported gate types and their parameter keys are defined by
+    :data:`GATE_PARAMS`. Most gates dispatch generically — the Braket
+    ``Circuit`` method name equals the wire type — while the entries in
+    ``_SPECIAL_BUILDERS`` (``crx``, ``cry``, ``crz``, ``measure``) use
+    dedicated builders. For ``measure`` gates, a ``null`` / missing
+    ``targets`` field means *measure all qubits* (indices 0 through
+    ``qubits-1``).
 
     Args:
         qubits: Total number of qubits in the circuit.
@@ -72,65 +155,16 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     for gate in gates:
         gate_type = gate.get("type", "")
 
-        if gate_type == "h":
-            circuit.h(gate["target"])
-
-        elif gate_type == "x":
-            circuit.x(gate["target"])
-
-        elif gate_type in ("y", "z", "s", "t", "i", "si", "ti"):
-            getattr(circuit, gate_type)(gate["target"])
-
-        elif gate_type in ("rx", "ry", "rz", "phaseshift"):
-            getattr(circuit, gate_type)(gate["target"], gate["angle"])
-
-        elif gate_type == "cphaseshift":
-            getattr(circuit, gate_type)(gate["control"], gate["target"], gate["angle"])
-
-        # The Braket SDK does not natively support crx, cry, and crz.
-        # We decompose them into native gates so they run identically
-        # on the local simulator, SV1, and real QPUs without relying on
-        # OpenQASM features that may not be supported on real hardware.
-        elif gate_type == "crz":
-            c, t, theta = gate["control"], gate["target"], gate["angle"]
-            circuit.rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t)
-
-        elif gate_type == "cry":
-            c, t, theta = gate["control"], gate["target"], gate["angle"]
-            circuit.ry(t, theta / 2).cnot(c, t).ry(t, -theta / 2).cnot(c, t)
-
-        elif gate_type == "crx":
-            c, t, theta = gate["control"], gate["target"], gate["angle"]
-            circuit.h(t).rz(t, theta / 2).cnot(c, t).rz(t, -theta / 2).cnot(c, t).h(t)
-
-        elif gate_type == "u":
-            circuit.u(gate["target"], gate["theta"], gate["phi"], gate["lambda"])
-
-        elif gate_type == "cnot":
-            circuit.cnot(gate["control"], gate["target"])
-
-        elif gate_type in ("cz", "cy"):
-            getattr(circuit, gate_type)(gate["control"], gate["target"])
-
-        elif gate_type in ("swap", "iswap"):
-            getattr(circuit, gate_type)(gate["target0"], gate["target1"])
-
-        elif gate_type == "cswap":
-            circuit.cswap(gate["control"], gate["target0"], gate["target1"])
-
-        elif gate_type in ("xx", "yy", "zz"):
-            getattr(circuit, gate_type)(gate["target0"], gate["target1"], gate["angle"])
-
-        elif gate_type == "ccnot":
-            circuit.ccnot(gate["control0"], gate["control1"], gate["target"])
-
-        elif gate_type == "measure":
-            targets = gate.get("targets")
-            qubit_indices = targets if targets is not None else list(range(qubits))
-            circuit.measure(qubit_indices)
-
-        else:
+        spec = GATE_PARAMS.get(gate_type)
+        if spec is None:
             raise ValueError(f"Unknown gate type: {gate_type!r}")
+
+        special = _SPECIAL_BUILDERS.get(gate_type)
+        if special is not None:
+            special(circuit, gate, qubits)
+            continue
+
+        getattr(circuit, gate_type)(*(gate[key] for key in spec["qubits"] + spec["angles"]))
 
     return circuit
 

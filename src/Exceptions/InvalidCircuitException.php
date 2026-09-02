@@ -103,4 +103,15 @@ class InvalidCircuitException extends AetherException
             "Batch is targeting driver [{$expected}], but circuit is pinned to driver [{$actual}]."
         );
     }
+
+    /**
+     * Create an exception for a gate definition missing a required parameter
+     * key while being rebuilt from its array shape (see Gate::fromArray()).
+     */
+    public static function missingGateParameter(string $type, string $key): self
+    {
+        return new self(
+            "Gate [{$type}] is missing required parameter [{$key}] in its array definition."
+        );
+    }
 }

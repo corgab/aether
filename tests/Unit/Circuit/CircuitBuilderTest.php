@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Aether\Circuit\Angle;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Circuit\Gate;
+use Aether\Circuit\GateType;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Results\CircuitResult;
@@ -15,6 +17,54 @@ beforeEach(function () use (&$device, &$builder): void {
     $device = $this->createMock(QuantumDevice::class);
     $builder = new CircuitBuilder($device);
 });
+
+// -------------------------------------------------------------------------
+// Hand-written wire-contract dataset — one entry per GateType, used both to
+// assert exact serialisation and (below) to assert dataset completeness.
+// Stays hand-written on purpose: never generate expected wire arrays from
+// the GateShape/GateType metadata, or the test stops checking anything.
+// -------------------------------------------------------------------------
+
+$gateWireContract = [
+    'h' => [fn ($b) => $b->h(0), ['type' => 'h', 'target' => 0]],
+    'x' => [fn ($b) => $b->x(0), ['type' => 'x', 'target' => 0]],
+    'y' => [fn ($b) => $b->y(0), ['type' => 'y', 'target' => 0]],
+    'z' => [fn ($b) => $b->z(0), ['type' => 'z', 'target' => 0]],
+    'i' => [fn ($b) => $b->i(0), ['type' => 'i', 'target' => 0]],
+    's' => [fn ($b) => $b->s(0), ['type' => 's', 'target' => 0]],
+    'si' => [fn ($b) => $b->si(0), ['type' => 'si', 'target' => 0]],
+    't' => [fn ($b) => $b->t(0), ['type' => 't', 'target' => 0]],
+    'ti' => [fn ($b) => $b->ti(0), ['type' => 'ti', 'target' => 0]],
+    'rx' => [fn ($b) => $b->rx(0, 0.5), ['type' => 'rx', 'target' => 0, 'angle' => 0.5]],
+    'ry' => [fn ($b) => $b->ry(0, 0.5), ['type' => 'ry', 'target' => 0, 'angle' => 0.5]],
+    'rz' => [fn ($b) => $b->rz(0, 0.5), ['type' => 'rz', 'target' => 0, 'angle' => 0.5]],
+    'phaseshift' => [fn ($b) => $b->phaseshift(0, 0.5), ['type' => 'phaseshift', 'target' => 0, 'angle' => 0.5]],
+    'cnot' => [fn ($b) => $b->cnot(0, 1), ['type' => 'cnot', 'control' => 0, 'target' => 1]],
+    'cz' => [fn ($b) => $b->cz(0, 1), ['type' => 'cz', 'control' => 0, 'target' => 1]],
+    'cy' => [fn ($b) => $b->cy(0, 1), ['type' => 'cy', 'control' => 0, 'target' => 1]],
+    'crx' => [fn ($b) => $b->crx(0, 1, 0.5), ['type' => 'crx', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'cry' => [fn ($b) => $b->cry(0, 1, 0.5), ['type' => 'cry', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'crz' => [fn ($b) => $b->crz(0, 1, 0.5), ['type' => 'crz', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
+    'cphaseshift' => [
+        fn ($b) => $b->cphaseshift(0, 1, 0.5),
+        ['type' => 'cphaseshift', 'control' => 0, 'target' => 1, 'angle' => 0.5],
+    ],
+    'swap' => [fn ($b) => $b->swap(0, 1), ['type' => 'swap', 'target0' => 0, 'target1' => 1]],
+    'iswap' => [fn ($b) => $b->iswap(0, 1), ['type' => 'iswap', 'target0' => 0, 'target1' => 1]],
+    'xx' => [fn ($b) => $b->xx(0, 1, 0.5), ['type' => 'xx', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+    'yy' => [fn ($b) => $b->yy(0, 1, 0.5), ['type' => 'yy', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+    'zz' => [fn ($b) => $b->zz(0, 1, 0.5), ['type' => 'zz', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
+    'cswap' => [fn ($b) => $b->cswap(0, 1, 2), ['type' => 'cswap', 'control' => 0, 'target0' => 1, 'target1' => 2]],
+    'ccnot' => [
+        fn ($b) => $b->ccnot(0, 1, 2),
+        ['type' => 'ccnot', 'control0' => 0, 'control1' => 1, 'target' => 2],
+    ],
+    'u' => [
+        fn ($b) => $b->u(0, 0.1, 0.2, 0.3),
+        ['type' => 'u', 'target' => 0, 'theta' => 0.1, 'phi' => 0.2, 'lambda' => 0.3],
+    ],
+    'measure' => [fn ($b) => $b->measure([0, 2]), ['type' => 'measure', 'targets' => [0, 2]]],
+];
 
 // -------------------------------------------------------------------------
 // Fluent API
@@ -182,36 +232,6 @@ it('run throws when no measurement', function () use (&$builder): void {
 // -------------------------------------------------------------------------
 // Validation: gate target out of range
 // -------------------------------------------------------------------------
-
-it('h throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->h(5))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('x throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->x(2))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('y throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(1)->y(1))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('z throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(1)->z(3))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cnot throws when control is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cnot(5, 1))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cnot throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cnot(0, 5))
-        ->toThrow(InvalidCircuitException::class);
-});
 
 it('gate on qubit zero with one qubit circuit does not throw', function () use (&$builder): void {
     // Qubit index 0 is valid on a 1-qubit circuit.
@@ -499,82 +519,43 @@ it('cz gate serializes in toArray', function () use (&$builder): void {
 });
 
 // -------------------------------------------------------------------------
-// Validation: new gates out of range
+// Validation: every gate type throws when any qubit-index parameter is
+// out of range (metadata-generated from GateType/GateShape)
 // -------------------------------------------------------------------------
 
-it('s throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->s(5))
-        ->toThrow(InvalidCircuitException::class);
-});
+it('throws when a gate targets an out-of-range qubit', function (string $method, array $args) use (&$builder): void {
+    $builder->qubits(3);
 
-it('t throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->t(5))
+    expect(fn () => $builder->{$method}(...$args))
         ->toThrow(InvalidCircuitException::class);
-});
+})->with(function (): array {
+    $dataset = [];
 
-it('ti throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->ti(5))
-        ->toThrow(InvalidCircuitException::class);
-});
+    foreach (GateType::cases() as $type) {
+        if ($type === GateType::Measure) {
+            continue;
+        }
 
-it('i throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->i(5))
-        ->toThrow(InvalidCircuitException::class);
-});
+        $shape = $type->shape();
+        $qubitKeys = $shape->qubitKeys();
+        $angleValues = [0.5, 0.5, 0.5];
 
-it('si throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->si(5))
-        ->toThrow(InvalidCircuitException::class);
-});
+        foreach ($qubitKeys as $outOfRangePosition => $outOfRangeKey) {
+            $args = [];
 
-it('rx throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->rx(5, M_PI))
-        ->toThrow(InvalidCircuitException::class);
-});
+            foreach ($qubitKeys as $position => $key) {
+                $args[] = $position === $outOfRangePosition ? 99 : $position;
+            }
 
-it('swap throws when target0 is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->swap(5, 1))
-        ->toThrow(InvalidCircuitException::class);
-});
+            foreach ($shape->angleKeys() as $angleIndex => $angleKey) {
+                $args[] = $angleValues[$angleIndex];
+            }
 
-it('swap throws when target1 is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->swap(0, 5))
-        ->toThrow(InvalidCircuitException::class);
-});
+            $dataset["{$type->value} {$outOfRangeKey}"] = [$type->value, $args];
+        }
+    }
 
-it('ccnot throws when control0 is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(3)->ccnot(5, 1, 2))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('ccnot throws when control1 is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(3)->ccnot(0, 5, 2))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('ccnot throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(3)->ccnot(0, 1, 5))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cz throws when control is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cz(5, 1))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cz throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cz(0, 5))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cy throws when control is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cy(5, 1))
-        ->toThrow(InvalidCircuitException::class);
-});
-
-it('cy throws when target is out of range', function () use (&$builder): void {
-    expect(fn () => $builder->qubits(2)->cy(0, 5))
-        ->toThrow(InvalidCircuitException::class);
+    return $dataset;
 });
 
 // -------------------------------------------------------------------------
@@ -609,42 +590,39 @@ it('driverName is null when explicitly passed null', function () {
 it('fromArray round trips a circuit with every gate type', function () {
     $device = $this->createMock(QuantumDevice::class);
 
-    $original = (new CircuitBuilder($device))
-        ->qubits(4)
-        ->h(0)
-        ->x(1)
-        ->y(2)
-        ->z(3)
-        ->i(0)
-        ->s(0)
-        ->si(0)
-        ->t(1)
-        ->ti(1)
-        ->rx(0, M_PI / 2)
-        ->ry(1, M_PI / 4)
-        ->rz(2, 1.23)
-        ->cnot(0, 1)
-        ->cz(1, 2)
-        ->cy(2, 3)
-        ->swap(0, 3)
-        ->ccnot(0, 1, 2)
-        ->crx(0, 1, 0.1)
-        ->cry(1, 2, 0.2)
-        ->crz(2, 3, 0.3)
-        ->cphaseshift(0, 1, 0.4)
-        ->phaseshift(0, 0.5)
-        ->u(0, 0.1, 0.2, 0.3)
-        ->cswap(0, 1, 2)
-        ->iswap(0, 1)
-        ->xx(0, 1, 0.1)
-        ->yy(1, 2, 0.2)
-        ->zz(2, 3, 0.3)
-        ->measure([0, 2])
-        ->shots(2048);
+    $gates = [];
+    $angleValues = [0.1, 0.2, 0.3];
 
-    $rebuilt = CircuitBuilder::fromArray($original->toArray(), $device);
+    foreach (GateType::cases() as $type) {
+        if ($type === GateType::Measure) {
+            continue;
+        }
 
-    expect($rebuilt->toArray())->toBe($original->toArray());
+        $shape = $type->shape();
+        $definition = ['type' => $type->value];
+
+        foreach ($shape->qubitKeys() as $index => $key) {
+            $definition[$key] = $index;
+        }
+
+        foreach ($shape->angleKeys() as $index => $key) {
+            $definition[$key] = $angleValues[$index];
+        }
+
+        $gates[] = $definition;
+    }
+
+    $gates[] = ['type' => 'measure', 'targets' => [0, 2]];
+
+    $definition = [
+        'qubits' => 3,
+        'gates' => $gates,
+        'shots' => 2048,
+    ];
+
+    $rebuilt = CircuitBuilder::fromArray($definition, $device);
+
+    expect($rebuilt->toArray())->toBe($definition);
 });
 
 it('fromArray round trips a measure-all circuit', function () {
@@ -753,58 +731,27 @@ it('throws when target out of range for new gates', function () use (&$builder):
         ->toThrow(InvalidCircuitException::class);
 });
 
-it('serialises new gates exactly to the wire contract', function (Closure $build, array $expected): void {
+// -------------------------------------------------------------------------
+// Wire contract: every gate type serialises exactly as expected
+// -------------------------------------------------------------------------
+
+it('serialises every gate type exactly to the wire contract', function (Closure $build, array $expected): void {
     $device = $this->createMock(QuantumDevice::class);
     $builder = (new CircuitBuilder($device))->qubits(4);
     $build($builder);
 
     expect($builder->toArray()['gates'][0])->toBe($expected);
-})->with([
-    'crx' => [fn ($b) => $b->crx(0, 1, 0.5), ['type' => 'crx', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
-    'cry' => [fn ($b) => $b->cry(0, 1, 0.5), ['type' => 'cry', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
-    'crz' => [fn ($b) => $b->crz(0, 1, 0.5), ['type' => 'crz', 'control' => 0, 'target' => 1, 'angle' => 0.5]],
-    'cphaseshift' => [
-        fn ($b) => $b->cphaseshift(0, 1, 0.5),
-        ['type' => 'cphaseshift', 'control' => 0, 'target' => 1, 'angle' => 0.5],
-    ],
-    'phaseshift' => [fn ($b) => $b->phaseshift(0, 0.5), ['type' => 'phaseshift', 'target' => 0, 'angle' => 0.5]],
-    'u' => [
-        fn ($b) => $b->u(0, 0.1, 0.2, 0.3),
-        ['type' => 'u', 'target' => 0, 'theta' => 0.1, 'phi' => 0.2, 'lambda' => 0.3],
-    ],
-    'cswap' => [fn ($b) => $b->cswap(0, 1, 2), ['type' => 'cswap', 'control' => 0, 'target0' => 1, 'target1' => 2]],
-    'iswap' => [fn ($b) => $b->iswap(0, 1), ['type' => 'iswap', 'target0' => 0, 'target1' => 1]],
-    'xx' => [fn ($b) => $b->xx(0, 1, 0.5), ['type' => 'xx', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
-    'yy' => [fn ($b) => $b->yy(0, 1, 0.5), ['type' => 'yy', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
-    'zz' => [fn ($b) => $b->zz(0, 1, 0.5), ['type' => 'zz', 'target0' => 0, 'target1' => 1, 'angle' => 0.5]],
-]);
+})->with($gateWireContract);
 
-it('throws when new multi-qubit gates have out of range parameters', function (Closure $build): void {
-    $device = $this->createMock(QuantumDevice::class);
-    $builder = (new CircuitBuilder($device))->qubits(2);
+it('wire contract dataset covers every gate type exactly once', function () use ($gateWireContract): void {
+    $datasetTypes = array_keys($gateWireContract);
+    $enumTypes = array_column(GateType::cases(), 'value');
 
-    $build($builder);
-})->with([
-    'crx control' => [fn ($b) => $b->crx(5, 1, 0.5)],
-    'crx target' => [fn ($b) => $b->crx(0, 5, 0.5)],
-    'cry control' => [fn ($b) => $b->cry(5, 1, 0.5)],
-    'cry target' => [fn ($b) => $b->cry(0, 5, 0.5)],
-    'crz control' => [fn ($b) => $b->crz(5, 1, 0.5)],
-    'crz target' => [fn ($b) => $b->crz(0, 5, 0.5)],
-    'cphaseshift control' => [fn ($b) => $b->cphaseshift(5, 1, 0.5)],
-    'cphaseshift target' => [fn ($b) => $b->cphaseshift(0, 5, 0.5)],
-    'cswap control' => [fn ($b) => $b->qubits(3)->cswap(5, 1, 2)],
-    'cswap target0' => [fn ($b) => $b->qubits(3)->cswap(0, 5, 2)],
-    'cswap target1' => [fn ($b) => $b->qubits(3)->cswap(0, 1, 5)],
-    'iswap target0' => [fn ($b) => $b->iswap(5, 1)],
-    'iswap target1' => [fn ($b) => $b->iswap(0, 5)],
-    'xx target0' => [fn ($b) => $b->xx(5, 1, 0.5)],
-    'xx target1' => [fn ($b) => $b->xx(0, 5, 0.5)],
-    'yy target0' => [fn ($b) => $b->yy(5, 1, 0.5)],
-    'yy target1' => [fn ($b) => $b->yy(0, 5, 0.5)],
-    'zz target0' => [fn ($b) => $b->zz(5, 1, 0.5)],
-    'zz target1' => [fn ($b) => $b->zz(0, 5, 0.5)],
-])->throws(InvalidCircuitException::class);
+    sort($datasetTypes);
+    sort($enumTypes);
+
+    expect($datasetTypes)->toBe($enumTypes);
+});
 
 // -------------------------------------------------------------------------
 // append() - composition
@@ -855,18 +802,42 @@ it('append throws when the circuit has no qubits yet', function () {
 });
 
 // -------------------------------------------------------------------------
-// Issue 10 - Missing Gates
+// Bidirectional completeness: every GateType case has a matching fluent
+// method on CircuitBuilder and factory on Gate, and vice versa.
 // -------------------------------------------------------------------------
 
-it('serializes new issue 10 gates exactly to the wire contract', function (Closure $build, array $expected): void {
-    $device = $this->createMock(QuantumDevice::class);
-    $builder = (new CircuitBuilder($device))->qubits(2);
-    $build($builder);
+it('every gate type has a matching CircuitBuilder and Gate method', function (GateType $type): void {
+    expect(method_exists(CircuitBuilder::class, $type->value))->toBeTrue();
+    expect(method_exists(Gate::class, $type->value))->toBeTrue();
+})->with(GateType::cases());
 
-    expect($builder->toArray()['gates'][0])->toBe($expected);
-})->with([
-    'i' => [fn ($b) => $b->i(0), ['type' => 'i', 'target' => 0]],
-    'si' => [fn ($b) => $b->si(0), ['type' => 'si', 'target' => 0]],
-    'ti' => [fn ($b) => $b->ti(0), ['type' => 'ti', 'target' => 0]],
-    'cy' => [fn ($b) => $b->cy(0, 1), ['type' => 'cy', 'control' => 0, 'target' => 1]],
-]);
+it('every Gate self-returning static factory has a matching GateType case', function (): void {
+    $reflection = new ReflectionClass(Gate::class);
+
+    $factoryNames = array_values(array_map(
+        static fn (ReflectionMethod $method): string => $method->getName(),
+        array_filter(
+            $reflection->getMethods(ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_STATIC),
+            static function (ReflectionMethod $method): bool {
+                if ($method->getName() === 'fromArray') {
+                    return false;
+                }
+
+                $returnType = $method->getReturnType();
+
+                // PHP <= 8.4 reports a `self` return type as the literal
+                // string "self"; PHP 8.5+ resolves it to the declaring class
+                // name, so both spellings must be accepted.
+                return $returnType instanceof ReflectionNamedType
+                    && in_array($returnType->getName(), ['self', Gate::class], true);
+            }
+        )
+    ));
+
+    $enumValues = array_column(GateType::cases(), 'value');
+
+    sort($factoryNames);
+    sort($enumValues);
+
+    expect($factoryNames)->toBe($enumValues);
+});

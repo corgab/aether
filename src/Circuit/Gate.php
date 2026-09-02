@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aether\Circuit;
 
+use Aether\Exceptions\InvalidCircuitException;
+
 /**
  * Immutable value object representing a single quantum gate operation.
  */
@@ -307,11 +309,83 @@ final readonly class Gate
     }
 
     /**
+     * Rebuild a Gate from the flat array shape produced by toArray().
+     *
+     * Dispatches generically on GateType/GateShape metadata instead of a
+     * per-type match arm: qubit-index keys are cast to int, angle keys are
+     * cast to float and normalised via radians(), in wire order.
+     *
+     * @param  array<string, mixed>  $definition
+     *
+     * @throws InvalidCircuitException
+     */
+    public static function fromArray(array $definition): self
+    {
+        $type = $definition['type'] ?? null;
+
+        if (! is_string($type)) {
+            throw InvalidCircuitException::unknownGateType('');
+        }
+
+        $gateType = GateType::tryFrom($type);
+
+        if ($gateType === null) {
+            throw InvalidCircuitException::unknownGateType($type);
+        }
+
+        if ($gateType === GateType::Measure) {
+            return self::measure(self::decodeMeasureTargets($definition));
+        }
+
+        $shape = $gateType->shape();
+        $params = [];
+
+        foreach ($shape->qubitKeys() as $key) {
+            if (! array_key_exists($key, $definition)) {
+                throw InvalidCircuitException::missingGateParameter($type, $key);
+            }
+
+            $params[$key] = (int) $definition[$key];
+        }
+
+        foreach ($shape->angleKeys() as $key) {
+            if (! array_key_exists($key, $definition)) {
+                throw InvalidCircuitException::missingGateParameter($type, $key);
+            }
+
+            $params[$key] = self::radians((float) $definition[$key]);
+        }
+
+        return new self($type, $params);
+    }
+
+    /**
      * Determine whether this gate is a measurement operation.
      */
     public function isMeasurement(): bool
     {
         return $this->type === 'measure';
+    }
+
+    /**
+     * Return the qubit indices this gate references, in wire order.
+     *
+     * Measure gates store their targets under the `targets` key, which may
+     * be `null` (meaning "all qubits", and therefore nothing to validate).
+     * Every other gate type derives its qubit-index keys from
+     * GateType::shape()->qubitKeys().
+     *
+     * @return int[]
+     */
+    public function qubitIndices(): array
+    {
+        if ($this->isMeasurement()) {
+            return $this->params['targets'] ?? [];
+        }
+
+        $keys = GateType::from($this->type)->shape()->qubitKeys();
+
+        return array_map(fn (string $key): int => (int) $this->params[$key], $keys);
     }
 
     /**
@@ -322,6 +396,24 @@ final readonly class Gate
     public function toArray(): array
     {
         return array_merge(['type' => $this->type], $this->params);
+    }
+
+    /**
+     * Decode the `targets` value of a serialized measure gate back into the
+     * int[]|null shape expected by measure().
+     *
+     * @param  array<string, mixed>  $definition
+     * @return int[]|null
+     */
+    private static function decodeMeasureTargets(array $definition): ?array
+    {
+        $targets = $definition['targets'] ?? null;
+
+        if (! is_array($targets)) {
+            return null;
+        }
+
+        return array_map(static fn (mixed $target): int => (int) $target, $targets);
     }
 
     /**
