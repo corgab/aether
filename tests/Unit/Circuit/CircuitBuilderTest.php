@@ -8,7 +8,9 @@ use Aether\Circuit\Gate;
 use Aether\Circuit\GateType;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
+use Aether\Tests\Unit\Circuit\FakeCostEstimatingDevice;
 
 $device = null;
 $builder = null;
@@ -209,6 +211,29 @@ it('run delegates to device execute circuit', function () use (&$device, &$build
     $builder->qubits(2)->h(0)->cnot(0, 1)->measure();
 
     expect($builder->run())->toBe($expected);
+});
+
+// -------------------------------------------------------------------------
+// estimateCost() — delegates to device
+// -------------------------------------------------------------------------
+
+it('estimateCost delegates to a device implementing EstimatesCost', function () {
+    $device = new FakeCostEstimatingDevice;
+    $builder = new CircuitBuilder($device);
+    $builder->qubits(2)->h(0)->cnot(0, 1)->measure()->shots(1000);
+
+    $estimate = $builder->estimateCost();
+
+    expect($estimate)->toBe($device->estimateToReturn);
+    expect($device->shotsPassedToEstimateCost)->toBe(1000);
+    expect($device->tasksPassedToEstimateCost)->toBe(1);
+});
+
+it('estimateCost throws when the device does not implement EstimatesCost', function () use (&$device, &$builder): void {
+    $builder->qubits(1)->h(0)->measure();
+
+    expect(fn () => $builder->estimateCost())
+        ->toThrow(QuantumExecutionException::class);
 });
 
 // -------------------------------------------------------------------------

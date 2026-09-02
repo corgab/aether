@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aether\Exceptions;
 
+use Aether\Results\CostEstimate;
+
 /**
  * Thrown when a quantum circuit definition is structurally invalid.
  */
@@ -127,6 +129,19 @@ class InvalidCircuitException extends AetherException
             'qubit, so this ceiling protects the host from exhausting its memory. Raise the `max_qubits` '.
             "entry in the driver's config (e.g. the AETHER_MAX_QUBITS env var for the local driver) if the ".
             'host has enough memory to spare, or set it to null to remove the ceiling entirely.'
+        );
+    }
+
+    /**
+     * Create an exception for a circuit (or batch) whose estimated cost
+     * exceeds the driver's configured `max_cost_per_task` ceiling.
+     */
+    public static function costCeilingExceeded(CostEstimate $estimate, float $ceiling): self
+    {
+        return new self(
+            "Estimated cost of {$estimate} exceeds the configured max_cost_per_task ceiling of ".
+            number_format($ceiling, 2)." {$estimate->currency}. Raise the `max_cost_per_task` entry in the ".
+            'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before retrying.'
         );
     }
 }

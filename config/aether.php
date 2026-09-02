@@ -137,6 +137,24 @@ return [
             // No ceiling here: Braket enforces its own per-device qubit
             // limits, so this package does not duplicate or guess at those.
             'max_qubits' => null,
+
+            // These mirror AWS Braket QPU list prices (per task + per shot)
+            // at the time of writing — verify against current AWS pricing
+            // before relying on them for budgeting. Managed simulators
+            // (e.g. SV1) bill per-minute instead, but the task+shot model
+            // is what estimateCost() covers; treat simulator estimates as
+            // a rough proxy, not an exact figure. Override via env/config
+            // without a package release.
+            'pricing' => [
+                'per_task' => (float) env('AETHER_AWS_PRICE_PER_TASK', 0.30),
+                'per_shot' => (float) env('AETHER_AWS_PRICE_PER_SHOT', 0.00035),
+                'currency' => env('AETHER_AWS_PRICE_CURRENCY', 'USD'),
+            ],
+
+            // When set, executeCircuit()/submitCircuit()/executeBatch() reject
+            // a circuit (or batch) whose estimated cost exceeds this amount,
+            // before any AWS call is made. null (default) means unlimited.
+            'max_cost_per_task' => env('AETHER_AWS_MAX_COST'),
         ],
 
     ],

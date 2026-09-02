@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
@@ -234,4 +235,20 @@ it('allows submitCircuit when the circuit is within max_qubits', function () use
     $taskArn = $driver->submitCircuit($circuit);
 
     expect($taskArn)->toStartWith('local:');
+});
+
+// -------------------------------------------------------------------------
+// Cost estimation: unsupported (the local simulator is free)
+// -------------------------------------------------------------------------
+
+it('does not implement EstimatesCost', function () {
+    expect($this->driver)->not->toBeInstanceOf(EstimatesCost::class);
+});
+
+it('CircuitBuilder::estimateCost throws costEstimationUnsupported for the local driver', function () {
+    $builder = new CircuitBuilder($this->driver, 'local');
+    $builder->qubits(1)->h(0)->measure();
+
+    expect(fn () => $builder->estimateCost())
+        ->toThrow(QuantumExecutionException::class, 'local');
 });

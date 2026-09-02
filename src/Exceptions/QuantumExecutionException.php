@@ -83,4 +83,14 @@ class QuantumExecutionException extends AetherException
             "Driver [{$driver}] does not support batch execution. Implement Aether\Contracts\BatchableDevice to enable Quantum::batch()."
         );
     }
+
+    /**
+     * Create an exception for drivers that do not support cost estimation.
+     */
+    public static function costEstimationUnsupported(string $driver): self
+    {
+        return new self(
+            "Driver [{$driver}] does not support cost estimation. Implement Aether\Contracts\EstimatesCost to enable CircuitBuilder::estimateCost()."
+        );
+    }
 }
