@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Asynchronous quantum task poller for the Aether Laravel package.
 
-Reads a previously-submitted task ARN as JSON from stdin, checks its current
-status on AWS Braket, and writes the status (plus the result once completed)
-as JSON to stdout. Used by a queued job to poll long-running QPU tasks
-submitted via ``submit.py`` without blocking on ``task.result()``.
+Reads a previously-submitted task identifier as JSON from stdin, checks its
+current status through the driver's provider module, and writes the status
+(plus the result once completed) as JSON to stdout. Used by a queued job to
+poll long-running QPU tasks submitted via ``submit.py`` without blocking on
+``task.result()``.
 
 Input schema (JSON on stdin)::
 
@@ -22,8 +23,9 @@ or, once the task has finished::
 
     {"status": "COMPLETED", "counts": {"00": 503, "11": 497}}
 
-Status values are passed through verbatim from Braket: ``CREATED``,
-``QUEUED``, ``RUNNING``, ``COMPLETED``, ``FAILED``, ``CANCELLED``.
+Status values must be one of ``CREATED``, ``QUEUED``, ``RUNNING``,
+``COMPLETED``, ``FAILED``, ``CANCELLED`` (the PHP ``TaskStatus`` enum); the
+aws provider passes them through verbatim from Braket.
 
 On error the script writes ``{"error": "<message>"}`` to stderr and exits
 with code 1.
@@ -33,7 +35,7 @@ import json
 import sys
 from typing import Any
 
-from common import build_aws_session
+from common import load_provider
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -47,37 +49,23 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
         task has completed.
 
     Raises:
-        ValueError: When ``driver`` is ``"local"`` — the local simulator runs
-            synchronously and has no ARN-based polling support — or when
-            ``driver`` is not a recognised value.
+        ValueError: When no provider resolves for ``driver``, or when the
+            resolved provider does not define a ``check_task`` hook — the
+            local simulator, for instance, runs synchronously and has no
+            task polling support (LocalSimulatorDriver handles local async
+            execution itself, so check.py is never called with it).
     """
     task_arn: str = payload["task_arn"]
     driver: str = payload.get("driver", "local")
     driver_config: dict[str, Any] = payload.get("driver_config", {})
 
-    if driver == "local":
-        raise ValueError(
-            "The local simulator does not support ARN-based polling; "
-            "LocalSimulatorDriver handles local async execution itself, "
-            "so check.py should never be called with driver 'local'."
-        )
+    provider = load_provider(driver, driver_config)
+    check_task = getattr(provider, "check_task", None)
 
-    if driver != "aws":
-        raise ValueError(f"Unknown driver: {driver!r}")
+    if not callable(check_task):
+        raise ValueError(f"Driver {driver!r} does not support task polling.")
 
-    from braket.aws import AwsQuantumTask  # noqa: PLC0415
-
-    aws_session = build_aws_session(driver_config)
-    task = AwsQuantumTask(task_arn, aws_session=aws_session)
-    state = task.state()
-
-    output: dict[str, Any] = {"status": state}
-
-    if state == "COMPLETED":
-        result = task.result()
-        output["counts"] = dict(result.measurement_counts)
-
-    return output
+    return check_task(task_arn, driver_config)
 
 
 def main() -> None:

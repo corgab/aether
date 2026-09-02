@@ -30,7 +30,7 @@ import json
 import sys
 from typing import Any
 
-from common import build_circuit, resolve_device
+from common import build_circuit, load_provider, provider_run_options
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -49,16 +49,10 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     driver_config: dict[str, Any] = payload.get("driver_config", {})
 
     circuit = build_circuit(qubits, gates)
-    device = resolve_device(driver, driver_config)
+    provider = load_provider(driver, driver_config)
+    device = provider.resolve_device(driver_config)
 
-    run_kwargs: dict[str, Any] = {"shots": shots}
-
-    if driver == "aws":
-        bucket = driver_config.get("bucket")
-        if not bucket:
-            raise ValueError("Driver 'aws' requires a non-empty 'bucket' in driver_config.")
-
-        run_kwargs["s3_destination_folder"] = (bucket, "results")
+    run_kwargs: dict[str, Any] = {"shots": shots, **provider_run_options(provider, driver_config)}
 
     task = device.run(circuit, **run_kwargs)
     result = task.result()

@@ -102,6 +102,14 @@ return [
     | driver uses the Braket local simulator (no AWS costs). The "aws"
     | driver connects to AWS Braket for real quantum hardware.
     |
+    | Any driver may declare an optional "python_provider" key pointing at a
+    | Python provider module — either a filesystem path to a ".py" file or
+    | an importable module name — that resolves the backend device on the
+    | Python side. See the "Custom Providers" section of the README for the
+    | provider contract. Security note: the referenced module is executed by
+    | the Python subprocess with the same privileges as "python_path", so
+    | this value is trusted configuration. Never derive it from user input.
+    |
     */
 
     'drivers' => [

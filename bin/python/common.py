@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Shared utilities for Aether quantum scripts."""
 
+import importlib
+import importlib.util
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 # The single Python source of truth for the wire-format gate parameters.
@@ -169,57 +173,139 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
     return circuit
 
 
-def build_aws_session(driver_config: dict[str, Any]) -> "AwsSession":
-    """Construct an ``AwsSession`` seeded from *driver_config*.
+# Providers shipped with the package, keyed by the wire-format driver name.
+# A "python_provider" key in driver_config always takes precedence, so a
+# custom provider can also shadow a built-in driver name.
+_BUILTIN_PROVIDERS: dict[str, str] = {
+    "local": "providers.local",
+    "aws": "providers.aws",
+}
 
-    Factored out so both device resolution (submit/run) and task polling
-    (check.py) build the session identically, from a single implementation.
+
+def load_provider(driver: str, driver_config: dict[str, Any]) -> ModuleType:
+    """Load the provider module for *driver*.
+
+    A provider is a plain Python module exposing module-level hooks. Only the
+    first is required::
+
+        resolve_device(config) -> device          # required
+        run_options(config) -> dict               # extra device.run() kwargs
+        run_batch(device, circuits, shots_list, config) -> list[Result]
+        check_task(task_id, config) -> {"status": ..., "counts": ...}
+
+    Resolution order: the ``python_provider`` key in *driver_config* (either a
+    filesystem path to a ``.py`` file or an importable module name) wins over
+    the built-in providers registered for the driver name.
 
     Args:
-        driver_config: Driver-specific options (currently just ``region``).
+        driver:        The wire-format driver name (e.g. ``"local"``).
+        driver_config: Driver-specific options from the PHP payload.
 
     Returns:
-        A configured :class:`~braket.aws.AwsSession` instance.
-    """
-    import boto3  # noqa: PLC0415
-    from braket.aws import AwsSession  # noqa: PLC0415
+        The loaded provider module.
 
-    region = driver_config.get("region", "us-east-1")
-    boto_session = boto3.Session(region_name=region)
-    return AwsSession(boto_session=boto_session)
+    Raises:
+        ValueError: When no provider is registered or configured for
+            *driver*, when a configured provider file does not exist, or when
+            the loaded module does not define a callable ``resolve_device``.
+    """
+    reference = driver_config.get("python_provider") or _BUILTIN_PROVIDERS.get(driver)
+
+    if not reference:
+        raise ValueError(f"Unknown driver {driver!r} and no 'python_provider' configured.")
+
+    reference = str(reference)
+
+    if reference.endswith(".py"):
+        path = Path(reference)
+        if not path.is_file():
+            raise ValueError(f"Provider file not found: {reference!r}")
+
+        spec = importlib.util.spec_from_file_location(f"aether_provider_{path.stem}", path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Could not load provider file: {reference!r}")
+
+        provider = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(provider)
+    else:
+        provider = importlib.import_module(reference)
+
+    if not callable(getattr(provider, "resolve_device", None)):
+        raise ValueError(
+            f"Provider {reference!r} does not define a callable resolve_device(config)."
+        )
+
+    return provider
 
 
 def resolve_device(driver: str, driver_config: dict[str, Any]) -> Any:
-    """Resolve the Braket device from the driver name and its configuration.
+    """Resolve the device for *driver* through its provider module.
 
-    For ``"local"`` the Amazon Braket local simulator is returned directly.
-    For ``"aws"`` a real :class:`~braket.aws.AwsDevice` is constructed using
-    a :class:`boto3.Session` seeded from ``driver_config``.
+    Thin convenience wrapper over :func:`load_provider` for callers that only
+    need the device and none of the optional provider hooks.
 
     Args:
-        driver:        Either ``"local"`` or ``"aws"``.
+        driver:        The wire-format driver name (e.g. ``"local"``).
         driver_config: Driver-specific options (region, device_arn, ...).
 
     Returns:
-        A Braket device object (either a local simulator or an AwsDevice).
+        A Braket-compatible device object.
 
     Raises:
-        ValueError: When ``driver`` is not a recognised value.
+        ValueError: When no provider resolves for *driver* (see
+            :func:`load_provider`) or the provider rejects its configuration.
     """
-    if driver == "local":
-        from braket.devices import LocalSimulator  # noqa: PLC0415
+    return load_provider(driver, driver_config).resolve_device(driver_config)
 
-        return LocalSimulator()
 
-    if driver == "aws":
-        from braket.aws import AwsDevice  # noqa: PLC0415
+def provider_run_options(provider: ModuleType, driver_config: dict[str, Any]) -> dict[str, Any]:
+    """Return the extra ``device.run()`` kwargs declared by *provider*.
 
-        aws_session = build_aws_session(driver_config)
+    Args:
+        provider:      A provider module returned by :func:`load_provider`.
+        driver_config: Driver-specific options passed to the hook.
 
-        device_arn = driver_config.get(
-            "device_arn",
-            "arn:aws:braket:::device/quantum-simulator/amazon/sv1",
-        )
-        return AwsDevice(device_arn, aws_session=aws_session)
+    Returns:
+        The dict returned by the provider's optional ``run_options`` hook, or
+        an empty dict when the hook is absent or returns a falsy value.
+    """
+    hook = getattr(provider, "run_options", None)
 
-    raise ValueError(f"Unknown driver: {driver!r}")
+    if not callable(hook):
+        return {}
+
+    options = hook(driver_config)
+    return dict(options) if options else {}
+
+
+def default_run_batch(
+    device: Any,
+    circuits: list[Any],
+    shots_list: list[int],
+    run_options: dict[str, Any] | None = None,
+) -> list[Any]:
+    """Run *circuits* as a batch for providers without a ``run_batch`` hook.
+
+    When every circuit uses the same shot count, the whole list goes through
+    ``device.run_batch`` in one call. Braket's generic ``run_batch`` does not
+    accept per-task shot counts, so mixed shots fall back to running the
+    circuits sequentially inside this same process.
+
+    Args:
+        device:      The device resolved by the provider.
+        circuits:    The built circuits, in input order.
+        shots_list:  One shot count per circuit.
+        run_options: Extra ``device.run()`` kwargs from the provider.
+
+    Returns:
+        One result object per circuit, in input order.
+    """
+    options = dict(run_options or {})
+
+    if len(set(shots_list)) == 1:
+        return device.run_batch(circuits, shots=shots_list[0], **options).results()
+
+    return [
+        device.run(circuit, shots=shots, **options).result()
+        for circuit, shots in zip(circuits, shots_list)
+    ]

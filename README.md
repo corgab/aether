@@ -210,6 +210,55 @@ Quantum::extend('my-driver', fn () => new MyQuantumDriver());
 Quantum::driver('my-driver')->executeCircuit($circuit);
 ```
 
+### Custom Providers
+
+A custom driver usually needs a matching backend on the Python side. Instead of forking the `bin/python` scripts, declare a **provider**: a plain Python module that resolves the device the scripts run circuits on. The scripts pick it from the `python_provider` key of the driver's config — either a filesystem path to a `.py` file or an importable module name — falling back to the built-in providers for the `local` and `aws` drivers.
+
+A provider module may define four module-level hooks; only the first is required:
+
+| Hook | Required | Purpose |
+|------|----------|---------|
+| `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
+| `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
+| `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
+| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
+
+`config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
+
+```python
+# app/quantum/ionq_provider.py
+def resolve_device(config):
+    from braket.aws import AwsDevice
+
+    return AwsDevice(config["device_arn"])
+```
+
+Wire it up with a driver registered through `Quantum::extend()` — `Quantum::bridge()` hands you the same configured `PythonBridge` the built-in drivers use:
+
+```php
+// config/aether.php
+'drivers' => [
+    'ionq' => [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'python_provider' => base_path('app/quantum/ionq_provider.py'),
+        'synchronous_safe' => false,
+    ],
+],
+```
+
+```php
+use Aether\Facades\Quantum;
+
+Quantum::extend('ionq', fn () => new IonqDriver(
+    Quantum::bridge(),
+    config('aether.drivers.ionq'),
+));
+```
+
+where `IonqDriver` extends `Aether\Drivers\AbstractQuantumDriver` and returns `'ionq'` from `driverName()` — the base class already implements circuit execution, batching, and entropy generation on top of the scripts.
+
+> **Trust model.** `python_provider` executes arbitrary Python inside the subprocess — it is exactly as powerful as `python_path` itself. Treat it as trusted code: set it only from configuration you control, and never derive it from user input.
+
 ## Available Gates
 
 | Method | Description |
