@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static QuantumDevice driver(?string $name = null)
  * @method static CircuitBuilder circuit(?string $driver = null)
  * @method static EntropyGenerator entropy(?string $driver = null)
+ * @method static \Aether\Bridge\PythonBridge bridge()
  * @method static void extend(string $name, Closure $callback)
  * @method static QuantumFake fake()
  * @method static \Aether\QuantumManager forgetDrivers()

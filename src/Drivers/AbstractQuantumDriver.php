@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Concerns\DispatchesLifecycleEvents;
 use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
+use Aether\Events\CircuitExecuted;
+use Aether\Events\EntropyGenerated;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -19,6 +22,8 @@ use Aether\Results\CircuitResult;
  */
 abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
+    use DispatchesLifecycleEvents;
+
     /**
      * @param  array<string, mixed>  $config
      */
@@ -197,7 +202,9 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->preflight();
         $this->assertWithinQubitCeiling($circuit);
 
-        $payload = array_merge($circuit->toArray(), [
+        $circuitPayload = $circuit->toArray();
+
+        $payload = array_merge($circuitPayload, [
             'driver' => $this->driverName(),
             'driver_config' => $this->config,
         ]);
@@ -220,7 +227,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             $counts[(string) $bitstring] = $count;
         }
 
-        return new CircuitResult($counts);
+        $result = new CircuitResult($counts);
+
+        $this->dispatchEvent(new CircuitExecuted($this->driverName(), $circuitPayload, $result));
+
+        return $result;
     }
 
     public function generateEntropy(int $bits): string
@@ -262,6 +273,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         }
 
         $bitstring = substr($response['bits'], 0, $bits);
+
+        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
 
         return $this->bridge->bitstringToBytes($bitstring);
     }

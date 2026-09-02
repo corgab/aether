@@ -93,6 +93,22 @@ class QuantumManager extends Manager
     }
 
     /**
+     * Create a PythonBridge configured from the package configuration.
+     *
+     * Public so custom drivers registered through extend() can reuse the
+     * same bridge wiring as the built-in drivers:
+     *
+     *     Quantum::extend('ionq', fn () => new IonqDriver(
+     *         Quantum::bridge(),
+     *         config('aether.drivers.ionq'),
+     *     ));
+     */
+    public function bridge(): PythonBridge
+    {
+        return $this->createBridge();
+    }
+
+    /**
      * Resolve a driver by name, throwing DriverNotFoundException for unknown drivers.
      */
     protected function createDriver($driver)

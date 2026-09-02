@@ -879,7 +879,11 @@ it('every Gate self-returning static factory has a matching GateType case', func
 
                 $returnType = $method->getReturnType();
 
-                return $returnType instanceof ReflectionNamedType && $returnType->getName() === 'self';
+                // PHP <= 8.4 reports a `self` return type as the literal
+                // string "self"; PHP 8.5+ resolves it to the declaring class
+                // name, so both spellings must be accepted.
+                return $returnType instanceof ReflectionNamedType
+                    && in_array($returnType->getName(), ['self', Gate::class], true);
             }
         )
     ));
