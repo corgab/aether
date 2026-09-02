@@ -7,8 +7,8 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 ## Requirements
 
 - PHP 8.3+
-- Laravel 12 or 13
-- Python 3.8+ with `amazon-braket-sdk`
+- Laravel 13
+- Python 3.11+ with `amazon-braket-sdk` (CI runs 3.11 and 3.12)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation
@@ -352,7 +352,7 @@ Event::listen(function (EntropyGenerated $event) {
 });
 ```
 
-`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked. `CircuitExecuted` fires only for synchronous `->run()` calls: a local `->dispatch()` runs the simulator inline but announces itself through `CircuitCompleted` alone, like the `aws` driver.
+`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked. `CircuitExecuted` fires only for synchronous execution (`->run()` and `Quantum::batch()->run()`): a local `->dispatch()` runs the simulator inline but announces itself through `CircuitCompleted` alone, like the `aws` driver.
 
 ## Testing
 
@@ -411,9 +411,9 @@ $fake = Quantum::fake(
 );
 ```
 
-All forms above can also be set after `fake()` (or changed later) with `respondWith()`, and `respondWithCounts(array $counts)` remains available as a shorthand for the plain counts-array form. Calling `checkTask()` for an asynchronously submitted circuit honours the same stub.
+All forms above can also be set after `fake()` (or changed later) with `respondWith()`, and `respondWithCounts(array $counts)` remains available as a shorthand for the plain counts-array form. Calling `checkTask()` for an asynchronously submitted circuit honours the same stub: the result is resolved on the first successful poll and kept for that task, so polling it repeatedly consumes a single sequence entry, like a real completed task.
 
-Stubbed counts must be shaped like real measurement counts — non-empty, with bitstring keys ("00", "1", ...) and non-negative integer values — or `Quantum::fake()` / `respondWith()` throw an `InvalidArgumentException` immediately.
+Stubbed counts must be shaped like real measurement counts — bitstring keys ("00", "1", ...) and non-negative integer values — or `Quantum::fake()` / `respondWith()` throw an `InvalidArgumentException` immediately. An empty array is accepted, so the empty-result branch (`mostFrequent()` unavailable, zero shots) can be exercised too.
 
 Entropy can be stubbed independently of circuit results:
 
