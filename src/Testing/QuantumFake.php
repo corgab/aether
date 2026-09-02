@@ -15,7 +15,9 @@ use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
+use Aether\Testing\Concerns\ValidatesCounts;
 use Closure;
+use InvalidArgumentException;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -26,10 +28,24 @@ use PHPUnit\Framework\Assert;
  * Event::fake() assertions on those events keep working for code under test
  * even when Quantum::fake() stands in for the backend — the same fake/event
  * parity Http::fake() gives Http-driven code.
+ *
+ * Stubbing follows Http::fake() idioms:
+ *
+ *   Quantum::fake();                                          // BC: deterministic 50/50 + counter entropy
+ *   Quantum::fake(['00' => 700, '11' => 324]);                // canned counts, every circuit
+ *   Quantum::fake(QuantumFake::result(['00' => 700]));        // canned CircuitResult
+ *   Quantum::fake(fn (CircuitBuilder $c) => $c->qubitCount() === 2 ? ['00' => 1000] : null);
+ *   Quantum::fake(QuantumFake::sequence([['0' => 10], ['1' => 10]]));
+ *
+ * A stub closure returning null falls through to the default deterministic
+ * result for that call, exactly like Http::fake()'s closure stubs.
+ *
+ * @phpstan-type CircuitStub array<string, int>|CircuitResult|Closure(CircuitBuilder): (array<string, int>|CircuitResult|null)|ResultSequence
  */
 class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 {
     use DispatchesLifecycleEvents;
+    use ValidatesCounts;
 
     /**
      * Driver name reported on CircuitExecuted/EntropyGenerated when the fake
@@ -56,22 +72,38 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
     private int $dispatchCounter = 0;
 
-    /** @var array<string, int>|null */
-    private ?array $stubbedCounts = null;
+    /** @var CircuitStub|null */
+    private array|CircuitResult|Closure|ResultSequence|null $circuitStub = null;
 
     private ?TaskStatus $stubbedTaskStatus = null;
+
+    /** @var string|Closure(int): (string|null)|null */
+    private string|Closure|null $entropyStub = null;
 
     private int $entropyCounter = 0;
 
     /**
-     * Record the circuit and return a deterministic 50/50 result (or the
-     * counts stubbed via respondWithCounts()).
+     * @param  CircuitStub|null  $stub  Optional canned response applied to every circuit
+     *                                  executed through this fake (see the class docblock for
+     *                                  the accepted forms). Omit for the plain deterministic
+     *                                  behaviour, unchanged from before stubbing existed.
+     */
+    public function __construct(array|CircuitResult|Closure|ResultSequence|null $stub = null)
+    {
+        if ($stub !== null) {
+            $this->respondWith($stub);
+        }
+    }
+
+    /**
+     * Record the circuit and return its stubbed result, or a deterministic
+     * 50/50 split when nothing was stubbed for it.
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
         $this->recordedCircuits[] = $circuit;
 
-        $result = new CircuitResult($this->resolveCounts($circuit));
+        $result = $this->resolveResult($circuit);
 
         $this->dispatchEvent(new CircuitExecuted($circuit->driverName() ?? self::FAKE_DRIVER, $circuit->toArray(), $result));
 
@@ -81,7 +113,8 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     /**
      * Record the batch and return one fake result per circuit. Every circuit
      * is also recorded individually, so the circuit-level assertions see
-     * batched executions exactly like single ones.
+     * batched executions exactly like single ones. Each circuit resolves its
+     * own stub independently — a ResultSequence advances once per circuit.
      *
      * @param  CircuitBuilder[]  $circuits
      */
@@ -93,31 +126,30 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
 
         foreach ($circuits as $circuit) {
             $this->recordedCircuits[] = $circuit;
-            $results[] = new CircuitResult($this->resolveCounts($circuit));
+            $results[] = $this->resolveResult($circuit);
         }
 
         return new BatchResult($results);
     }
 
     /**
-     * Record the bit request and return deterministic bytes.
+     * Record the bit request and return the stubbed entropy bytes, or a
+     * deterministic counter sequence when nothing was stubbed.
      *
-     * The bytes come from a counter that keeps advancing across calls rather
-     * than a repeated constant. A repeating byte makes the bitstring periodic,
+     * The counter-based default keeps advancing across calls rather than
+     * repeating a constant. A repeating byte makes the bitstring periodic,
      * and EntropyGenerator::integer() rejection-samples fixed-width chunks of
      * it — with a periodic source every chunk carries the same value, so any
      * range that rejects that value rejects every chunk and the generator
-     * exhausts itself instead of returning.
+     * exhausts itself instead of returning. respondEntropyWith() lets a test
+     * opt into a fixed or periodic byte stream anyway; that trade-off is then
+     * the caller's choice, not the default.
      */
     public function generateEntropy(int $bits): string
     {
         $this->recordedEntropy[] = $bits;
 
-        $bytes = '';
-
-        for ($i = 0, $length = (int) ceil($bits / 8); $i < $length; $i++) {
-            $bytes .= chr($this->entropyCounter++ & 0xFF);
-        }
+        $bytes = $this->resolveEntropy($bits);
 
         $this->dispatchEvent(new EntropyGenerated(self::FAKE_DRIVER, $bits));
 
@@ -142,10 +174,10 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     /**
      * Return a deterministic snapshot for the given task.
      *
-     * Defaults to Completed with the same counts executeCircuit() would
-     * produce for the submitted circuit (or the counts stubbed via
-     * respondWithCounts()). Use respondWithTaskStatus() to simulate a
-     * non-terminal or failed status instead, for testing polling logic.
+     * Defaults to Completed with the same result executeCircuit() would
+     * produce for the submitted circuit (stubbed or deterministic). Use
+     * respondWithTaskStatus() to simulate a non-terminal or failed status
+     * instead, for testing polling logic.
      */
     public function checkTask(string $taskArn): TaskSnapshot
     {
@@ -156,20 +188,66 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
         }
 
         $circuit = $this->tasksByArn[$taskArn] ?? null;
-        $counts = $this->stubbedCounts ?? ($circuit !== null ? $this->resolveCounts($circuit) : null);
 
-        return new TaskSnapshot($status, $counts);
+        $result = $this->evaluateCircuitStub($circuit)
+            ?? ($circuit !== null ? $this->deterministicResult($circuit) : null);
+
+        return new TaskSnapshot($status, $result?->counts());
     }
 
     /**
-     * Stub the measurement counts returned by executeCircuit() and checkTask(),
-     * overriding the default deterministic 50/50 split.
+     * Stub the result returned by executeCircuit(), executeBatch() and
+     * checkTask(), overriding the default deterministic 50/50 split.
+     *
+     * Accepts the same forms as Quantum::fake($stub) — see the class
+     * docblock. Calling this again replaces whatever was stubbed before.
+     *
+     * @param  CircuitStub  $stub
+     */
+    public function respondWith(array|CircuitResult|Closure|ResultSequence $stub): static
+    {
+        if (is_array($stub)) {
+            self::assertValidCounts($stub);
+        }
+
+        $this->circuitStub = $stub;
+
+        return $this;
+    }
+
+    /**
+     * Stub the measurement counts returned by executeCircuit() and checkTask().
+     *
+     * Thin, BC-preserving wrapper around respondWith() for the plain counts
+     * array form.
      *
      * @param  array<string, int>  $counts
      */
     public function respondWithCounts(array $counts): static
     {
-        $this->stubbedCounts = $counts;
+        return $this->respondWith($counts);
+    }
+
+    /**
+     * Stub the raw bytes returned by generateEntropy(), overriding the
+     * default deterministic counter sequence.
+     *
+     * Pass a fixed byte string (tiled to fill whatever length a given
+     * generateEntropy($bits) call needs — use QuantumFake::hex() to build it
+     * from a hex string) or a closure receiving the requested bit count and
+     * returning the raw bytes for it. A closure returning null falls through
+     * to the default counter bytes for that call, matching respondWith()'s
+     * closure semantics.
+     *
+     * @param  string|Closure(int): (string|null)  $entropy
+     */
+    public function respondEntropyWith(string|Closure $entropy): static
+    {
+        if ($entropy === '') {
+            throw new InvalidArgumentException('Stubbed entropy bytes cannot be an empty string.');
+        }
+
+        $this->entropyStub = $entropy;
 
         return $this;
     }
@@ -417,27 +495,178 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, QuantumDevice
     }
 
     /**
-     * Resolve the measurement counts for a circuit: the stubbed counts set
-     * via respondWithCounts() when present, otherwise a deterministic 50/50
-     * split derived from the circuit's qubit and shot counts.
+     * Build a canned CircuitResult from raw counts, for use with
+     * Quantum::fake() or respondWith().
      *
-     * @return array<string, int>
+     * @param  array<string, int>  $counts
      */
-    private function resolveCounts(CircuitBuilder $circuit): array
+    public static function result(array $counts): CircuitResult
     {
-        if ($this->stubbedCounts !== null) {
-            return $this->stubbedCounts;
+        self::assertValidCounts($counts);
+
+        return new CircuitResult($counts);
+    }
+
+    /**
+     * Build an ordered sequence of canned results, for use with
+     * Quantum::fake() or respondWith(). See ResultSequence for push() /
+     * whenEmpty().
+     *
+     * @param  array<int, array<string, int>|CircuitResult>  $results
+     */
+    public static function sequence(array $results = []): ResultSequence
+    {
+        return new ResultSequence($results);
+    }
+
+    /**
+     * Decode a hex string into the raw bytes respondEntropyWith() expects.
+     */
+    public static function hex(string $hex): string
+    {
+        if ($hex === '' || strlen($hex) % 2 !== 0 || ! ctype_xdigit($hex)) {
+            throw new InvalidArgumentException(
+                "Invalid hex string [{$hex}]: expected a non-empty, even-length string of hexadecimal digits."
+            );
         }
 
+        return (string) hex2bin($hex);
+    }
+
+    /**
+     * Resolve the result for a circuit that is guaranteed to be known: the
+     * stubbed result when one is configured and applies, otherwise a
+     * deterministic 50/50 split derived from the circuit's qubit and shot
+     * counts.
+     */
+    private function resolveResult(CircuitBuilder $circuit): CircuitResult
+    {
+        return $this->evaluateCircuitStub($circuit) ?? $this->deterministicResult($circuit);
+    }
+
+    /**
+     * Evaluate the configured circuit stub, if any, against a circuit.
+     *
+     * Returns null both when nothing is stubbed and when a stubbed closure
+     * explicitly falls through for this circuit — the caller treats both the
+     * same way, by falling back to the deterministic default.
+     */
+    private function evaluateCircuitStub(?CircuitBuilder $circuit): ?CircuitResult
+    {
+        return match (true) {
+            $this->circuitStub === null => null,
+            $this->circuitStub instanceof ResultSequence => $this->toCircuitResult($this->circuitStub->next()),
+            $this->circuitStub instanceof Closure => $this->evaluateClosureStub($circuit),
+            $this->circuitStub instanceof CircuitResult => $this->circuitStub,
+            default => $this->toCircuitResult($this->circuitStub),
+        };
+    }
+
+    /**
+     * Evaluate a closure stub against a circuit, when one is known.
+     *
+     * A closure stub cannot be evaluated without a circuit to pass it (only
+     * checkTask() for an untracked task ARN hits this), so it falls through
+     * to the deterministic default there instead of being called with null.
+     */
+    private function evaluateClosureStub(?CircuitBuilder $circuit): ?CircuitResult
+    {
+        if ($circuit === null || ! $this->circuitStub instanceof Closure) {
+            return null;
+        }
+
+        $result = ($this->circuitStub)($circuit);
+
+        return $result === null ? null : $this->toCircuitResult($result);
+    }
+
+    /**
+     * @param  array<string, int>|CircuitResult  $value
+     */
+    private function toCircuitResult(array|CircuitResult $value): CircuitResult
+    {
+        if ($value instanceof CircuitResult) {
+            return $value;
+        }
+
+        self::assertValidCounts($value);
+
+        return new CircuitResult($value);
+    }
+
+    /**
+     * Build the deterministic 50/50 split used whenever no stub applies.
+     */
+    private function deterministicResult(CircuitBuilder $circuit): CircuitResult
+    {
         $n = $circuit->qubitCount();
         $shots = $circuit->shotCount();
         $zeros = str_repeat('0', $n);
         $ones = str_repeat('1', $n);
         $half = intdiv($shots, 2);
 
-        return [
+        return new CircuitResult([
             $zeros => $half,
             $ones => $shots - $half,
-        ];
+        ]);
+    }
+
+    /**
+     * Resolve the raw bytes for a generateEntropy($bits) call: the stubbed
+     * bytes when one is configured and applies, otherwise the deterministic
+     * counter sequence.
+     */
+    private function resolveEntropy(int $bits): string
+    {
+        $length = (int) ceil($bits / 8);
+
+        if (is_string($this->entropyStub)) {
+            return $this->tileBytes($this->entropyStub, $length);
+        }
+
+        if ($this->entropyStub instanceof Closure) {
+            $bytes = ($this->entropyStub)($bits);
+
+            if ($bytes !== null) {
+                $this->assertEntropyLength($bytes, $length, $bits);
+
+                return $bytes;
+            }
+        }
+
+        return $this->deterministicEntropy($length);
+    }
+
+    /**
+     * Advance and consume the deterministic counter sequence for $length bytes.
+     */
+    private function deterministicEntropy(int $length): string
+    {
+        $bytes = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $bytes .= chr($this->entropyCounter++ & 0xFF);
+        }
+
+        return $bytes;
+    }
+
+    /**
+     * Repeat a fixed byte string to fill exactly $length bytes.
+     */
+    private function tileBytes(string $stub, int $length): string
+    {
+        return substr(str_repeat($stub, (int) ceil($length / strlen($stub))), 0, $length);
+    }
+
+    private function assertEntropyLength(string $bytes, int $expected, int $bits): void
+    {
+        if (strlen($bytes) !== $expected) {
+            $actual = strlen($bytes);
+
+            throw new InvalidArgumentException(
+                "Entropy stub closure returned {$actual} byte(s) for a {$bits}-bit request, expected {$expected}."
+            );
+        }
     }
 }

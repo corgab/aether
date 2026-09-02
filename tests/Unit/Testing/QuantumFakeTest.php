@@ -10,6 +10,7 @@ use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
+use Aether\Testing\ResultSequence;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\ExpectationFailedException;
 
@@ -663,4 +664,354 @@ it('returns correct counts from executeBatch', function () {
 
     expect($result)->toBeInstanceOf(BatchResult::class);
     expect($result->get(0)->counts())->toBe(['0' => 50, '1' => 50]);
+});
+
+// -------------------------------------------------------------------------
+// Quantum::fake($stub) — canned counts array
+// -------------------------------------------------------------------------
+
+it('constructor accepts a canned counts array and returns it from every circuit', function () {
+    $fake = new QuantumFake(['00' => 700, '11' => 324]);
+    $circuit1 = (new CircuitBuilder($fake))->qubits(2)->measure();
+    $circuit2 = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    expect($fake->executeCircuit($circuit1)->counts())->toBe(['00' => 700, '11' => 324])
+        ->and($fake->executeCircuit($circuit2)->counts())->toBe(['00' => 700, '11' => 324]);
+});
+
+it('respondWith accepts a canned counts array', function () {
+    $fake = new QuantumFake;
+    $fake->respondWith(['0' => 3, '1' => 7]);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['0' => 3, '1' => 7]);
+});
+
+it('respondWith returns self for chaining', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->respondWith(['0' => 1]))->toBe($fake);
+});
+
+it('rejects an empty counts array with a clear message', function () {
+    expect(fn () => new QuantumFake([]))
+        ->toThrow(InvalidArgumentException::class, 'Stubbed counts cannot be empty');
+});
+
+it('rejects a counts array with a non-bitstring key', function () {
+    expect(fn () => new QuantumFake(['not-a-bitstring' => 1]))
+        ->toThrow(InvalidArgumentException::class, 'is not a valid bitstring');
+});
+
+it('rejects a counts array with a negative count', function () {
+    expect(fn () => new QuantumFake(['0' => -1]))
+        ->toThrow(InvalidArgumentException::class, 'non-negative integer');
+});
+
+it('rejects a counts array with a non-integer count', function () {
+    expect(fn () => new QuantumFake(['0' => 'many']))
+        ->toThrow(InvalidArgumentException::class, 'non-negative integer');
+});
+
+// -------------------------------------------------------------------------
+// Quantum::fake($stub) — canned CircuitResult via QuantumFake::result()
+// -------------------------------------------------------------------------
+
+it('QuantumFake::result builds a CircuitResult from counts', function () {
+    $result = QuantumFake::result(['00' => 700, '11' => 324]);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class)
+        ->and($result->counts())->toBe(['00' => 700, '11' => 324]);
+});
+
+it('QuantumFake::result validates its counts eagerly', function () {
+    expect(fn () => QuantumFake::result(['bad key' => 1]))
+        ->toThrow(InvalidArgumentException::class, 'is not a valid bitstring');
+});
+
+it('constructor accepts a canned CircuitResult and returns the same instance', function () {
+    $canned = QuantumFake::result(['01' => 1000]);
+    $fake = new QuantumFake($canned);
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    expect($fake->executeCircuit($circuit))->toBe($canned);
+});
+
+it('respondWith accepts a CircuitResult directly', function () {
+    $fake = new QuantumFake;
+    $fake->respondWith(QuantumFake::result(['10' => 42]));
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['10' => 42]);
+});
+
+// -------------------------------------------------------------------------
+// Quantum::fake($stub) — closure stub, per-circuit branching, null fallthrough
+// -------------------------------------------------------------------------
+
+it('constructor accepts a closure evaluated per circuit', function () {
+    $fake = new QuantumFake(
+        fn (CircuitBuilder $c): array => $c->qubitCount() === 2 ? ['00' => 1000] : ['0' => 1000]
+    );
+
+    $twoQubit = (new CircuitBuilder($fake))->qubits(2)->measure();
+    $oneQubit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($twoQubit)->counts())->toBe(['00' => 1000])
+        ->and($fake->executeCircuit($oneQubit)->counts())->toBe(['0' => 1000]);
+});
+
+it('closure stub receives the CircuitBuilder that is about to execute', function () {
+    $seen = null;
+    $fake = new QuantumFake(function (CircuitBuilder $c) use (&$seen): array {
+        $seen = $c;
+
+        return ['0' => 1];
+    });
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeCircuit($circuit);
+
+    expect($seen)->toBe($circuit);
+});
+
+it('closure stub may return a CircuitResult', function () {
+    $fake = new QuantumFake(fn (CircuitBuilder $c): CircuitResult => QuantumFake::result(['1' => 5]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['1' => 5]);
+});
+
+it('closure stub returning null falls through to the deterministic default', function () {
+    $fake = new QuantumFake(fn (CircuitBuilder $c): ?array => null);
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->shots(10)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['00' => 5, '11' => 5]);
+});
+
+it('closure stub result is validated when it returns an array', function () {
+    $fake = new QuantumFake(fn (CircuitBuilder $c): array => ['nope' => 1]);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect(fn () => $fake->executeCircuit($circuit))
+        ->toThrow(InvalidArgumentException::class, 'is not a valid bitstring');
+});
+
+// -------------------------------------------------------------------------
+// Quantum::fake($stub) — sequences via QuantumFake::sequence()
+// -------------------------------------------------------------------------
+
+it('QuantumFake::sequence returns results in order', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([
+        ['0' => 10],
+        ['1' => 10],
+    ]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['0' => 10])
+        ->and($fake->executeCircuit($circuit)->counts())->toBe(['1' => 10]);
+});
+
+it('sequence accepts a mix of counts arrays and CircuitResult instances', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([
+        ['0' => 1],
+        QuantumFake::result(['1' => 2]),
+    ]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['0' => 1])
+        ->and($fake->executeCircuit($circuit)->counts())->toBe(['1' => 2]);
+});
+
+it('sequence built via push() advances in push order', function () {
+    $sequence = QuantumFake::sequence()->push(['0' => 1])->push(['1' => 1]);
+    $fake = new QuantumFake($sequence);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['0' => 1])
+        ->and($fake->executeCircuit($circuit)->counts())->toBe(['1' => 1]);
+});
+
+it('sequence throws once exhausted', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([['0' => 1]]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeCircuit($circuit);
+
+    expect(fn () => $fake->executeCircuit($circuit))
+        ->toThrow(OutOfBoundsException::class, 'The stubbed result sequence is empty');
+});
+
+it('sequence falls back to whenEmpty() instead of throwing once exhausted', function () {
+    $sequence = QuantumFake::sequence([['0' => 1]])->whenEmpty(['1' => 1]);
+    $fake = new QuantumFake($sequence);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['0' => 1])
+        ->and($fake->executeCircuit($circuit)->counts())->toBe(['1' => 1])
+        ->and($fake->executeCircuit($circuit)->counts())->toBe(['1' => 1]);
+});
+
+it('ResultSequence::isEmpty reflects the queue, not the whenEmpty fallback', function () {
+    $sequence = new ResultSequence([['0' => 1]]);
+
+    expect($sequence->isEmpty())->toBeFalse();
+    $sequence->next();
+    expect($sequence->isEmpty())->toBeTrue();
+});
+
+it('sequence validates each pushed counts array eagerly', function () {
+    expect(fn () => QuantumFake::sequence([['bad key' => 1]]))
+        ->toThrow(InvalidArgumentException::class, 'is not a valid bitstring');
+});
+
+it('sequence advances once per circuit in a batch', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([['0' => 1], ['1' => 1]]));
+    $c1 = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $c2 = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $result = $fake->executeBatch([$c1, $c2]);
+
+    expect($result->get(0)->counts())->toBe(['0' => 1])
+        ->and($result->get(1)->counts())->toBe(['1' => 1]);
+});
+
+// -------------------------------------------------------------------------
+// Stubs applied to checkTask()
+// -------------------------------------------------------------------------
+
+it('checkTask honours a canned CircuitResult stub', function () {
+    $fake = new QuantumFake(QuantumFake::result(['01' => 9, '10' => 1]));
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Completed)
+        ->and($snapshot->counts)->toBe(['01' => 9, '10' => 1]);
+});
+
+it('checkTask honours a closure stub for the submitted circuit', function () {
+    $fake = new QuantumFake(fn (CircuitBuilder $c): array => ['0' => $c->shotCount()]);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->shots(250)->measure();
+
+    $arn = $fake->submitCircuit($circuit);
+    $snapshot = $fake->checkTask($arn);
+
+    expect($snapshot->counts)->toBe(['0' => 250]);
+});
+
+it('checkTask consumes one sequence entry per call', function () {
+    $fake = new QuantumFake(QuantumFake::sequence([['0' => 1], ['1' => 1]]));
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+    $arn = $fake->submitCircuit($circuit);
+
+    expect($fake->checkTask($arn)->counts)->toBe(['0' => 1])
+        ->and($fake->checkTask($arn)->counts)->toBe(['1' => 1]);
+});
+
+// -------------------------------------------------------------------------
+// respondEntropyWith() — fixed bytes, hex, closure
+// -------------------------------------------------------------------------
+
+it('respondEntropyWith a fixed byte tiles it to the requested length', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith("\xFF");
+
+    expect($fake->generateEntropy(24))->toBe("\xFF\xFF\xFF");
+});
+
+it('respondEntropyWith tiles a multi-byte fixed stub', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith("\xAA\xBB");
+
+    expect($fake->generateEntropy(24))->toBe("\xAA\xBB\xAA");
+});
+
+it('respondEntropyWith returns self for chaining', function () {
+    $fake = new QuantumFake;
+
+    expect($fake->respondEntropyWith("\x00"))->toBe($fake);
+});
+
+it('rejects an empty fixed entropy stub', function () {
+    $fake = new QuantumFake;
+
+    expect(fn () => $fake->respondEntropyWith(''))
+        ->toThrow(InvalidArgumentException::class, 'cannot be an empty string');
+});
+
+it('QuantumFake::hex decodes a hex string into raw bytes for respondEntropyWith', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith(QuantumFake::hex('ff00'));
+
+    expect($fake->generateEntropy(16))->toBe("\xFF\x00");
+});
+
+it('QuantumFake::hex rejects an odd-length or non-hex string', function () {
+    expect(fn () => QuantumFake::hex('abc'))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => QuantumFake::hex('zz'))->toThrow(InvalidArgumentException::class);
+});
+
+it('respondEntropyWith a closure receives the requested bit count', function () {
+    $seenBits = null;
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith(function (int $bits) use (&$seenBits): string {
+        $seenBits = $bits;
+
+        return str_repeat("\x01", (int) ceil($bits / 8));
+    });
+
+    $fake->generateEntropy(24);
+
+    expect($seenBits)->toBe(24);
+});
+
+it('respondEntropyWith closure returning null falls through to the deterministic counter', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith(fn (int $bits): ?string => null);
+
+    expect($fake->generateEntropy(16))->toBe("\x00\x01");
+});
+
+it('respondEntropyWith closure must return exactly the expected byte length', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith(fn (int $bits): string => "\x00"); // always 1 byte
+
+    expect(fn () => $fake->generateEntropy(24))
+        ->toThrow(InvalidArgumentException::class, 'expected 3');
+});
+
+it('generateEntropy still records bit-lengths and dispatches when stubbed', function () {
+    $fake = new QuantumFake;
+    $fake->respondEntropyWith("\x00");
+
+    $fake->generateEntropy(128);
+
+    $fake->assertEntropyGenerated(128);
+});
+
+// -------------------------------------------------------------------------
+// BC — Quantum::fake() with no arguments keeps the original deterministic behaviour
+// -------------------------------------------------------------------------
+
+it('constructing QuantumFake with no stub keeps the deterministic default', function () {
+    $fake = new QuantumFake;
+    $circuit = (new CircuitBuilder($fake))->qubits(2)->shots(1000)->measure();
+
+    expect($fake->executeCircuit($circuit)->counts())->toBe(['00' => 500, '11' => 500])
+        ->and($fake->generateEntropy(16))->toBe("\x00\x01");
+});
+
+// -------------------------------------------------------------------------
+// Assertions still work when a stub is in play
+// -------------------------------------------------------------------------
+
+it('assertCircuitRan still passes when a canned stub is configured', function () {
+    $fake = new QuantumFake(['0' => 1]);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $fake->executeCircuit($circuit);
+
+    $fake->assertCircuitRan(fn (CircuitBuilder $c) => $c->qubitCount() === 1);
 });

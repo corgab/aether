@@ -117,3 +117,32 @@ it('dispatches EntropyGenerated through Quantum::fake() for Event::fake() parity
     $fake->assertEntropyGenerated(128);
     Event::assertDispatched(EntropyGenerated::class, fn (EntropyGenerated $event): bool => $event->bits === 128);
 });
+
+// -------------------------------------------------------------------------
+// Quantum::fake($stub) — stubbing changes what is returned, not the eventing
+// -------------------------------------------------------------------------
+
+it('dispatches CircuitExecuted carrying the stubbed CircuitResult', function () {
+    Event::fake([CircuitExecuted::class]);
+    $fake = Quantum::fake(['00' => 700, '11' => 324]);
+
+    $result = Quantum::circuit('local')->qubits(2)->h(0)->cnot(0, 1)->measure()->run();
+
+    expect($result->counts())->toBe(['00' => 700, '11' => 324]);
+    $fake->assertCircuitRan();
+    Event::assertDispatched(
+        CircuitExecuted::class,
+        fn (CircuitExecuted $event): bool => $event->result->counts() === ['00' => 700, '11' => 324]
+    );
+});
+
+it('dispatches EntropyGenerated carrying the requested bit count when entropy is stubbed', function () {
+    Event::fake([EntropyGenerated::class]);
+    $fake = Quantum::fake()->respondEntropyWith("\xFF");
+
+    $entropy = Quantum::entropy()->generate(8);
+
+    expect($entropy)->toBe("\xFF");
+    $fake->assertEntropyGenerated(8);
+    Event::assertDispatched(EntropyGenerated::class, fn (EntropyGenerated $event): bool => $event->bits === 8);
+});

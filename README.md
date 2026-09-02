@@ -388,10 +388,44 @@ $fake->assertCircuitDispatchedTimes(2);
 $fake->assertCircuitNotDispatched();
 ```
 
-Stub what the fake returns:
+Stub what the fake returns, the same way `Http::fake()` accepts stubbed responses:
 
 ```php
-$fake->respondWithCounts(['00' => 1000]);          // measurement counts
+// A canned counts array, returned by every executed circuit
+$fake = Quantum::fake(['00' => 700, '11' => 324]);
+
+// Or a canned CircuitResult, built with QuantumFake::result()
+$fake = Quantum::fake(QuantumFake::result(['00' => 700, '11' => 324]));
+
+// A closure evaluated per circuit — branch on the CircuitBuilder about to run
+$fake = Quantum::fake(function (CircuitBuilder $circuit) {
+    return $circuit->qubitCount() === 2 ? ['00' => 1000] : null; // null falls through to the default
+});
+
+// An ordered sequence, one result per call — throws once exhausted, unless whenEmpty() is set
+$fake = Quantum::fake(
+    QuantumFake::sequence([
+        ['0' => 10],
+        ['1' => 10],
+    ])->whenEmpty(['0' => 5, '1' => 5])
+);
+```
+
+All forms above can also be set after `fake()` (or changed later) with `respondWith()`, and `respondWithCounts(array $counts)` remains available as a shorthand for the plain counts-array form. Calling `checkTask()` for an asynchronously submitted circuit honours the same stub.
+
+Stubbed counts must be shaped like real measurement counts — non-empty, with bitstring keys ("00", "1", ...) and non-negative integer values — or `Quantum::fake()` / `respondWith()` throw an `InvalidArgumentException` immediately.
+
+Entropy can be stubbed independently of circuit results:
+
+```php
+$fake->respondEntropyWith("\xFF");                    // fixed bytes, tiled to whatever length each call needs
+$fake->respondEntropyWith(QuantumFake::hex('ff00'));   // fixed bytes from a hex string
+$fake->respondEntropyWith(fn (int $bits) => null);     // closure by bit count; null falls through to the default
+```
+
+Calling `Quantum::fake()` with no arguments keeps the original deterministic behaviour unchanged: a 50/50 split of `0...0`/`1...1` counts, and an incrementing byte counter for entropy.
+
+```php
 $fake->respondWithTaskStatus(TaskStatus::Running); // simulate a task still in flight
 ```
 

@@ -11,7 +11,10 @@ use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Exceptions\DriverNotFoundException;
+use Aether\Results\CircuitResult;
 use Aether\Testing\QuantumFake;
+use Aether\Testing\ResultSequence;
+use Closure;
 use Illuminate\Support\Manager;
 use Illuminate\Support\Str;
 
@@ -82,10 +85,17 @@ class QuantumManager extends Manager
 
     /**
      * Replace all drivers with a QuantumFake for use in tests.
+     *
+     * Optionally stub what it returns, the same way Http::fake() does: a
+     * canned counts array or CircuitResult, a closure evaluated per circuit,
+     * or a ResultSequence built via QuantumFake::sequence(). See QuantumFake
+     * for the full stubbing API (respondWith(), respondEntropyWith(), etc.).
+     *
+     * @param  array<string, int>|CircuitResult|Closure(CircuitBuilder): (array<string, int>|CircuitResult|null)|ResultSequence|null  $stub
      */
-    public function fake(): QuantumFake
+    public function fake(array|CircuitResult|Closure|ResultSequence|null $stub = null): QuantumFake
     {
-        $fake = new QuantumFake;
+        $fake = new QuantumFake($stub);
         $this->fakeInstance = $fake;
         $this->forgetDrivers();
 
