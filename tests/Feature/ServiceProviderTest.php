@@ -98,6 +98,18 @@ it('passes the configured process_timeout through to the driver bridge', functio
 });
 
 // -------------------------------------------------------------------------
+// max_qubits config
+// -------------------------------------------------------------------------
+
+it('defaults the local driver max_qubits to 25', function () {
+    expect($this->app['config']->get('aether.drivers.local.max_qubits'))->toBe(25);
+});
+
+it('defaults the aws driver max_qubits to null', function () {
+    expect($this->app['config']->get('aether.drivers.aws.max_qubits'))->toBeNull();
+});
+
+// -------------------------------------------------------------------------
 // php artisan about
 // -------------------------------------------------------------------------
 

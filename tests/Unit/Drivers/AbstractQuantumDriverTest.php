@@ -6,6 +6,7 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AbstractQuantumDriver;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\BatchResult;
@@ -340,3 +341,136 @@ it('throws when batch.py results count does not match circuits count', function 
     // Pass 2 circuits, but mock returns 1 result
     $this->driver->executeBatch([$circuit, $circuit]);
 })->throws(QuantumExecutionException::class, 'exactly 2 results, got 1');
+
+// -------------------------------------------------------------------------
+// max_qubits ceiling
+// -------------------------------------------------------------------------
+
+it('throws InvalidCircuitException on executeCircuit when max_qubits is exceeded', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(6);
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('includes requested count, ceiling and driver name in the qubit ceiling exception message', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(6);
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())
+            ->toContain('6')
+            ->toContain('5')
+            ->toContain('[test]')
+            ->toContain('max_qubits')
+            ->toContain('Statevector');
+    }
+});
+
+it('allows executeCircuit when qubit count is exactly at the ceiling', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(5);
+    $circuit->method('toArray')->willReturn(['qubits' => 5, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1000]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('does not enforce a ceiling on executeCircuit when max_qubits is absent', function () {
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1000, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1000]]);
+
+    $result = $this->driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('does not enforce a ceiling on executeCircuit when max_qubits is explicitly null', function () {
+    $driver = new class($this->bridge, ['max_qubits' => null]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1000, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1000]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('throws InvalidCircuitException on executeBatch when any circuit exceeds max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $withinCeiling = $this->createMock(CircuitBuilder::class);
+    $withinCeiling->method('qubitCount')->willReturn(3);
+
+    $overCeiling = $this->createMock(CircuitBuilder::class);
+    $overCeiling->method('qubitCount')->willReturn(6);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeBatch([$withinCeiling, $overCeiling]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
+it('does not enforce a ceiling on executeBatch when max_qubits is absent', function () {
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1000, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 1000]]]]);
+
+    $result = $this->driver->executeBatch([$circuit]);
+
+    expect($result)->toBeInstanceOf(BatchResult::class);
+});

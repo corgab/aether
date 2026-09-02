@@ -117,6 +117,14 @@ return [
         'local' => [
             'synchronous_safe' => true,
             'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+
+            // The local simulator keeps a full statevector in memory: a dense
+            // vector of 2^n complex128 amplitudes, 16 bytes each, so memory
+            // use doubles with every additional qubit. The default of 25
+            // caps that at 2^25 x 16 bytes ~= 512 MB. Raise it only once
+            // you've confirmed the host has memory to spare, or set it to
+            // null to remove the ceiling entirely.
+            'max_qubits' => env('AETHER_MAX_QUBITS', 25),
         ],
 
         'aws' => [
@@ -125,6 +133,10 @@ return [
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
             'synchronous_safe' => true,
             'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+
+            // No ceiling here: Braket enforces its own per-device qubit
+            // limits, so this package does not duplicate or guess at those.
+            'max_qubits' => null,
         ],
 
     ],
