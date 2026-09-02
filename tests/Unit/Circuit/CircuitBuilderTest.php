@@ -811,6 +811,60 @@ it('every gate type has a matching CircuitBuilder and Gate method', function (Ga
     expect(method_exists(Gate::class, $type->value))->toBeTrue();
 })->with(GateType::cases());
 
+// -------------------------------------------------------------------------
+// gateCount()
+// -------------------------------------------------------------------------
+
+it('gateCount is zero for an empty circuit', function () use (&$builder): void {
+    expect($builder->gateCount())->toBe(0);
+});
+
+it('gateCount counts gates and excludes measurement', function () use (&$builder): void {
+    $builder->qubits(2)->h(0)->cnot(0, 1)->measure();
+
+    expect($builder->gateCount())->toBe(2);
+});
+
+// -------------------------------------------------------------------------
+// depth()
+// -------------------------------------------------------------------------
+
+it('depth is zero for an empty circuit', function () use (&$builder): void {
+    expect($builder->depth())->toBe(0);
+});
+
+it('depth is one for a single gate', function () use (&$builder): void {
+    $builder->qubits(1)->h(0);
+
+    expect($builder->depth())->toBe(1);
+});
+
+it('depth is one for parallel gates on disjoint qubits', function () use (&$builder): void {
+    $builder->qubits(2)->h(0)->x(1);
+
+    expect($builder->depth())->toBe(1);
+});
+
+it('depth grows with a serial chain on the same qubit', function () use (&$builder): void {
+    $builder->qubits(1)->h(0)->x(0)->z(0);
+
+    expect($builder->depth())->toBe(3);
+});
+
+it('depth accounts for entangling overlap between qubits', function () use (&$builder): void {
+    // h(0), h(1) run in parallel (layer 1); cnot(0, 1) must wait for both
+    // (layer 2); x(1) then waits for cnot's qubit 1 (layer 3).
+    $builder->qubits(2)->h(0)->h(1)->cnot(0, 1)->x(1);
+
+    expect($builder->depth())->toBe(3);
+});
+
+it('depth excludes measurement', function () use (&$builder): void {
+    $builder->qubits(1)->h(0)->measure();
+
+    expect($builder->depth())->toBe(1);
+});
+
 it('every Gate self-returning static factory has a matching GateType case', function (): void {
     $reflection = new ReflectionClass(Gate::class);
 
