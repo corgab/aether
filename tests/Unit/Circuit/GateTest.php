@@ -270,12 +270,12 @@ it('zz creates zz gate', function (): void {
     expect($gate->params)->toBe(['target0' => 0, 'target1' => 1, 'angle' => 1.57]);
 });
 
-it('throws InvalidArgumentException when given NAN', function (): void {
-    expect(fn () => Gate::rx(0, NAN))->toThrow(InvalidArgumentException::class);
+it('throws InvalidCircuitException when given NAN', function (): void {
+    expect(fn () => Gate::rx(0, NAN))->toThrow(InvalidCircuitException::class, 'NAN given');
 });
 
-it('throws InvalidArgumentException when given INF', function (): void {
-    expect(fn () => Gate::u(0, INF, 0.0, 0.0))->toThrow(InvalidArgumentException::class);
+it('throws InvalidCircuitException when given INF', function (): void {
+    expect(fn () => Gate::u(0, INF, 0.0, 0.0))->toThrow(InvalidCircuitException::class, 'INF given');
 });
 
 // -------------------------------------------------------------------------
@@ -355,4 +355,20 @@ it('qubitIndices returns explicit targets for a measure gate', function (): void
 
 it('qubitIndices returns an empty array for a measure-all gate', function (): void {
     expect(Gate::measure()->qubitIndices())->toBe([]);
+});
+
+// -------------------------------------------------------------------------
+// measure() — empty targets are rejected on every construction path
+// -------------------------------------------------------------------------
+
+it('measure throws for an empty targets array', function (): void {
+    expect(fn () => Gate::measure([]))
+        ->toThrow(InvalidCircuitException::class, 'targets array cannot be empty');
+});
+
+it('fromArray throws for a measure gate with an empty targets array', function (): void {
+    // A queued or hand-built definition must not slip past the guard the
+    // fluent measure() enforces: Braket would fail opaquely on measure([]).
+    expect(fn () => Gate::fromArray(['type' => 'measure', 'targets' => []]))
+        ->toThrow(InvalidCircuitException::class, 'targets array cannot be empty');
 });

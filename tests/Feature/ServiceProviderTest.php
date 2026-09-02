@@ -110,7 +110,7 @@ it('defaults the aws driver max_qubits to null', function () {
 });
 
 // -------------------------------------------------------------------------
-// aws pricing / max_cost_per_task config
+// aws pricing / max_cost_per_run config
 // -------------------------------------------------------------------------
 
 it('defaults the aws driver pricing rates', function () {
@@ -121,8 +121,8 @@ it('defaults the aws driver pricing rates', function () {
     ]);
 });
 
-it('defaults the aws driver max_cost_per_task to null', function () {
-    expect($this->app['config']->get('aether.drivers.aws.max_cost_per_task'))->toBeNull();
+it('defaults the aws driver max_cost_per_run to null', function () {
+    expect($this->app['config']->get('aether.drivers.aws.max_cost_per_run'))->toBeNull();
 });
 
 // -------------------------------------------------------------------------

@@ -423,13 +423,11 @@ class CircuitBuilder
      * - Pass an array to measure the specified qubits.
      *
      * @param  int|int[]|null  $targets
+     *
+     * @throws InvalidCircuitException when $targets is an empty array.
      */
     public function measure(int|array|null $targets = null): static
     {
-        if (is_array($targets) && $targets === []) {
-            throw InvalidCircuitException::emptyMeasurementTargets();
-        }
-
         return $this->push(Gate::measure($targets));
     }
 
@@ -487,13 +485,14 @@ class CircuitBuilder
                 continue;
             }
 
-            $layer = 1 + array_reduce(
-                $gate->qubitIndices(),
-                static fn (int $carry, int $qubit): int => max($carry, $qubitLayers[$qubit] ?? 0),
-                0,
-            );
+            $qubits = $gate->qubitIndices();
+            $layer = 1;
 
-            foreach ($gate->qubitIndices() as $qubit) {
+            foreach ($qubits as $qubit) {
+                $layer = max($layer, ($qubitLayers[$qubit] ?? 0) + 1);
+            }
+
+            foreach ($qubits as $qubit) {
                 $qubitLayers[$qubit] = $layer;
             }
 

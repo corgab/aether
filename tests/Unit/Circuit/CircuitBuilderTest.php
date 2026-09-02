@@ -556,6 +556,10 @@ it('throws when a gate targets an out-of-range qubit', function (string $method,
 })->with(function (): array {
     $dataset = [];
 
+    // 3 is the first index past a 3-qubit circuit — the `>=` boundary of
+    // validateTargets() — and 99 is a clearly out-of-range value.
+    $outOfRangeIndices = [3, 99];
+
     foreach (GateType::cases() as $type) {
         if ($type === GateType::Measure) {
             continue;
@@ -566,21 +570,37 @@ it('throws when a gate targets an out-of-range qubit', function (string $method,
         $angleValues = [0.5, 0.5, 0.5];
 
         foreach ($qubitKeys as $outOfRangePosition => $outOfRangeKey) {
-            $args = [];
+            foreach ($outOfRangeIndices as $outOfRange) {
+                $args = [];
 
-            foreach ($qubitKeys as $position => $key) {
-                $args[] = $position === $outOfRangePosition ? 99 : $position;
+                foreach ($qubitKeys as $position => $key) {
+                    $args[] = $position === $outOfRangePosition ? $outOfRange : $position;
+                }
+
+                foreach ($shape->angleKeys() as $angleIndex => $angleKey) {
+                    $args[] = $angleValues[$angleIndex];
+                }
+
+                $dataset["{$type->value} {$outOfRangeKey} = {$outOfRange}"] = [$type->value, $args];
             }
-
-            foreach ($shape->angleKeys() as $angleIndex => $angleKey) {
-                $args[] = $angleValues[$angleIndex];
-            }
-
-            $dataset["{$type->value} {$outOfRangeKey}"] = [$type->value, $args];
         }
     }
 
     return $dataset;
+});
+
+it('fromArray rejects a measure gate with an empty targets array', function () use (&$device): void {
+    $definition = [
+        'qubits' => 2,
+        'gates' => [
+            ['type' => 'h', 'target' => 0],
+            ['type' => 'measure', 'targets' => []],
+        ],
+        'shots' => 100,
+    ];
+
+    expect(fn () => CircuitBuilder::fromArray($definition, $device))
+        ->toThrow(InvalidCircuitException::class, 'targets array cannot be empty');
 });
 
 // -------------------------------------------------------------------------

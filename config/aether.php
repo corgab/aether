@@ -151,10 +151,12 @@ return [
                 'currency' => env('AETHER_AWS_PRICE_CURRENCY', 'USD'),
             ],
 
-            // When set, executeCircuit()/submitCircuit()/executeBatch() reject
-            // a circuit (or batch) whose estimated cost exceeds this amount,
-            // before any AWS call is made. null (default) means unlimited.
-            'max_cost_per_task' => env('AETHER_AWS_MAX_COST'),
+            // When set, ->run(), ->dispatch() and Quantum::batch() reject a
+            // run whose estimated cost exceeds this amount — for a batch, the
+            // total of all its circuits — before any AWS call is made. null
+            // (default) means unlimited. Requires the pricing rates above:
+            // a ceiling with no rates fails fast instead of never tripping.
+            'max_cost_per_run' => env('AETHER_AWS_MAX_COST'),
         ],
 
     ],

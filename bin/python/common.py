@@ -3,6 +3,7 @@
 
 import importlib
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -61,7 +62,8 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
         gates:  Ordered list of gate-definition dicts.
 
     Raises:
-        ValueError: When a gate type is not in :data:`GATE_PARAMS`, or when a
+        ValueError: When a gate type is not in :data:`GATE_PARAMS`, when a
+            gate lacks one of the parameter keys its type requires, or when a
             gate references a qubit outside ``[0, qubits)``.
     """
     for gate in gates:
@@ -71,7 +73,11 @@ def validate_gates(qubits: int, gates: list[dict[str, Any]]) -> None:
         if spec is None:
             raise ValueError(f"Unknown gate type: {gate_type!r}")
 
-        indices = [gate[key] for key in spec["qubits"] if gate.get(key) is not None]
+        for key in spec["qubits"] + spec["angles"]:
+            if key not in gate:
+                raise ValueError(f"Gate {gate_type!r} is missing required parameter {key!r}.")
+
+        indices = [gate[key] for key in spec["qubits"]]
 
         if gate_type == "measure":
             targets = gate.get("targets")
@@ -158,10 +164,9 @@ def build_circuit(qubits: int, gates: list[dict[str, Any]]) -> "Circuit":
 
     for gate in gates:
         gate_type = gate.get("type", "")
-
-        spec = GATE_PARAMS.get(gate_type)
-        if spec is None:
-            raise ValueError(f"Unknown gate type: {gate_type!r}")
+        # validate_gates() above already rejected unknown types and
+        # out-of-range indices, so the lookup cannot miss here.
+        spec = GATE_PARAMS[gate_type]
 
         special = _SPECIAL_BUILDERS.get(gate_type)
         if special is not None:
@@ -226,7 +231,15 @@ def load_provider(driver: str, driver_config: dict[str, Any]) -> ModuleType:
             raise ValueError(f"Could not load provider file: {reference!r}")
 
         provider = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(provider)
+        # Register before executing, as importlib itself does: dataclasses,
+        # pickle, typing.get_type_hints and friends look the module up via
+        # sys.modules[cls.__module__] and fail on an unregistered module.
+        sys.modules[spec.name] = provider
+        try:
+            spec.loader.exec_module(provider)
+        except BaseException:
+            sys.modules.pop(spec.name, None)
+            raise
     else:
         provider = importlib.import_module(reference)
 
@@ -238,24 +251,29 @@ def load_provider(driver: str, driver_config: dict[str, Any]) -> ModuleType:
     return provider
 
 
-def resolve_device(driver: str, driver_config: dict[str, Any]) -> Any:
-    """Resolve the device for *driver* through its provider module.
+def resolve_run_target(driver: str, driver_config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """Resolve the device for *driver* and the extra ``device.run()`` kwargs.
 
-    Thin convenience wrapper over :func:`load_provider` for callers that only
-    need the device and none of the optional provider hooks.
+    The shared prologue of every single-circuit script (``circuit.py``,
+    ``submit.py``, ``entropy.py``): load the provider, resolve its device and
+    collect the provider's ``run_options``. ``batch.py`` keeps the provider
+    itself because it also needs the optional ``run_batch`` hook.
 
     Args:
         driver:        The wire-format driver name (e.g. ``"local"``).
         driver_config: Driver-specific options (region, device_arn, ...).
 
     Returns:
-        A Braket-compatible device object.
+        A ``(device, run_options)`` pair; ``run_options`` is ``{}`` when the
+        provider declares none.
 
     Raises:
         ValueError: When no provider resolves for *driver* (see
             :func:`load_provider`) or the provider rejects its configuration.
     """
-    return load_provider(driver, driver_config).resolve_device(driver_config)
+    provider = load_provider(driver, driver_config)
+
+    return provider.resolve_device(driver_config), provider_run_options(provider, driver_config)
 
 
 def provider_run_options(provider: ModuleType, driver_config: dict[str, Any]) -> dict[str, Any]:

@@ -134,14 +134,24 @@ class InvalidCircuitException extends AetherException
 
     /**
      * Create an exception for a circuit (or batch) whose estimated cost
-     * exceeds the driver's configured `max_cost_per_task` ceiling.
+     * exceeds the driver's configured `max_cost_per_run` ceiling.
      */
     public static function costCeilingExceeded(CostEstimate $estimate, float $ceiling): self
     {
         return new self(
-            "Estimated cost of {$estimate} exceeds the configured max_cost_per_task ceiling of ".
-            number_format($ceiling, 2)." {$estimate->currency}. Raise the `max_cost_per_task` entry in the ".
+            "Estimated cost of {$estimate} exceeds the configured max_cost_per_run ceiling of ".
+            CostEstimate::formatAmount($ceiling, $estimate->currency).'. Raise the `max_cost_per_run` entry in the '.
             'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before retrying.'
         );
+    }
+
+    /**
+     * Create an exception for a gate angle that is NAN or infinite.
+     */
+    public static function nonFiniteAngle(float $angle): self
+    {
+        $given = is_nan($angle) ? 'NAN' : ($angle > 0 ? 'INF' : '-INF');
+
+        return new self("Gate angles must be finite floats, {$given} given.");
     }
 }

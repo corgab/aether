@@ -442,6 +442,28 @@ it('does not enforce a ceiling on executeCircuit when max_qubits is explicitly n
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
+it('treats an empty-string max_qubits (a blank env var) as no ceiling', function () {
+    // env('AETHER_MAX_QUBITS') yields '' for `AETHER_MAX_QUBITS=` in .env,
+    // which must not collapse into a ceiling of (int) '' === 0.
+    $driver = new class($this->bridge, ['max_qubits' => '']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1000);
+    $circuit->method('toArray')->willReturn(['qubits' => 1000, 'gates' => [], 'shots' => 1000]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 1000]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
 it('throws InvalidCircuitException on executeBatch when any circuit exceeds max_qubits', function () {
     $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
     {

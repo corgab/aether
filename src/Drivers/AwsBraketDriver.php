@@ -8,12 +8,10 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
-use Aether\Results\BatchResult;
-use Aether\Results\CircuitResult;
 use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskSnapshot;
-use Aether\Tasks\TaskStatus;
 
 /**
  * Quantum driver for AWS Braket QPU and managed simulators.
@@ -41,30 +39,18 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     }
 
     /**
-     * @throws InvalidCircuitException
-     */
-    public function executeCircuit(CircuitBuilder $circuit): CircuitResult
-    {
-        // Validated ahead of the parent's own preflight() so a cost overrun
-        // is rejected before *any* AWS call, including config validation
-        // side effects — assertConfigured() is idempotent and re-runs there.
-        $this->assertConfigured();
-        $this->assertWithinCostCeiling([$circuit]);
-
-        return parent::executeCircuit($circuit);
-    }
-
-    /**
+     * Add the cost ceiling to the shared admission checks, so it holds on
+     * ->run(), Quantum::batch() and ->dispatch() alike.
+     *
      * @param  list<CircuitBuilder>  $circuits
      *
      * @throws InvalidCircuitException
      */
-    public function executeBatch(array $circuits): BatchResult
+    protected function validateCircuits(array $circuits): void
     {
-        $this->assertConfigured();
-        $this->assertWithinCostCeiling($circuits);
+        parent::validateCircuits($circuits);
 
-        return parent::executeBatch($circuits);
+        $this->assertWithinCostCeiling($circuits);
     }
 
     /**
@@ -72,55 +58,12 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     public function submitCircuit(CircuitBuilder $circuit): string
     {
-        // Config validation and the cost guard only — submitting a task and
-        // returning its ARN never blocks on the QPU, so the
-        // synchronous-safety hook in beforeExecution() must not run here.
-        $this->assertConfigured();
-        $this->assertWithinCostCeiling([$circuit]);
-
-        $payload = array_merge($circuit->toArray(), [
-            'driver' => $this->driverName(),
-            'driver_config' => $this->config,
-        ]);
-
-        $response = $this->bridge->execute('submit.py', $payload, $this->config);
-
-        $taskArn = $response['task_arn'] ?? null;
-
-        if (! is_string($taskArn) || trim($taskArn) === '') {
-            throw QuantumExecutionException::malformedResponse(
-                'submit.py',
-                'expected the "task_arn" key to be present and hold a non-empty string.'
-            );
-        }
-
-        return $taskArn;
+        return $this->submitTask($circuit);
     }
 
     public function checkTask(string $taskArn): TaskSnapshot
     {
-        // Same reasoning as submitCircuit(): polling a task status never
-        // blocks, so we skip beforeExecution() and only validate config.
-        $this->assertConfigured();
-
-        $payload = [
-            'task_arn' => $taskArn,
-            'driver' => $this->driverName(),
-            'driver_config' => $this->config,
-        ];
-
-        $response = $this->bridge->execute('check.py', $payload, $this->config);
-
-        $status = $response['status'] ?? null;
-
-        if (! is_string($status) || TaskStatus::tryFrom($status) === null) {
-            throw QuantumExecutionException::malformedResponse(
-                'check.py',
-                'expected the "status" key to be present and hold a valid task status value.'
-            );
-        }
-
-        return TaskSnapshot::fromResponse($response);
+        return $this->pollTask($taskArn);
     }
 
     /**
@@ -151,24 +94,38 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     }
 
     /**
-     * Guard against a circuit (or batch) whose estimated cost exceeds the
-     * driver's configured `max_cost_per_task` ceiling.
+     * Guard against a run — one circuit, or a whole batch — whose estimated
+     * cost exceeds the driver's configured `max_cost_per_run` ceiling.
      *
-     * A null/absent `max_cost_per_task` means unlimited — the default, so
-     * existing configs keep working unchanged. Shots are only summed across
-     * $circuits once a ceiling is actually configured, mirroring the
-     * qubit-ceiling guard's lazy evaluation.
+     * A blank `max_cost_per_run` (absent, null, or an empty string — what
+     * env() yields for `AETHER_AWS_MAX_COST=`) means unlimited — the default,
+     * so existing configs keep working unchanged. A configured ceiling with
+     * no `pricing` rates would silently never trip (every estimate would be
+     * 0.00), so that combination fails fast as a misconfiguration instead.
+     * Shots are only summed across $circuits once a ceiling is actually
+     * configured, mirroring the qubit-ceiling guard's lazy evaluation.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
      * @throws InvalidCircuitException
+     * @throws InvalidDriverConfigException
      */
     private function assertWithinCostCeiling(array $circuits): void
     {
-        $ceiling = $this->config['max_cost_per_task'] ?? null;
+        $ceiling = $this->config['max_cost_per_run'] ?? null;
 
-        if ($ceiling === null) {
+        if (blank($ceiling)) {
             return;
+        }
+
+        $pricing = $this->config['pricing'] ?? [];
+        $missing = array_filter(
+            ['pricing.per_task', 'pricing.per_shot'],
+            static fn (string $key): bool => blank($pricing[substr($key, strlen('pricing.'))] ?? null),
+        );
+
+        if ($missing !== []) {
+            throw InvalidDriverConfigException::missingKeys($this->driverName(), array_values($missing));
         }
 
         $shots = array_sum(array_map(
