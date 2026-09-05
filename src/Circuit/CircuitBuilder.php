@@ -595,7 +595,11 @@ class CircuitBuilder
      * Used by the queued job to reconstruct the circuit after it has been
      * serialized onto the queue and deserialized on the worker.
      *
-     * @param  array{qubits?: int, gates?: array<int, array<string, mixed>>, shots?: int}  $definition
+     * The payload has travelled through the queue, so its shape is checked
+     * at runtime rather than trusted: a gate list or gate entry that is not
+     * an array is rejected with an InvalidCircuitException.
+     *
+     * @param  array<string, mixed>  $definition  The array shape produced by toArray().
      *
      * @throws InvalidCircuitException
      */
