@@ -46,9 +46,9 @@ class QuantumExecutionException extends AetherException
      * not match the shape expected by the driver (missing key, wrong type,
      * or otherwise unusable).
      */
-    public static function malformedResponse(string $script, string $reason): self
+    public static function malformedResponse(string $script, string $reason): MalformedResponseException
     {
-        return new self(
+        return new MalformedResponseException(
             "Python script [{$script}] returned a malformed response: {$reason}"
         );
     }

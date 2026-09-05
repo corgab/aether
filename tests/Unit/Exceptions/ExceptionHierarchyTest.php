@@ -6,6 +6,7 @@ use Aether\Exceptions\AetherException;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
+use Aether\Exceptions\MalformedResponseException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
@@ -50,6 +51,14 @@ it('synchronous unsafe includes driver name', function (): void {
 // -------------------------------------------------------------------------
 // PythonEnvironmentException
 // -------------------------------------------------------------------------
+
+it('malformed response is a distinct subclass of quantum execution exception', function (): void {
+    $exception = QuantumExecutionException::malformedResponse('check.py', 'no status key');
+
+    expect($exception)->toBeInstanceOf(MalformedResponseException::class)
+        ->and($exception)->toBeInstanceOf(QuantumExecutionException::class)
+        ->and($exception->getMessage())->toContain('check.py')->toContain('no status key');
+});
 
 it('python environment exception extends aether exception', function (): void {
     expect(is_subclass_of(PythonEnvironmentException::class, AetherException::class))->toBeTrue();

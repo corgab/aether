@@ -16,19 +16,20 @@ trait FailsWithoutRetry
     /**
      * Report the exception and fail the underlying queue job outright.
      *
-     * fail() marks the job failed with no further attempts and bypasses the
-     * worker's own exception reporting, hence the explicit report() call
-     * here. Without a real queue job (e.g. the sync connection, or handle()
+     * Without a real queue job (e.g. the sync connection, or handle()
      * invoked directly in a test) there is nothing to fail, so the
-     * exception is rethrown instead.
+     * exception is rethrown and whoever catches it reports it. Under a
+     * worker, fail() marks the job failed with no further attempts but
+     * bypasses the worker's own exception reporting, hence the explicit
+     * report() on that path only.
      */
     protected function failWithoutRetry(Throwable $exception): void
     {
-        report($exception);
-
         if ($this->job === null || $this->job instanceof SyncJob) {
             throw $exception;
         }
+
+        report($exception);
 
         $this->fail($exception);
     }

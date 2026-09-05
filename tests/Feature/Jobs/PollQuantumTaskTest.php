@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Aether\Events\CircuitCompleted;
+use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidDriverConfigException;
+use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\Jobs\PollQuantumTask;
@@ -127,6 +129,52 @@ it('fails without retry on a driver configuration error', function () {
 
     $job->assertFailedWith(InvalidDriverConfigException::class);
     $job->assertNotReleased();
+});
+
+it('fails without retry when the driver cannot be resolved', function () {
+    $job = (new PollQuantumTask('arn:fake', ['qubits' => 1, 'gates' => [], 'shots' => 1], 'not-a-driver'))
+        ->withFakeQueueInteractions();
+
+    $job->handle(app(QuantumManager::class), app(Dispatcher::class));
+
+    $job->assertFailedWith(DriverNotFoundException::class);
+    $job->assertNotReleased();
+});
+
+it('fails without retry on a deterministic driver error', function (Throwable $error) {
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnCheck = $error;
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))
+        ->withFakeQueueInteractions();
+
+    $job->handle($manager, app(Dispatcher::class));
+
+    $job->assertFailedWith($error::class);
+    $job->assertNotReleased();
+})->with([
+    'missing python binary' => [PythonEnvironmentException::pythonNotFound('/nope/python')],
+    'unreadable check.py response' => [QuantumExecutionException::malformedResponse('check.py', 'no status')],
+]);
+
+it('releases with the same delay it reports as backoff', function () {
+    config(['aether.poll_interval' => 4]);
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))
+        ->withFakeQueueInteractions();
+    $job->handle($manager, app(Dispatcher::class));
+
+    expect($job->backoff())->toBe(4);
+    $job->assertReleased(delay: 4);
 });
 
 it('fails without retry when the task terminates as failed or cancelled', function (TaskStatus $status) {

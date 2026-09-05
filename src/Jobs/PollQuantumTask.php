@@ -9,6 +9,7 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidDriverConfigException;
+use Aether\Exceptions\MalformedResponseException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
@@ -50,8 +51,10 @@ class PollQuantumTask implements ShouldQueue
      * Polling re-queues the job through release(), which does not increment
      * the exception count, so every attempt budgeted by tries() stays
      * available for the loop. A transient exception thrown from checkTask(),
-     * by contrast, is retried by the worker with backoff() up to this many
-     * times before the job fails outright.
+     * by contrast, is retried by the worker with backoff(); Laravel counts
+     * those exceptions per job for its whole lifetime (the counter is not
+     * reset by a later successful poll), so this is a total budget across
+     * the poll, not a per-incident one.
      *
      * Laravel's queue payload builder only reads this as a plain property
      * (Illuminate\Queue\Queue::createObjectPayload() via
@@ -101,18 +104,31 @@ class PollQuantumTask implements ShouldQueue
     public function handle(QuantumManager $manager, Dispatcher $events): void
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
-        $device = $manager->driver($this->driver);
 
-        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
-            $e = QuantumExecutionException::asynchronousUnsupported($driverName);
+        // Resolving the driver can fail for reasons no retry will cure: an
+        // unregistered name, or a driver whose constructor rejects its config.
+        try {
+            $device = $manager->driver($this->driver);
+        } catch (DriverNotFoundException|InvalidDriverConfigException $e) {
+            $this->persist(null, null, $e->getMessage());
             $this->failWithoutRetry($e);
 
             return;
         }
 
+        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
+            $this->failWithoutRetry(QuantumExecutionException::asynchronousUnsupported($driverName));
+
+            return;
+        }
+
+        // Likewise for the poll itself: a missing config key, a missing Python
+        // binary, or a response the driver cannot read fail at once. Anything
+        // else is transient and left to propagate so the worker retries it
+        // with backoff().
         try {
             $snapshot = $device->checkTask($this->taskArn);
-        } catch (InvalidDriverConfigException|PythonEnvironmentException|DriverNotFoundException $e) {
+        } catch (InvalidDriverConfigException|PythonEnvironmentException|MalformedResponseException $e) {
             $this->persist(null, null, $e->getMessage());
             $this->failWithoutRetry($e);
 
@@ -131,7 +147,7 @@ class PollQuantumTask implements ShouldQueue
             }
 
             $this->persist($snapshot->status);
-            $this->release((int) config('aether.poll_interval', 5));
+            $this->release($this->backoff());
 
             return;
         }
