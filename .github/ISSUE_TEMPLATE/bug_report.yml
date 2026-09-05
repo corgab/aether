@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not behave as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happens, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: A minimal circuit or command that shows the problem.
+      render: php
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: The exception message or stack trace, if any.
+      render: text
+  - type: input
+    id: aether
+    attributes:
+      label: Aether version
+    validations:
+      required: true
+  - type: input
+    id: php
+    attributes:
+      label: PHP and Laravel versions
+      placeholder: "PHP 8.3.x, Laravel 13.x"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python and amazon-braket-sdk versions
+      placeholder: "Python 3.12.x, amazon-braket-sdk 1.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: driver
+    attributes:
+      label: Driver
+      options:
+        - local
+        - aws (SV1 or another managed simulator)
+        - aws (QPU)
+        - custom provider
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
