@@ -13,6 +13,7 @@ use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
+use InvalidArgumentException;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\ExpectationFailedException;
 
@@ -492,6 +493,13 @@ it('respondWithTaskStatus can simulate a backend failure reason', function () {
     expect($snapshot->status)->toBe(TaskStatus::Failed)
         ->and($snapshot->error)->toBe('boom');
 });
+
+it('respondWithTaskStatus rejects a failure reason for a status that is not a failure', function (TaskStatus $status) {
+    $fake = new QuantumFake;
+
+    expect(fn () => $fake->respondWithTaskStatus($status, 'boom'))
+        ->toThrow(InvalidArgumentException::class, "[{$status->value}] given");
+})->with([TaskStatus::Completed, TaskStatus::Running, TaskStatus::Queued, TaskStatus::Created]);
 
 it('respondWithTaskStatus clears a previously stubbed failure reason', function () {
     $fake = new QuantumFake;

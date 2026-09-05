@@ -296,6 +296,11 @@ def provider_run_options(provider: ModuleType, driver_config: dict[str, Any]) ->
     return dict(options) if options else {}
 
 
+# Terminal states for which Braket never produces a result; a None result in
+# any other state means the SDK stopped waiting, not that the task ended.
+_NO_RESULT_TERMINAL_STATES = frozenset({"FAILED", "CANCELLED"})
+
+
 def _call_task_hook(task: Any, name: str) -> Any:
     """Call the no-argument *name* hook on *task*, tolerating its absence.
 
@@ -303,6 +308,11 @@ def _call_task_hook(task: Any, name: str) -> Any:
     is guaranteed to exist — and ``metadata()`` performs a network call on a
     real ``AwsQuantumTask``, which can raise. Both cases mean "no information
     available" rather than a new failure to report.
+
+    Braket's hooks accept ``use_cached_value``; passing it reuses the
+    ``GetQuantumTask`` response the SDK fetched while waiting for the result,
+    so describing a failure costs no extra network call. Hooks without that
+    parameter are called plainly.
 
     Args:
         task: The provider's task object.
@@ -317,7 +327,10 @@ def _call_task_hook(task: Any, name: str) -> Any:
         return None
 
     try:
-        return hook()
+        try:
+            return hook(use_cached_value=True)
+        except TypeError:
+            return hook()
     except Exception:  # noqa: BLE001
         return None
 
@@ -326,20 +339,22 @@ def describe_task_failure(task: Any) -> str:
     """Describe why *task* produced no result, as a human-readable message.
 
     Braket returns ``None`` from ``AwsQuantumTask.result()`` for every task in
-    a terminal state that carries no result (``FAILED``, ``CANCELLED``). Both
-    the state and the reason live in the raw ``GetQuantumTask`` response that
-    ``task.metadata()`` returns (``status`` and ``failureReason``), so that is
-    read once; ``task.state()`` is only consulted for task objects whose
-    metadata does not carry a status.
+    a terminal state that carries no result (``FAILED``, ``CANCELLED``), and
+    also when its polling timeout elapses while the task is still in flight.
+    Both the state and the reason live in the raw ``GetQuantumTask`` response
+    that ``task.metadata()`` returns (``status`` and ``failureReason``), so
+    that is read once; ``task.state()`` is only consulted for task objects
+    whose metadata does not carry a status.
 
     Args:
         task: The provider's task object.
 
     Returns:
-        ``Quantum task <id> ended in state <STATE>: <failureReason>``, with
-        the reason clause omitted when the backend reported none and the
-        state clause replaced by ``ended without a result`` when the task
-        exposes no state.
+        ``Quantum task <id> ended in state <STATE>: <failureReason>`` for a
+        terminal state, ``Quantum task <id> did not complete within the
+        polling timeout (last state <STATE>)`` for a task still in flight, and
+        ``Quantum task <id> ended without a result`` when the task exposes no
+        state. The reason clause is omitted when the backend reported none.
     """
     task_id = getattr(task, "id", None) or "<unknown>"
 
@@ -349,11 +364,12 @@ def describe_task_failure(task: Any) -> str:
     state = metadata.get("status") or _call_task_hook(task, "state")
     reason = metadata.get("failureReason")
 
-    message = (
-        f"Quantum task {task_id} ended in state {state}"
-        if state
-        else f"Quantum task {task_id} ended without a result"
-    )
+    if not state:
+        message = f"Quantum task {task_id} ended without a result"
+    elif state in _NO_RESULT_TERMINAL_STATES:
+        message = f"Quantum task {task_id} ended in state {state}"
+    else:
+        message = f"Quantum task {task_id} did not complete within the polling timeout (last state {state})"
 
     return f"{message}: {reason}" if reason else message
 

@@ -82,6 +82,27 @@ class TestRequireResult:
             "Quantum task task-1 ended in state FAILED: Device is offline"
         )
 
+    def test_reuses_the_cached_braket_response_when_the_hook_supports_it(self):
+        class CachingTask:
+            id = "task-1"
+            calls = []
+
+            def metadata(self, use_cached_value=False):
+                self.calls.append(use_cached_value)
+                return {"status": "FAILED", "failureReason": "Device is offline"}
+
+        task = CachingTask()
+
+        assert describe_task_failure(task) == "Quantum task task-1 ended in state FAILED: Device is offline"
+        assert task.calls == [True]
+
+    def test_describes_a_task_still_in_flight_as_a_polling_timeout(self):
+        task = _Task(metadata={"status": "RUNNING"})
+
+        assert describe_task_failure(task) == (
+            "Quantum task task-1 did not complete within the polling timeout (last state RUNNING)"
+        )
+
     def test_message_omits_the_reason_when_metadata_has_none(self):
         task = _Task(task_id="arn:task/abc", state="CANCELLED", metadata={})
 

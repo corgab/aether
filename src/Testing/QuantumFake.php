@@ -332,9 +332,18 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
      *
      * @param  string|null  $error  The backend failure reason to report alongside an
      *                              unsuccessful status, as a real provider would.
+     *
+     * @throws InvalidArgumentException When a reason is given for a status that is
+     *                                  not a failure, since checkTask() would never report it.
      */
     public function respondWithTaskStatus(TaskStatus $status, ?string $error = null): static
     {
+        if ($error !== null && ! in_array($status, [TaskStatus::Failed, TaskStatus::Cancelled], true)) {
+            throw new InvalidArgumentException(
+                "A failure reason can only accompany a Failed or Cancelled task status, [{$status->value}] given."
+            );
+        }
+
         $this->stubbedTaskStatus = $status;
         $this->stubbedTaskError = $error;
 
