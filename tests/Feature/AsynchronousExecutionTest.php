@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Aether\Contracts\PythonExecutor;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Events\CircuitCompleted;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Facades\Quantum;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
@@ -33,6 +34,20 @@ it('dispatches a circuit as a queued submission job carrying the pinned driver',
             && $job->circuit['shots'] === 512
             && count($job->circuit['gates']) === 3;
     });
+});
+
+it('refuses to dispatch on the local driver when the cache store cannot be shared', function () {
+    Queue::fake();
+    config([
+        'cache.default' => 'array',
+        'queue.default' => 'redis',
+        'queue.connections.redis.driver' => 'redis',
+    ]);
+
+    expect(fn () => Quantum::circuit('local')->qubits(1)->h(0)->measure()->dispatch())
+        ->toThrow(InvalidDriverConfigException::class, 'AETHER_LOCAL_CACHE_STORE');
+
+    Queue::assertNothingPushed();
 });
 
 it('runs the whole asynchronous flow on the local driver and emits the result', function () {

@@ -7,6 +7,7 @@ namespace Aether\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -57,7 +58,14 @@ class SubmitQuantumCircuit implements ShouldQueue
     public function handle(QuantumManager $manager): void
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
-        $device = $manager->driver($this->driver);
+
+        try {
+            $device = $manager->driver($this->driver);
+        } catch (DriverNotFoundException $e) {
+            $this->failWithoutRetry($e);
+
+            return;
+        }
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
             $this->failWithoutRetry(QuantumExecutionException::asynchronousUnsupported($driverName));
@@ -65,13 +73,14 @@ class SubmitQuantumCircuit implements ShouldQueue
             return;
         }
 
-        $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
-
         try {
+            $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
             $taskArn = $device->submitCircuit($builder);
         } catch (InvalidDriverConfigException|InvalidCircuitException $e) {
-            // Configuration and admission faults are deterministic: retrying
-            // would only resubmit the same rejected setup $tries times.
+            // A malformed payload, a configuration fault or a rejected circuit
+            // is deterministic: retrying would only replay the same failure
+            // $tries times. Everything else (a dropped connection, a Python
+            // crash) keeps the retry budget.
             $this->failWithoutRetry($e);
 
             return;

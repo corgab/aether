@@ -7,6 +7,7 @@ use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
@@ -329,18 +330,15 @@ it('trusts an explicitly configured array store', function () use ($config) {
     expect(Cache::store('array')->get('aether:local-task:'.$taskArn))->toBe(['0' => 100]);
 });
 
-// -------------------------------------------------------------------------
-// max_qubits ceiling: dispatch() / submitCircuit() path
-// -------------------------------------------------------------------------
-
-it('refuses a cache_store that names no configured store', function () use ($config) {
-    $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => 'reddis']);
+it('refuses a cache_store the cache manager cannot resolve', function (string $store) use ($config) {
+    Container::getInstance()->make('config')->set('cache.stores.typo', ['driver' => 'reddis']);
+    $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => $store]);
     $this->bridge->expects($this->never())->method('execute');
 
     expect(fn () => $driver->submitCircuit(
         (new CircuitBuilder($driver, 'local'))->qubits(1)->h(0)->measure()->shots(10)
-    ))->toThrow(InvalidDriverConfigException::class, 'cache_store [reddis]');
-});
+    ))->toThrow(InvalidDriverConfigException::class, "cache store [{$store}]");
+})->with(['undefined store' => 'reddis', 'unsupported driver' => 'typo']);
 
 it('refuses the null store whether it is the default or named explicitly', function (?string $cacheStore, string $named) use ($config) {
     $repository = Container::getInstance()->make('config');
@@ -360,6 +358,19 @@ it('refuses the null store whether it is the default or named explicitly', funct
     'explicit store' => ['void', 'void'],
     "Laravel's implicit null store" => ['null', 'null'],
 ]);
+
+it('rejects a dispatch up front through validateDispatch', function () {
+    Container::getInstance()->make('config')->set('queue.default', 'redis');
+    Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
+
+    expect($this->driver)->toBeInstanceOf(ValidatesDispatch::class)
+        ->and(fn () => $this->driver->validateDispatch())
+        ->toThrow(InvalidDriverConfigException::class, 'AETHER_LOCAL_CACHE_STORE');
+});
+
+// -------------------------------------------------------------------------
+// max_qubits ceiling: dispatch() / submitCircuit() path
+// -------------------------------------------------------------------------
 
 it('rejects submitCircuit when the circuit exceeds max_qubits', function () use ($config) {
     $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));

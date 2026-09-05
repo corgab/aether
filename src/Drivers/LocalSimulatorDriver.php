@@ -6,6 +6,7 @@ namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Tasks\TaskSnapshot;
@@ -15,6 +16,7 @@ use Illuminate\Cache\NullStore;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 /**
  * Quantum driver for the local Braket simulator.
@@ -38,7 +40,7 @@ use Illuminate\Support\Str;
  * No process ever actually queues or polls anything; check.py explicitly
  * refuses to run for the "local" driver (see bin/python/check.py).
  */
-class LocalSimulatorDriver extends AbstractQuantumDriver implements AsynchronousDevice
+class LocalSimulatorDriver extends AbstractQuantumDriver implements AsynchronousDevice, ValidatesDispatch
 {
     private const ARN_PREFIX = 'local:';
 
@@ -47,6 +49,14 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     protected function driverName(): string
     {
         return 'local';
+    }
+
+    /**
+     * Reject a dispatch whose result could never be read back by the polling job.
+     */
+    public function validateDispatch(): void
+    {
+        $this->assertCacheStoreIsShared();
     }
 
     public function submitCircuit(CircuitBuilder $circuit): string
@@ -95,7 +105,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      *
      * The queue check reads the default queue connection; a job dispatched
      * onto another connection with onConnection() is not covered, so name
-     * the store explicitly in that setup.
+     * the store explicitly in that setup. The check runs twice on purpose:
+     * at dispatch time through validateDispatch(), where the developer is
+     * looking, and again in submitCircuit() as the worker-side safety net.
      *
      * @throws InvalidDriverConfigException
      */
@@ -103,12 +115,12 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     {
         $name = $this->configuredCacheStoreName();
 
-        // Laravel resolves the "null" store without a cache.stores entry.
-        if ($name !== null && $name !== 'null' && ! is_array(config("cache.stores.{$name}"))) {
-            throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name);
+        try {
+            $store = $this->cache()->getStore();
+        } catch (InvalidArgumentException $e) {
+            // CacheManager rejects both an undefined store and an unsupported driver.
+            throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name ?? 'default', $e);
         }
-
-        $store = $this->cache()->getStore();
 
         if ($store instanceof NullStore) {
             $default = config('cache.default');

@@ -6,7 +6,9 @@ namespace Aether\Circuit;
 
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\Results\CircuitResult;
@@ -541,10 +543,15 @@ class CircuitBuilder
      * @return PendingDispatch Laravel's pending dispatch, chainable with ->onQueue() / ->delay().
      *
      * @throws InvalidCircuitException
+     * @throws InvalidDriverConfigException When the device implements ValidatesDispatch and rejects the dispatch.
      */
     public function dispatch(): PendingDispatch
     {
         $this->validate();
+
+        if ($this->device instanceof ValidatesDispatch) {
+            $this->device->validateDispatch();
+        }
 
         return SubmitQuantumCircuit::dispatch($this->toArray(), $this->driverName);
     }

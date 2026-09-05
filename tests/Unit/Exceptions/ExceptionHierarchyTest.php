@@ -8,6 +8,7 @@ use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
+use InvalidArgumentException;
 
 // -------------------------------------------------------------------------
 // AetherException
@@ -135,12 +136,15 @@ it('missing keys includes driver name and every missing key', function (): void 
 });
 
 it('unknown cache store names the driver, the store and the env var', function (): void {
-    $exception = InvalidDriverConfigException::unknownCacheStore('local', 'reddis');
+    $previous = new InvalidArgumentException('Cache store [reddis] is not defined.');
+    $exception = InvalidDriverConfigException::unknownCacheStore('local', 'reddis', $previous);
 
     expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getPrevious())->toBe($previous);
     expect($exception->getMessage())
         ->toContain('local')
         ->toContain('[reddis]')
+        ->toContain('is not defined')
         ->toContain('AETHER_LOCAL_CACHE_STORE');
 });
 

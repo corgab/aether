@@ -135,7 +135,8 @@ return [
 
             // The cache store used to hold results for asynchronously
             // submitted circuits (see "Local Task Retention" above). null
-            // uses the application's default cache store.
+            // uses the application's default cache store; the value must
+            // name a store defined in config/cache.php.
             'cache_store' => env('AETHER_LOCAL_CACHE_STORE'),
         ],
 

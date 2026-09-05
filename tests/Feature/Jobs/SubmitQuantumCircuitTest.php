@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -110,6 +111,30 @@ it('fails without retry when the driver has no asynchronous support under a work
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
     $job->setJob($queueJob);
     $job->handle($manager);
+});
+
+it('fails without retry when the driver does not exist under a worker', function () {
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('fail')->once()->with(Mockery::type(DriverNotFoundException::class));
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'nope');
+    $job->setJob($queueJob);
+    $job->handle(app(QuantumManager::class));
+});
+
+it('fails without retry when the serialized circuit cannot be rebuilt under a worker', function () {
+    $device = new FakeAsynchronousDevice;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('fail')->once()->with(Mockery::type(InvalidCircuitException::class));
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [['type' => 'nope']], 'shots' => 100], 'fake-async');
+    $job->setJob($queueJob);
+    $job->handle($manager);
+
+    expect($device->submittedCircuits)->toBeEmpty();
 });
 
 it('rethrows a configuration fault when there is no queue job to fail', function () {

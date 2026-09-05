@@ -36,12 +36,16 @@ class InvalidDriverConfigException extends AetherException
     }
 
     /**
-     * Create an exception for a cache_store that names no configured store.
+     * Create an exception for a cache_store the cache manager cannot resolve,
+     * wrapping the framework's own explanation (undefined store, unsupported
+     * driver).
      */
-    public static function unknownCacheStore(string $driver, string $store): self
+    public static function unknownCacheStore(string $driver, string $store, \Throwable $previous): self
     {
         return new self(
-            "Driver [{$driver}] is configured with cache_store [{$store}], but no such store is defined under cache.stores in config/cache.php. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to one of the configured stores."
+            "Driver [{$driver}] cannot resolve cache store [{$store}] for its asynchronous results: {$previous->getMessage()} Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to one of the stores defined in config/cache.php.",
+            0,
+            $previous,
         );
     }
 
