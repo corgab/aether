@@ -126,6 +126,15 @@ it('defaults the aws driver max_cost_per_run to null', function () {
 });
 
 // -------------------------------------------------------------------------
+// synchronous_safe config
+// -------------------------------------------------------------------------
+
+it('defaults synchronous_safe to null for both drivers', function () {
+    expect($this->app['config']->get('aether.drivers.local.synchronous_safe'))->toBeNull();
+    expect($this->app['config']->get('aether.drivers.aws.synchronous_safe'))->toBeNull();
+});
+
+// -------------------------------------------------------------------------
 // php artisan about
 // -------------------------------------------------------------------------
 

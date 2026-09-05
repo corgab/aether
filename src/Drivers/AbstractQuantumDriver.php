@@ -54,12 +54,53 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Hook for driver-specific pre-flight logic (e.g. safety checks).
+     * Hook for other driver-specific pre-flight logic.
      *
      * Runs before every circuit execution and entropy generation, after the
-     * required-config check. Default is a no-op; overrides need no parent call.
+     * required-config and synchronous-safety checks. Default is a no-op;
+     * overrides need no parent call.
      */
     protected function beforeExecution(): void {}
+
+    /**
+     * Refuse synchronous execution per the tri-state `synchronous_safe`
+     * config: `true` always allows it, `false` always refuses it, and the
+     * default `null` (or any non-bool value) derives the answer from
+     * `device_arn` — a Braket QPU ARN refuses, anything else (a simulator,
+     * or no ARN at all) is allowed.
+     *
+     * @throws QuantumExecutionException
+     */
+    protected function assertSynchronousSafe(): void
+    {
+        $synchronousSafe = $this->config['synchronous_safe'] ?? null;
+
+        if ($synchronousSafe === true) {
+            return;
+        }
+
+        if ($synchronousSafe === false) {
+            throw QuantumExecutionException::synchronousUnsafe($this->driverName());
+        }
+
+        $deviceArn = $this->config['device_arn'] ?? null;
+
+        if (is_string($deviceArn) && static::isQpuArn($deviceArn)) {
+            throw QuantumExecutionException::synchronousUnsafeForQpu($this->driverName(), $deviceArn);
+        }
+    }
+
+    /**
+     * Determine whether a Braket device ARN identifies real QPU hardware
+     * rather than a managed simulator. QPU ARNs have the shape
+     * `arn:aws:braket:<region>::device/qpu/<provider>/<name>` — note the
+     * empty account-id field, so the resource segment "device/qpu/..." is
+     * preceded by a colon, not a slash.
+     */
+    protected static function isQpuArn(string $arn): bool
+    {
+        return str_contains($arn, 'device/qpu/');
+    }
 
     /**
      * Admission checks every circuit must pass before it reaches Python.
@@ -85,19 +126,22 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Run the mandatory pre-flight steps before spawning a *synchronous*
      * Python subprocess (executeCircuit()/generateEntropy()).
      *
-     * The config check lives in assertConfigured() rather than in
-     * beforeExecution() so a driver overriding the hook cannot silently skip
-     * validation by forgetting to call the parent implementation.
+     * The config and synchronous-safety checks live in dedicated methods
+     * rather than in beforeExecution() so a driver overriding the hook
+     * cannot silently skip either by forgetting to call the parent
+     * implementation. assertSynchronousSafe() applies to every subclass,
+     * built-in or custom, so QPU protection is never opt-in.
      *
      * Asynchronous paths (submitTask()/pollTask()) must NOT go through this
-     * method: submitting a task or polling it never blocks on the QPU, so the
-     * synchronous-safety hook (e.g. AwsBraketDriver::beforeExecution()) must
-     * not fire for them. They call assertConfigured() directly instead — see
-     * its docblock for why that still enforces validation.
+     * method: submitting a task or polling it never blocks on the QPU, so
+     * assertSynchronousSafe() must not fire for them. They call
+     * assertConfigured() directly instead — see its docblock for why that
+     * still enforces validation.
      */
     private function preflight(): void
     {
         $this->assertConfigured();
+        $this->assertSynchronousSafe();
         $this->beforeExecution();
     }
 

@@ -51,7 +51,7 @@ Quantum (Facade)
 - **Python scripts** live in `bin/python/`, not `resources/`. Each script is self-contained (reads JSON stdin, writes JSON stdout).
 - **Exceptions** all extend `AetherException` with static factory methods (`::fromPythonError()`, `::forDriver()`, etc.)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
-- **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
+- **QPU safety:** synchronous_safe is tri-state; null (default) refuses ->run() when device_arn contains device/qpu/, true allows, false refuses. Async paths are never blocked.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
 
 ## Config
