@@ -401,6 +401,7 @@ it('maps each Braket state to the right TaskStatus', function (string $braketSta
     ['RUNNING', TaskStatus::Running],
     ['COMPLETED', TaskStatus::Completed],
     ['FAILED', TaskStatus::Failed],
+    ['CANCELLING', TaskStatus::Cancelling],
     ['CANCELLED', TaskStatus::Cancelled],
 ]);
 
