@@ -105,11 +105,10 @@ class PollQuantumTask implements ShouldQueue
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
 
-        // Resolving the driver can fail for reasons no retry will cure: an
-        // unregistered name, or a driver whose constructor rejects its config.
+        // Resolving an unregistered driver is a failure no retry will cure.
         try {
             $device = $manager->driver($this->driver);
-        } catch (DriverNotFoundException|InvalidDriverConfigException $e) {
+        } catch (DriverNotFoundException $e) {
             $this->persist(null, null, $e->getMessage());
             $this->failWithoutRetry($e);
 
