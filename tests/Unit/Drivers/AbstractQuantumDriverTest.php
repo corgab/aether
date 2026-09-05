@@ -120,9 +120,9 @@ it('defaults to 16 qubits when entropy_qubits not in config', function () {
 });
 
 it('exposes assertConfigured() to subclasses for the asynchronous path', function () {
-    // A driver whose async methods only need config validation, not the
-    // synchronous-safety hook, must be able to call assertConfigured()
-    // directly without going through the private preflight()/beforeExecution().
+    // A driver whose async methods only need config validation, not
+    // assertSynchronousSafe(), must be able to call assertConfigured()
+    // directly without going through the private preflight().
     $driver = new class($this->bridge, []) extends AbstractQuantumDriver
     {
         protected function driverName(): string
@@ -176,6 +176,50 @@ it('calls beforeExecution hook', function () {
 
     $driver->executeCircuit($circuit);
     expect($driver->hookCalled)->toBeTrue();
+});
+
+// -------------------------------------------------------------------------
+// Tri-state synchronous_safe / device_arn (base-class safety net)
+// -------------------------------------------------------------------------
+
+it('refuses executeCircuit against a QPU device ARN by default, even for a custom driver', function () {
+    // Proves the QPU safety net lives in the base class: a generic driver
+    // that never overrides beforeExecution() still refuses synchronous
+    // execution against a QPU device_arn.
+    $driver = new class($this->bridge, ['device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'custom';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->expects($this->never())->method('toArray');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(QuantumExecutionException::class, 'custom');
+});
+
+it('allows executeCircuit against a QPU device ARN when synchronous_safe is explicitly true', function () {
+    $driver = new class($this->bridge, ['device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'synchronous_safe' => true]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'custom';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
 // -------------------------------------------------------------------------

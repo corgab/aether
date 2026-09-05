@@ -115,7 +115,9 @@ return [
     'drivers' => [
 
         'local' => [
-            'synchronous_safe' => true,
+            // null derives safety from device_arn; the local simulator has
+            // no device_arn at all, so it is always safe to run synchronously.
+            'synchronous_safe' => null,
             'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
 
             // The local simulator keeps a full statevector in memory: a dense
@@ -131,7 +133,14 @@ return [
             'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
             'bucket' => env('AETHER_S3_BUCKET'),
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
-            'synchronous_safe' => true,
+
+            // Tri-state: true always allows a synchronous ->run(), false
+            // always refuses it, and null (the default) derives the answer
+            // from device_arn above — a Braket QPU ARN (one containing
+            // "device/qpu/", e.g. arn:aws:braket:us-east-1::device/qpu/ionq/
+            // Aria-1) refuses, since hardware tasks can queue for minutes or
+            // hours; a managed simulator ARN (e.g. SV1 above) is allowed.
+            'synchronous_safe' => null,
             'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
 
             // No ceiling here: Braket enforces its own per-device qubit

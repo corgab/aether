@@ -106,8 +106,9 @@ it('throws QuantumExecutionException when synchronous_safe is false on executeCi
     }
 });
 
-it('works when synchronous_safe defaults to true on executeCircuit', function () {
-    // Config without 'synchronous_safe' key — should default to true (safe)
+it('derives safety from a simulator device_arn when synchronous_safe is absent', function () {
+    // Config without 'synchronous_safe' key — defaults to null, which derives
+    // safety from device_arn; this simulator ARN is always safe.
     $config = ['region' => 'us-east-1', 'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', 'bucket' => 'test-bucket'];
     $driver = new AwsBraketDriver($this->bridge, $config);
 
@@ -119,6 +120,81 @@ it('works when synchronous_safe defaults to true on executeCircuit', function ()
     $result = $driver->executeCircuit($circuit);
 
     expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('decides synchronous execution from synchronous_safe and the device ARN', function (?bool $synchronousSafe, string $deviceArn, ?string $refusal) {
+    $config = array_merge($this->config, [
+        'device_arn' => $deviceArn,
+        'synchronous_safe' => $synchronousSafe,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+
+    if ($refusal === null) {
+        $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+        $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+        expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
+
+        return;
+    }
+
+    $circuit->expects($this->never())->method('toArray');
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('[aws]');
+
+        if ($refusal === 'qpu') {
+            expect($e->getMessage())->toContain('QPU device')->toContain($deviceArn);
+        } else {
+            expect($e->getMessage())->toContain('synchronous_safe => false');
+        }
+    }
+})->with([
+    'null flag, simulator ARN is safe' => [null, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', null],
+    'null flag, QPU ARN refuses' => [null, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'qpu'],
+    'true flag, simulator ARN is safe' => [true, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', null],
+    'true flag, QPU ARN is overridden safe' => [true, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', null],
+    'false flag, simulator ARN still refuses' => [false, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', 'flag'],
+    'false flag, QPU ARN refuses' => [false, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'flag'],
+]);
+
+it('accepts boolean-like strings for synchronous_safe', function (string $value, bool $shouldRefuse) {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => $value]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    if ($shouldRefuse) {
+        expect(fn () => $driver->executeCircuit($circuit))
+            ->toThrow(QuantumExecutionException::class, 'synchronous_safe => false');
+
+        return;
+    }
+
+    expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
+})->with([
+    '"false" refuses' => ['false', true],
+    '"0" refuses' => ['0', true],
+    '"true" allows' => ['true', false],
+    '"1" allows' => ['1', false],
+    'empty string derives from the simulator ARN' => ['', false],
+]);
+
+it('rejects a synchronous_safe value that is not boolean-like', function () {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => 'maybe']));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidDriverConfigException::class, "invalid value for [synchronous_safe]: expected true, false or null, got 'maybe'");
 });
 
 // -------------------------------------------------------------------------
@@ -166,6 +242,25 @@ it('throws QuantumExecutionException when synchronous_safe is false on generateE
         expect($e)->toBeInstanceOf(QuantumExecutionException::class);
         expect(strtolower($e->getMessage()))->toContain('aws');
     }
+});
+
+it('refuses executeBatch and generateEntropy against a QPU device by default', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->expects($this->never())->method('toArray');
+
+    expect(fn () => $driver->executeBatch([$circuit]))
+        ->toThrow(QuantumExecutionException::class, 'aws');
+
+    expect(fn () => $driver->generateEntropy(16))
+        ->toThrow(QuantumExecutionException::class, 'aws');
 });
 
 it('converts bitstring to raw bytes correctly in generateEntropy', function () {
@@ -298,6 +393,26 @@ it('submitCircuit succeeds even when synchronous_safe is false', function () {
         ->toThrow(QuantumExecutionException::class);
 });
 
+it('submitCircuit succeeds against a QPU device when synchronous_safe is null', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with('submit.py', $this->anything(), $config)
+        ->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/qpu']);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/qpu');
+});
+
 it('throws InvalidDriverConfigException on submitCircuit when required config is missing', function () {
     $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1', 'bucket' => 'test-bucket']);
 
@@ -369,6 +484,20 @@ it('sends the correct payload and script name to checkTask', function () {
 
 it('checkTask succeeds even when synchronous_safe is false', function () {
     $config = array_merge($this->config, ['synchronous_safe' => false]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->method('execute')->willReturn(['status' => 'RUNNING']);
+
+    $snapshot = $driver->checkTask('arn:...');
+
+    expect($snapshot->status)->toBe(TaskStatus::Running);
+});
+
+it('checkTask succeeds against a QPU device when synchronous_safe is null', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
     $driver = new AwsBraketDriver($this->bridge, $config);
 
     $this->bridge->method('execute')->willReturn(['status' => 'RUNNING']);

@@ -66,6 +66,31 @@ it('implements QuantumDevice interface', function () {
 // executeCircuit()
 // -------------------------------------------------------------------------
 
+it('refuses executeCircuit when synchronous_safe is false', function () {
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => false]));
+    $circuit = (new CircuitBuilder($driver))->qubits(1)->h(0)->measure();
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(QuantumExecutionException::class, 'synchronous_safe => false');
+});
+
+it('still simulates an asynchronous submitCircuit when synchronous_safe is false', function () {
+    // The local driver implements ->dispatch() by running the circuit inline.
+    // That is the asynchronous path the flag steers users toward, so it must
+    // never be refused, whatever synchronous_safe says.
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => false]));
+    $circuit = (new CircuitBuilder($driver))->qubits(1)->h(0)->measure();
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 500, '1' => 500]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toStartWith('local:')
+        ->and($driver->checkTask($taskArn)->status)->toBe(TaskStatus::Completed);
+});
+
 it('delegates executeCircuit to bridge with correct payload', function () {
     $circuitArray = [
         'qubits' => 2,

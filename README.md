@@ -59,7 +59,7 @@ See [Choosing a Driver](#choosing-a-driver) for a comparison of the available ba
 
 | | `local` | `aws` + SV1 | `aws` + QPU |
 |---|---|---|---|
-| Sync `->run()` | yes | yes | no — `synchronous_safe: false` |
+| Sync `->run()` | yes | yes | no — refused automatically for QPU ARNs (see [Synchronous Safety](#synchronous-safety)) |
 | Async `->dispatch()` | yes (inline) | yes | yes, requires queue worker |
 | Limits | `max_qubits` (25 ≈ 512 MB) | Braket device limits | device qubits + queue time |
 | Guards | qubit ceiling | `max_cost_per_run` (rough) | `max_cost_per_run` |
@@ -129,7 +129,7 @@ $batch[0]->probabilities();
 * **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
 * **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
 * **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
-* **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver marked `synchronous_safe: false` throws, exactly like a single `->run()`.
+* **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver that refuses synchronous execution, whether by `synchronous_safe: false` or by a QPU device ARN, throws, exactly like a single `->run()`.
 * **Contracts**: batch-capable drivers implement `Aether\Contracts\BatchableDevice`; `Quantum::batch()` on a driver that does not throws `QuantumExecutionException::batchUnsupported`. The core `Aether\Contracts\QuantumDevice` contract is unchanged, so third-party drivers keep working.
 
 ### Asynchronous Execution
@@ -254,10 +254,11 @@ Wire it up with a driver registered through `Quantum::extend()` — `Quantum::br
     'ionq' => [
         'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
         'python_provider' => base_path('app/quantum/ionq_provider.py'),
-        'synchronous_safe' => false,
     ],
 ],
 ```
+
+The base driver already refuses `->run()` against this `device_arn` (it contains `device/qpu/`), so `synchronous_safe` only needs setting to `true` if you want to override that.
 
 ```php
 use Aether\Facades\Quantum;
@@ -450,7 +451,15 @@ composer test
 
 ## Synchronous Safety
 
-Set `synchronous_safe` to `false` in your driver config to prevent accidental synchronous calls that would block your HTTP request:
+`synchronous_safe` is tri-state, checked by every driver that extends `AbstractQuantumDriver`:
+
+* `null` (the shipped default) — derived from `device_arn`. A Braket QPU ARN (one containing `device/qpu/`, e.g. `arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1`) refuses `->run()`; a managed simulator ARN, or no ARN at all, is allowed.
+* `true` — always allows synchronous execution, overriding the ARN check.
+* `false` — always refuses synchronous execution, regardless of the device.
+
+Boolean-like strings (`"true"`, `"false"`, `"1"`, `"0"`) are accepted; anything else throws `InvalidDriverConfigException`. The local driver's `->dispatch()` runs the simulator inline and is never refused: the flag only governs `->run()`, `Quantum::batch()->run()` and entropy generation.
+
+> **Upgrading:** `mergeConfigFrom()` merges only the top level, so a `config/aether.php` published before this change still carries `'synchronous_safe' => true` for the `aws` driver and keeps allowing synchronous runs against a QPU. Change that value to `null` to opt into the ARN-based default.
 
 ```php
 // config/aether.php
@@ -460,7 +469,7 @@ Set `synchronous_safe` to `false` in your driver config to prevent accidental sy
 ],
 ```
 
-This will throw a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission is never blocked by this flag — that is the path the flag is steering you toward.
+Either refusal throws a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission (`->dispatch()`, `submitCircuit()`, `checkTask()`) is never blocked by this check — that is the path it is steering you toward.
 
 ## Qubit Ceiling
 

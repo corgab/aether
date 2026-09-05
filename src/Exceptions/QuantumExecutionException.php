@@ -21,12 +21,24 @@ class QuantumExecutionException extends AetherException
     }
 
     /**
-     * Create an exception for drivers that do not support synchronous execution.
+     * Create an exception for a driver explicitly configured to refuse
+     * synchronous execution via `synchronous_safe => false`.
      */
     public static function synchronousUnsafe(string $driver): self
     {
         return new self(
-            "Driver [{$driver}] does not support synchronous execution. Use dispatch() or queue() instead."
+            "Driver [{$driver}] is configured with synchronous_safe => false and refuses to run synchronously. Use dispatch() or queue() instead."
+        );
+    }
+
+    /**
+     * Create an exception for a driver refusing synchronous execution
+     * because its `device_arn` is a Braket QPU (as opposed to a simulator).
+     */
+    public static function synchronousUnsafeForQpu(string $driver, string $deviceArn): self
+    {
+        return new self(
+            "Driver [{$driver}] refuses to run synchronously against QPU device [{$deviceArn}]: hardware tasks can queue for minutes or hours. Use dispatch() or queue() instead, or set synchronous_safe => true in the driver config to allow it."
         );
     }
 
