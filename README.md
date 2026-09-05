@@ -173,7 +173,10 @@ Tune the polling in `config/aether.php`:
 AETHER_QUEUE=quantum
 AETHER_POLL_INTERVAL=5
 AETHER_MAX_POLL_ATTEMPTS=720
+AETHER_SUBMIT_TIMEOUT=        # seconds one attempt of the submission job may run; blank derives it from AETHER_PROCESS_TIMEOUT + 30
 ```
+
+**Worker timeout**: `SubmitQuantumCircuit` declares its own `$timeout`, so the worker's default of 60 seconds (`queue:work --timeout`) does not apply to it. That matters for the local driver, which runs the whole simulation inside the submission job: a legitimate simulation of a few minutes would otherwise be killed at the one-minute mark and retried against the same limit. By default the job may run for `AETHER_PROCESS_TIMEOUT` plus a 30-second margin, so the Python bridge's own timeout error wins over the worker's; set `AETHER_SUBMIT_TIMEOUT` to pick a different ceiling. A timed-out attempt is failed rather than retried (`$failOnTimeout = true`). Keep the `retry_after` of your queue connection above this value, otherwise the database and Redis drivers hand a still-running submission to a second worker.
 
 `PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
 

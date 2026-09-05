@@ -57,3 +57,38 @@ it('mentions the unsupported driver name in the exception message', function () 
         expect($exception->getMessage())->toContain('fake-sync');
     }
 });
+
+it('outlives the Python process by a margin when no submit timeout is configured', function () {
+    config(['aether.process_timeout' => 120, 'aether.submit_timeout' => null]);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100]);
+
+    expect($job->timeout)->toBe(150)
+        ->and($job->failOnTimeout)->toBeTrue();
+});
+
+it('uses the configured submit timeout when it is a positive number', function (mixed $configured, int $expected) {
+    config(['aether.process_timeout' => 120, 'aether.submit_timeout' => $configured]);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100]);
+
+    expect($job->timeout)->toBe($expected);
+})->with([
+    'integer' => [600, 600],
+    'numeric string from env' => ['45', 45],
+    'blank env falls back' => ['', 150],
+    'zero falls back' => [0, 150],
+    'negative falls back' => [-5, 150],
+]);
+
+it('carries its timeout into the queued payload', function () {
+    Queue::fake();
+    config(['aether.process_timeout' => 200, 'aether.submit_timeout' => null]);
+
+    SubmitQuantumCircuit::dispatch(['qubits' => 2, 'gates' => [], 'shots' => 100], 'local');
+
+    Queue::assertPushed(
+        SubmitQuantumCircuit::class,
+        fn (SubmitQuantumCircuit $job): bool => $job->timeout === 230 && $job->failOnTimeout === true,
+    );
+});

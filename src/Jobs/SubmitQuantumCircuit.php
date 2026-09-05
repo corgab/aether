@@ -35,6 +35,29 @@ class SubmitQuantumCircuit implements ShouldQueue
     public int $tries = 3;
 
     /**
+     * The number of seconds the worker lets one attempt run before killing it.
+     *
+     * The local driver runs the whole simulation inline inside this job, so
+     * an attempt has to outlive the Python process it spawns: without this
+     * the worker's default of 60 seconds would kill any simulation longer
+     * than a minute while the bridge itself still allowed process_timeout.
+     * Resolved from aether.submit_timeout, or process_timeout plus a margin.
+     */
+    public int $timeout;
+
+    /**
+     * A timed-out attempt is failed rather than retried: the next attempt
+     * would run the same circuit against the same limit.
+     */
+    public bool $failOnTimeout = true;
+
+    /**
+     * Seconds added to process_timeout so the worker reaps the Python
+     * process's own timeout error instead of racing it.
+     */
+    private const TIMEOUT_MARGIN = 30;
+
+    /**
      * Create a new job instance.
      *
      * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit.
@@ -45,6 +68,22 @@ class SubmitQuantumCircuit implements ShouldQueue
         public readonly ?string $driver = null,
     ) {
         $this->onQueue(config('aether.queue'));
+        $this->timeout = self::resolveTimeout();
+    }
+
+    /**
+     * The configured submit_timeout when it is a positive number, otherwise
+     * process_timeout plus the margin.
+     */
+    private static function resolveTimeout(): int
+    {
+        $configured = config('aether.submit_timeout');
+
+        if (is_numeric($configured) && (int) $configured > 0) {
+            return (int) $configured;
+        }
+
+        return (int) config('aether.process_timeout', 300) + self::TIMEOUT_MARGIN;
     }
 
     /**
