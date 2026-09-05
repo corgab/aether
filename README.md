@@ -23,7 +23,12 @@ Run the install command to publish the config, check Python dependencies, and ve
 php artisan aether:install
 ```
 
-This will optionally create a `.aether-venv` virtual environment and install the required Python packages for you.
+This will:
+
+- Publish `config/aether.php` — kept as-is if it already exists, unless you pass `--force` to overwrite it.
+- Check the configured Python interpreter and compare the installed `amazon-braket-sdk` version against the floor pinned in `bin/python/requirements.txt`.
+- Optionally create a `.aether-venv` virtual environment and install the required Python packages for you.
+- Run a one-qubit smoke test on the local simulator, through the interpreter it just verified. This never runs on your configured default driver, so it never submits a billable task even if `AETHER_DRIVER` is set to `aws`.
 
 ## Configuration
 
