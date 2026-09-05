@@ -44,6 +44,21 @@ it('releases itself back to the queue with the configured delay when the task is
     $job->assertReleased(delay: 3);
 });
 
+it('releases itself back to the queue instead of failing when the task is CANCELLING', function () {
+    config(['aether.poll_interval' => 3, 'aether.max_poll_attempts' => 720]);
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Cancelling);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($manager, app(Dispatcher::class));
+
+    $job->assertReleased(delay: 3);
+});
+
 it('throws pollingExhausted and does not release once past max_poll_attempts', function () {
     config(['aether.max_poll_attempts' => 2]);
 

@@ -75,8 +75,9 @@ def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
     """Return the current status of the Braket task *task_id* (an ARN).
 
     The ``status`` value is passed through verbatim from Braket (``CREATED``,
-    ``QUEUED``, ``RUNNING``, ``COMPLETED``, ``FAILED``, ``CANCELLED``); a
-    ``counts`` histogram is added once the task has completed.
+    ``QUEUED``, ``RUNNING``, ``COMPLETED``, ``FAILED``, ``CANCELLING``,
+    ``CANCELLED``); a ``counts`` histogram is added once the task has
+    completed.
     """
     from braket.aws import AwsQuantumTask  # noqa: PLC0415
 

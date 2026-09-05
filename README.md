@@ -164,7 +164,7 @@ AETHER_MAX_POLL_ATTEMPTS=720
 
 `PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
 
-A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. A task reported as `CANCELLING` is still in flight, though — the job keeps polling it like any other non-terminal state until Braket reports `CANCELLED`. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
 
@@ -221,7 +221,7 @@ A provider module may define four module-level hooks; only the first is required
 | `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
 | `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
 | `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
-| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
+| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLING\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
 
 `config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
 

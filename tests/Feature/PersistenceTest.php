@@ -135,6 +135,16 @@ it('mirrors an intermediate backend status while the job is released', function 
     expect(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Running);
 });
 
+it('mirrors an intermediate CANCELLING backend status while the job is released', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Cancelling);
+    $job = ($this->submit)()->withFakeQueueInteractions();
+
+    ($this->poll)($job);
+
+    $job->assertReleased();
+    expect(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Cancelling);
+});
+
 it('keeps the backend status and records the error when polling is exhausted', function () {
     config()->set('aether.max_poll_attempts', 1);
     $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
