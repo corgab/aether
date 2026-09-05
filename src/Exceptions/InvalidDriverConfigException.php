@@ -22,4 +22,16 @@ class InvalidDriverConfigException extends AetherException
             "Driver [{$driver}] is missing required configuration: {$keys}. Set these in config/aether.php under drivers.{$driver}."
         );
     }
+
+    /**
+     * Create an exception for a config key holding a value of the wrong shape.
+     */
+    public static function invalidValue(string $driver, string $key, mixed $value, string $expected): self
+    {
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
+
+        return new self(
+            "Driver [{$driver}] has an invalid value for [{$key}]: expected {$expected}, got {$given}. Set it in config/aether.php under drivers.{$driver}."
+        );
+    }
 }

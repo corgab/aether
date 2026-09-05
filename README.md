@@ -444,6 +444,10 @@ When using real QPU hardware, requests can take minutes. `synchronous_safe` is t
 * `true` — always allows synchronous execution, overriding the ARN check.
 * `false` — always refuses synchronous execution, regardless of the device.
 
+Boolean-like strings (`"true"`, `"false"`, `"1"`, `"0"`) are accepted; anything else throws `InvalidDriverConfigException`. The local driver's `->dispatch()` runs the simulator inline and is never refused: the flag only governs `->run()`, `Quantum::batch()->run()` and entropy generation.
+
+> **Upgrading:** `mergeConfigFrom()` merges only the top level, so a `config/aether.php` published before this change still carries `'synchronous_safe' => true` for the `aws` driver and keeps allowing synchronous runs against a QPU. Change that value to `null` to opt into the ARN-based default.
+
 ```php
 // config/aether.php
 'aws' => [

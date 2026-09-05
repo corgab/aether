@@ -73,7 +73,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     protected function assertSynchronousSafe(): void
     {
-        $synchronousSafe = $this->config['synchronous_safe'] ?? null;
+        $synchronousSafe = $this->synchronousSafeFlag();
 
         if ($synchronousSafe === true) {
             return;
@@ -88,6 +88,40 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         if (is_string($deviceArn) && static::isQpuArn($deviceArn)) {
             throw QuantumExecutionException::synchronousUnsafeForQpu($this->driverName(), $deviceArn);
         }
+    }
+
+    /**
+     * Read `synchronous_safe` as a real tri-state value: a blank entry (absent,
+     * null, or the empty string an unset env var yields) is null, booleans pass
+     * through, and boolean-like strings such as "false" or "0" are accepted so
+     * a value that clearly means "refuse" is never mistaken for "unset".
+     *
+     * @throws InvalidDriverConfigException When the value is none of those.
+     */
+    private function synchronousSafeFlag(): ?bool
+    {
+        $value = $this->config['synchronous_safe'] ?? null;
+
+        if (blank($value)) {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $flag = is_scalar($value) ? filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) : null;
+
+        if ($flag === null) {
+            throw InvalidDriverConfigException::invalidValue(
+                $this->driverName(),
+                'synchronous_safe',
+                $value,
+                'true, false or null'
+            );
+        }
+
+        return $flag;
     }
 
     /**
@@ -297,11 +331,16 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * asynchronous path already announces completion via CircuitCompleted
      * from the polling job.
      *
+     * Unlike preflight(), this skips assertSynchronousSafe(): the inline run
+     * is the implementation of an asynchronous dispatch, which must never be
+     * refused, and it only ever blocks the local machine, never a QPU queue.
+     *
      * @throws InvalidCircuitException
      */
     protected function runCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->preflight();
+        $this->assertConfigured();
+        $this->beforeExecution();
         $this->validateCircuits([$circuit]);
 
         return $this->runDefinition($circuit->toArray());
@@ -336,8 +375,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Shared implementation for drivers exposing it via
      * AsynchronousDevice::submitCircuit(). Runs config validation and the
      * circuit admission checks only — submitting never blocks on the QPU, so
-     * the synchronous-safety hook in beforeExecution() deliberately does not
-     * fire here.
+     * assertSynchronousSafe() deliberately does not run here.
      *
      * @throws InvalidCircuitException
      * @throws QuantumExecutionException When submit.py returns no usable task identifier.
@@ -366,7 +404,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * Shared implementation for drivers exposing it via
      * AsynchronousDevice::checkTask(). Like submitTask(), polling never
-     * blocks, so only config validation runs — not beforeExecution().
+     * blocks, so only config validation runs — neither assertSynchronousSafe()
+     * nor beforeExecution().
      *
      * @throws QuantumExecutionException When check.py returns no valid status.
      */
