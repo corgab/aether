@@ -10,14 +10,83 @@ namespace Aether\Exceptions;
 class QuantumExecutionException extends AetherException
 {
     /**
-     * Create an exception from a Python subprocess error.
+     * Identifiers of the backend tasks the Python script had already
+     * submitted when it failed or was killed.
+     *
+     * @var list<string>
      */
-    public static function fromPythonError(string $script, string $stderr, int $exitCode): self
+    private array $taskArns = [];
+
+    /**
+     * Create an exception from a Python subprocess error.
+     *
+     * Python scripts announce every task they create on stderr the moment it
+     * exists, so a failure that happened after submission can name the tasks
+     * left behind on the backend.
+     *
+     * @param  list<string>  $taskArns  Tasks submitted before the failure.
+     */
+    public static function fromPythonError(string $script, string $stderr, int $exitCode, array $taskArns = []): self
     {
-        return new self(
-            "Python script [{$script}] failed with exit code {$exitCode}. Stderr: {$stderr}",
-            $exitCode
-        );
+        $message = "Python script [{$script}] failed with exit code {$exitCode}. Stderr: {$stderr}";
+
+        if ($taskArns !== []) {
+            $message .= ' Submitted task(s): '.implode(', ', $taskArns).
+                '. The remote task may still be running; inspect or cancel it in the AWS Braket console.';
+        }
+
+        return (new self($message, $exitCode))->withTaskArns($taskArns);
+    }
+
+    /**
+     * Create an exception for a Python subprocess killed by the bridge timeout.
+     *
+     * Killing the subprocess does not cancel work already submitted to the
+     * backend, so any announced task identifiers are named in the message and
+     * kept available through {@see taskArns()}.
+     *
+     * @param  list<string>  $taskArns  Tasks submitted before the kill.
+     */
+    public static function timedOut(string $script, int $timeout, array $taskArns = []): self
+    {
+        $message = "Python script [{$script}] timed out after {$timeout}s and was killed.";
+
+        $message .= $taskArns !== []
+            ? ' It had already submitted task(s) '.implode(', ', $taskArns).
+                ', which keep running (and billing) on the backend: inspect or cancel them in the AWS Braket console, and prefer ->dispatch() for devices that queue.'
+            : ' No task had been submitted yet.';
+
+        return (new self($message))->withTaskArns($taskArns);
+    }
+
+    /**
+     * Return the identifiers of the tasks submitted before this failure.
+     *
+     * @return list<string>
+     */
+    public function taskArns(): array
+    {
+        return $this->taskArns;
+    }
+
+    /**
+     * Determine whether any task identifier was captured for this failure.
+     */
+    public function hasTaskArns(): bool
+    {
+        return $this->taskArns !== [];
+    }
+
+    /**
+     * Attach the submitted task identifiers to this exception.
+     *
+     * @param  list<string>  $taskArns
+     */
+    private function withTaskArns(array $taskArns): static
+    {
+        $this->taskArns = $taskArns;
+
+        return $this;
     }
 
     /**

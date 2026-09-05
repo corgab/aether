@@ -449,6 +449,21 @@ When using real QPU hardware, requests can take minutes. Set `synchronous_safe` 
 
 This will throw a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission is never blocked by this flag — that is the path the flag is steering you toward.
 
+### What happens on a timeout
+
+`PythonBridge` kills the Python subprocess once it exceeds `AETHER_PROCESS_TIMEOUT` (default `300` seconds). That kill is local: a task already submitted to Braket keeps running, and keeps billing. To make it recoverable, every script announces each task identifier on stderr the moment the task is created, so the `QuantumExecutionException` names them in its message and exposes them through `->taskArns()`:
+
+```php
+try {
+    $result = Quantum::circuit('aws')->qubits(2)->h(0)->cnot(0, 1)->measure()->run();
+} catch (QuantumExecutionException $e) {
+    // ['arn:aws:braket:us-east-1:...:quantum-task/uuid'] — inspect or cancel in the console.
+    Log::warning('Quantum run timed out', ['tasks' => $e->taskArns()]);
+}
+```
+
+`->taskArns()` returns an empty array when the script was killed before it submitted anything, and `->hasTaskArns()` answers the same question directly. The same ARNs are attached when a script exits non-zero after submitting. Aether never cancels the remote task for you — use `->dispatch()` for devices that queue.
+
 ## Qubit Ceiling
 
 The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling (default `25`, roughly 512 MB) on every `->run()`, `->dispatch()`, and `Quantum::batch()` call:

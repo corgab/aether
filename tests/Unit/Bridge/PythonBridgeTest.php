@@ -143,6 +143,62 @@ it('throws QuantumExecutionException (not PythonEnvironmentException) when the p
         test()->fail('Expected QuantumExecutionException was not thrown.');
     } catch (QuantumExecutionException $e) {
         expect($e->getMessage())->toContain('timed out');
+        expect($e->getMessage())->toContain('No task had been submitted');
+        expect($e->taskArns())->toBe([]);
+        expect($e->hasTaskArns())->toBeFalse();
+    }
+});
+
+// -------------------------------------------------------------------------
+// execute() — task ARN side-channel on stderr
+// -------------------------------------------------------------------------
+
+it('surfaces a task ARN announced on stderr before the process timed out', function () {
+    $arn = 'arn:aws:braket:us-east-1:123456789012:quantum-task/abc';
+    $python = fakePython('printf \'{"task_arn":"'.$arn.'"}\n\' >&2; sleep 2');
+
+    try {
+        (new PythonBridge($python, timeout: 1))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())
+            ->toContain('timed out')
+            ->toContain($arn)
+            ->toContain('console');
+        expect($e->taskArns())->toBe([$arn]);
+        expect($e->hasTaskArns())->toBeTrue();
+    }
+});
+
+it('surfaces a task ARN announced on stderr before the script failed', function () {
+    $arn = 'arn:aws:braket:us-east-1:123456789012:quantum-task/abc';
+    $python = fakePython('printf \'{"task_arn":"'.$arn.'"}\n{"error":"boom"}\n\' >&2; exit 1');
+
+    try {
+        (new PythonBridge($python))->execute('circuit.py', ['qubits' => 1]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())
+            ->toContain('boom')
+            ->toContain($arn)
+            ->not->toContain('{"error"');
+        expect($e->taskArns())->toBe([$arn]);
+        expect($e->getCode())->toBe(1);
+    }
+});
+
+it('collects every announced task ARN in order and deduplicates repeats', function () {
+    $first = 'arn:aws:braket:us-east-1:123456789012:quantum-task/one';
+    $second = 'arn:aws:braket:us-east-1:123456789012:quantum-task/two';
+    $python = fakePython(
+        'printf \'{"task_arn":"'.$first.'"}\n{"task_arn":"'.$second.'"}\n{"task_arn":"'.$first.'"}\n\' >&2; exit 1'
+    );
+
+    try {
+        (new PythonBridge($python))->execute('batch.py', ['circuits' => []]);
+        test()->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->taskArns())->toBe([$first, $second]);
     }
 });
 

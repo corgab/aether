@@ -26,8 +26,10 @@ natively) control batching themselves; for the rest the default strategy runs
 one ``device.run_batch`` call for uniform shot counts and falls back to
 running the circuits sequentially inside this same process for mixed ones.
 
-On error the script writes ``{"error": "<message>"}`` to stderr and exits
-with code 1.
+The script writes a ``{"task_arn": "<id>"}`` line to stderr as soon as each
+backend task is created, so a task submitted before the PHP-side process
+timeout kills this script is still reported to the caller. On error the
+script writes ``{"error": "<message>"}`` to stderr and exits with code 1.
 """
 
 import json

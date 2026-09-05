@@ -24,8 +24,10 @@ Output (JSON on stdout)::
 
     {"bits": "10110011..."}
 
-On error the script writes ``{"error": "<message>"}`` to stderr and exits
-with code 1.
+The script writes a ``{"task_arn": "<id>"}`` line to stderr as soon as each
+backend task is created, so a task submitted before the PHP-side process
+timeout kills this script is still reported to the caller. On error the
+script writes ``{"error": "<message>"}`` to stderr and exits with code 1.
 
 Device resolution mirrors :mod:`circuit` exactly; see that module for full
 documentation of the ``driver`` / ``driver_config`` semantics.
@@ -35,7 +37,7 @@ import json
 import sys
 from typing import Any
 
-from common import resolve_run_target
+from common import announce_task, resolve_run_target
 
 
 def _build_entropy_circuit(n_qubits: int) -> "Circuit":
@@ -83,6 +85,8 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     device, run_options = resolve_run_target(driver, driver_config)
 
     task = device.run(circuit, shots=shots, **run_options)
+    announce_task(task)
+
     result = task.result()
 
     measurements = result.measurements

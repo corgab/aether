@@ -3,10 +3,44 @@
 
 import importlib
 import importlib.util
+import json
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+
+def announce_task(task: Any) -> None:
+    """Announce *task*'s identifier on the bridge side-channel.
+
+    Writes ``{"task_arn": "<id>"}`` plus a newline to **stderr**, flushed
+    immediately, as soon as the backend task exists. Stdout stays reserved for
+    the single final result document, so ``json.loads(stdout)`` on the PHP side
+    keeps working; stderr is line-buffered and survives the kill, so a task
+    submitted before ``PythonBridge`` times out and kills this process is still
+    named in the resulting ``QuantumExecutionException``.
+
+    Args:
+        task: The object returned by ``device.run()``. Anything without a
+            non-empty string ``id`` attribute is silently ignored — providers
+            are not required to expose one.
+    """
+    task_id = getattr(task, "id", None)
+
+    if isinstance(task_id, str) and task_id:
+        print(json.dumps({"task_arn": task_id}), file=sys.stderr, flush=True)
+
+
+def announce_tasks(tasks: Iterable[Any]) -> None:
+    """Announce every task in *tasks* on the bridge side-channel.
+
+    Args:
+        tasks: The tasks of a submitted batch, in submission order.
+    """
+    for task in tasks:
+        announce_task(task)
+
 
 # The single Python source of truth for the wire-format gate parameters.
 # Each entry maps a gate type to the ordered qubit-index keys and angle keys
@@ -321,9 +355,16 @@ def default_run_batch(
     options = dict(run_options or {})
 
     if len(set(shots_list)) == 1:
-        return device.run_batch(circuits, shots=shots_list[0], **options).results()
+        batch = device.run_batch(circuits, shots=shots_list[0], **options)
+        announce_tasks(getattr(batch, "tasks", []))
 
-    return [
-        device.run(circuit, shots=shots, **options).result()
-        for circuit, shots in zip(circuits, shots_list)
-    ]
+        return batch.results()
+
+    results: list[Any] = []
+
+    for circuit, shots in zip(circuits, shots_list):
+        task = device.run(circuit, shots=shots, **options)
+        announce_task(task)
+        results.append(task.result())
+
+    return results

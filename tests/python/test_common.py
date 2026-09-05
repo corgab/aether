@@ -7,11 +7,21 @@ is not installed.
 """
 
 import importlib.util
+import json
 import math
+from pathlib import Path
 
 import pytest
 
-from common import GATE_PARAMS, build_circuit, validate_gates
+from common import (
+    GATE_PARAMS,
+    announce_task,
+    announce_tasks,
+    build_circuit,
+    default_run_batch,
+    load_provider,
+    validate_gates,
+)
 
 HAS_BRAKET = importlib.util.find_spec("braket") is not None
 
@@ -19,6 +29,20 @@ requires_braket = pytest.mark.skipif(
     not HAS_BRAKET,
     reason="amazon-braket-sdk is not installed",
 )
+
+FAKE_PROVIDER_PATH = str(Path(__file__).resolve().parent / "fixtures" / "fake_provider.py")
+
+
+def _fake_device():
+    """Resolve the braket-free stub device from the fake provider fixture."""
+    return load_provider("custom", {"python_provider": FAKE_PROVIDER_PATH}).resolve_device({})
+
+
+def _announced(capsys) -> list[str]:
+    """Return the task ids announced on stderr so far, in order."""
+    lines = capsys.readouterr().err.splitlines()
+
+    return [json.loads(line)["task_arn"] for line in lines if line.strip()]
 
 
 def _gate_for(gate_type: str, spec: dict) -> dict:
@@ -218,3 +242,81 @@ class TestBuildCircuit:
     def test_out_of_range_qubit_raises_before_building(self):
         with pytest.raises(ValueError, match=r"outside the valid range"):
             build_circuit(2, [{"type": "h", "target": 9}])
+
+
+class TestAnnounceTask:
+    def test_writes_exactly_one_json_line_to_stderr(self, capsys):
+        class Task:
+            id = "arn:aws:braket:us-east-1:123456789012:quantum-task/abc"
+
+        announce_task(Task())
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            '{"task_arn": "arn:aws:braket:us-east-1:123456789012:quantum-task/abc"}\n'
+        )
+        assert json.loads(captured.err) == {"task_arn": Task.id}
+
+    def test_skips_a_task_without_an_id(self, capsys):
+        announce_task(object())
+
+        assert capsys.readouterr().err == ""
+
+    def test_skips_a_non_string_id(self, capsys):
+        class Task:
+            id = 42
+
+        announce_task(Task())
+
+        assert capsys.readouterr().err == ""
+
+    def test_skips_an_empty_id(self, capsys):
+        class Task:
+            id = ""
+
+        announce_task(Task())
+
+        assert capsys.readouterr().err == ""
+
+    def test_announce_tasks_writes_one_line_per_task(self, capsys):
+        class Task:
+            def __init__(self, task_id):
+                self.id = task_id
+
+        announce_tasks([Task("one"), Task("two"), object(), Task("three")])
+
+        assert _announced(capsys) == ["one", "two", "three"]
+
+    def test_announce_tasks_on_an_empty_iterable_is_silent(self, capsys):
+        announce_tasks([])
+
+        assert capsys.readouterr().err == ""
+
+
+class TestDefaultRunBatchAnnouncesTasks:
+    def test_uniform_shots_announce_every_batch_task(self, capsys):
+        device = _fake_device()
+
+        default_run_batch(device, ["c1", "c2"], [500, 500], {"tag": "x"})
+
+        assert _announced(capsys) == ["stub-task-1", "stub-task-2"]
+
+    def test_mixed_shots_announce_each_task_before_its_result(self, capsys):
+        device = _fake_device()
+
+        default_run_batch(device, ["c1", "c2"], [100, 200])
+
+        assert _announced(capsys) == ["stub-task-1", "stub-task-1"]
+
+    def test_a_batch_without_tasks_is_tolerated(self, capsys):
+        class TasklessBatch:
+            def results(self):
+                return []
+
+        class TasklessDevice:
+            def run_batch(self, circuits, shots, **kwargs):
+                return TasklessBatch()
+
+        assert default_run_batch(TasklessDevice(), ["c1"], [10]) == []
+        assert capsys.readouterr().err == ""
