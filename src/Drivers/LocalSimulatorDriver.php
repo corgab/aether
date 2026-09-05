@@ -103,7 +103,8 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     {
         $name = $this->configuredCacheStoreName();
 
-        if ($name !== null && ! is_array(config("cache.stores.{$name}"))) {
+        // Laravel resolves the "null" store without a cache.stores entry.
+        if ($name !== null && $name !== 'null' && ! is_array(config("cache.stores.{$name}"))) {
             throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name);
         }
 

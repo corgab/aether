@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\PollQuantumTask;
@@ -76,6 +77,39 @@ it('fails without retry when the driver rejects its configuration under a worker
     $job->handle($manager);
 
     Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('fails without retry when the circuit is rejected by a ceiling under a worker', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnSubmit = InvalidCircuitException::qubitCeilingExceeded(30, 25, 'fake-async');
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 30, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($queueJob);
+    $job->handle($manager);
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('fails without retry when the driver has no asynchronous support under a worker', function () {
+    $device = new FakeSynchronousOnlyDevice;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-sync', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('fail')->once()->with(Mockery::on(
+        fn (QuantumExecutionException $e): bool => str_contains($e->getMessage(), 'fake-sync')
+    ));
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
+    $job->setJob($queueJob);
+    $job->handle($manager);
 });
 
 it('rethrows a configuration fault when there is no queue job to fail', function () {

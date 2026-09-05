@@ -75,11 +75,12 @@ return [
     | synthetic task identifier. This is how long, in seconds, those results
     | stay available to the polling job.
     |
-    | These cached results must live in a store shared by every process that
-    | runs the queue jobs (the submission job and the polling job may run in
-    | different worker processes, or in a worker and a web process). The
-    | "array" store only works when the queue connection is "sync" or when a
-    | single long-running worker handles both jobs — see drivers.local.cache_store.
+    | These cached results must live in a store shared by every process and
+    | host that runs the queue jobs (the submission job and the polling job
+    | may run in different worker processes, on different servers, or in a
+    | worker and a web process). The "array" store only works when the queue
+    | connection is "sync" or when a single long-running worker handles both
+    | jobs — see drivers.local.cache_store.
     |
     */
 

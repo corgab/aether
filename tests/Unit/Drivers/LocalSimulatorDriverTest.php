@@ -358,6 +358,7 @@ it('refuses the null store whether it is the default or named explicitly', funct
 })->with([
     'default store' => [null, 'void'],
     'explicit store' => ['void', 'void'],
+    "Laravel's implicit null store" => ['null', 'null'],
 ]);
 
 it('rejects submitCircuit when the circuit exceeds max_qubits', function () use ($config) {

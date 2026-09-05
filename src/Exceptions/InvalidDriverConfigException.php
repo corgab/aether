@@ -31,7 +31,7 @@ class InvalidDriverConfigException extends AetherException
     public static function processLocalCacheStore(string $driver, string $queueDriver): self
     {
         return new self(
-            "Driver [{$driver}] keeps asynchronous results in the default cache store, which is the process-local \"array\" store, while the queue connection uses the \"{$queueDriver}\" driver — the polling job would run in a different process and never see the result. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared across processes (\"file\", \"database\", \"redis\", \"memcached\"), or to \"array\" explicitly to accept the single-process limitation."
+            "Driver [{$driver}] keeps asynchronous results in the default cache store, which is the process-local \"array\" store, while the queue connection uses the \"{$queueDriver}\" driver — the polling job would run in a different process and never see the result. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared by every process and host that runs the queue workers (\"database\", \"redis\", \"memcached\", \"dynamodb\"), or to \"array\" explicitly to accept the single-process limitation."
         );
     }
 
@@ -52,7 +52,7 @@ class InvalidDriverConfigException extends AetherException
     public static function discardingCacheStore(string $driver, string $store): self
     {
         return new self(
-            "Driver [{$driver}] would keep asynchronous results in cache store [{$store}], which is the \"null\" store and discards every write, so the polling job could never read a result back. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared across processes (\"file\", \"database\", \"redis\", \"memcached\")."
+            "Driver [{$driver}] would keep asynchronous results in cache store [{$store}], which is the \"null\" store and discards every write, so the polling job could never read a result back. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared by every process and host that runs the queue workers (\"database\", \"redis\", \"memcached\", \"dynamodb\")."
         );
     }
 }
