@@ -96,7 +96,7 @@ class PollQuantumTask implements ShouldQueue
         }
 
         if (! $snapshot->status->isSuccessful()) {
-            $e = TaskFailedException::forTask($this->taskArn, $snapshot->status);
+            $e = TaskFailedException::forTask($this->taskArn, $snapshot->status, $snapshot->error);
             $this->persist($snapshot->status, null, $e->getMessage());
             throw $e;
         }
@@ -124,11 +124,13 @@ class PollQuantumTask implements ShouldQueue
      * Mirror the backend state onto the persisted quantum_tasks row, when
      * persistence is enabled.
      *
-     * The status column always reflects what the backend last reported; our
-     * own polling problems (exhausted budget, malformed response) only ever
-     * populate error and failed_at. Persistence is best-effort: a database
-     * failure is reported and swallowed so it can never fail the job or
-     * suppress the CircuitCompleted event.
+     * The status column always reflects what the backend last reported. The
+     * error column carries whatever ended the task: the backend's own failure
+     * reason when it reported one, or our own polling problems (exhausted
+     * budget, malformed response); either way failed_at is stamped alongside
+     * it. Persistence is best-effort: a database failure is reported and
+     * swallowed so it can never fail the job or suppress the
+     * CircuitCompleted event.
      *
      * @param  array<string, int>|null  $counts
      */

@@ -76,7 +76,9 @@ def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
 
     The ``status`` value is passed through verbatim from Braket (``CREATED``,
     ``QUEUED``, ``RUNNING``, ``COMPLETED``, ``FAILED``, ``CANCELLED``); a
-    ``counts`` histogram is added once the task has completed.
+    ``counts`` histogram is added once the task has completed, and an
+    ``error`` string when the task ended as ``FAILED`` or ``CANCELLED`` and
+    Braket reported a ``failureReason`` for it.
     """
     from braket.aws import AwsQuantumTask  # noqa: PLC0415
 
@@ -87,5 +89,11 @@ def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
 
     if state == "COMPLETED":
         output["counts"] = dict(task.result().measurement_counts)
+
+    if state in ("FAILED", "CANCELLED"):
+        reason = task.metadata().get("failureReason")
+
+        if reason:
+            output["error"] = str(reason)
 
     return output

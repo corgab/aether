@@ -22,8 +22,9 @@ interface AsynchronousDevice
     public function submitCircuit(CircuitBuilder $circuit): string;
 
     /**
-     * Return a point-in-time snapshot of the given task's status and, once
-     * completed, its measurement counts.
+     * Return a point-in-time snapshot of the given task's status, its
+     * measurement counts once completed, and the backend's failure reason
+     * when it ended unsuccessfully and reported one.
      */
     public function checkTask(string $taskArn): TaskSnapshot;
 }

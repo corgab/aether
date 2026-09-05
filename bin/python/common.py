@@ -296,6 +296,111 @@ def provider_run_options(provider: ModuleType, driver_config: dict[str, Any]) ->
     return dict(options) if options else {}
 
 
+def _call_task_hook(task: Any, name: str) -> Any:
+    """Call the no-argument *name* hook on *task*, tolerating its absence.
+
+    Task objects come from whatever provider is configured, so neither hook
+    is guaranteed to exist — and ``metadata()`` performs a network call on a
+    real ``AwsQuantumTask``, which can raise. Both cases mean "no information
+    available" rather than a new failure to report.
+
+    Args:
+        task: The provider's task object.
+        name: The hook name (``"state"`` or ``"metadata"``).
+
+    Returns:
+        Whatever the hook returned, or ``None`` when it is missing or raised.
+    """
+    hook = getattr(task, name, None)
+
+    if not callable(hook):
+        return None
+
+    try:
+        return hook()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def describe_task_failure(task: Any) -> str:
+    """Describe why *task* produced no result, as a human-readable message.
+
+    Braket returns ``None`` from ``AwsQuantumTask.result()`` for every task in
+    a terminal state that carries no result (``FAILED``, ``CANCELLED``). The
+    reason why lives in the raw ``GetQuantumTask`` response, exposed as
+    ``task.metadata()["failureReason"]``.
+
+    Args:
+        task: The provider's task object.
+
+    Returns:
+        ``Quantum task <id> ended in state <STATE>: <failureReason>``, with
+        the reason clause omitted when the backend reported none and the
+        state clause replaced by ``ended without a result`` when the task
+        exposes no state.
+    """
+    task_id = getattr(task, "id", None) or "<unknown>"
+    state = _call_task_hook(task, "state")
+
+    message = (
+        f"Quantum task {task_id} ended in state {state}"
+        if state
+        else f"Quantum task {task_id} ended without a result"
+    )
+
+    metadata = _call_task_hook(task, "metadata")
+    reason = metadata.get("failureReason") if isinstance(metadata, dict) else None
+
+    return f"{message}: {reason}" if reason else message
+
+
+def require_result(task: Any, result: Any) -> Any:
+    """Return *result*, or raise a descriptive error when *task* produced none.
+
+    Args:
+        task:   The provider's task object, used to describe the failure.
+        result: Whatever ``task.result()`` returned.
+
+    Returns:
+        The result object, unchanged, when it is not ``None``.
+
+    Raises:
+        RuntimeError: When *result* is ``None``, with the message built by
+            :func:`describe_task_failure`.
+    """
+    if result is None:
+        raise RuntimeError(describe_task_failure(task))
+
+    return result
+
+
+def _require_batch_result(index: int, task: Any, result: Any) -> Any:
+    """Like :func:`require_result`, for a batch entry whose task may be unknown.
+
+    Generic batch objects are not required to expose their tasks, so a
+    missing result there can only be reported by position.
+
+    Args:
+        index:  The circuit's position in the batch, in input order.
+        task:   The task behind that position, or ``None`` when the batch
+                object does not expose one.
+        result: Whatever the batch returned for that position.
+
+    Returns:
+        The result object, unchanged, when it is not ``None``.
+
+    Raises:
+        RuntimeError: When *result* is ``None``.
+    """
+    if task is not None:
+        return require_result(task, result)
+
+    if result is None:
+        raise RuntimeError(f"Quantum task at batch index {index} ended without a result")
+
+    return result
+
+
 def default_run_batch(
     device: Any,
     circuits: list[Any],
@@ -317,13 +422,28 @@ def default_run_batch(
 
     Returns:
         One result object per circuit, in input order.
+
+    Raises:
+        RuntimeError: When any task in the batch finished without a result.
     """
     options = dict(run_options or {})
 
     if len(set(shots_list)) == 1:
-        return device.run_batch(circuits, shots=shots_list[0], **options).results()
+        # fail_unsuccessful is an AwsQuantumTaskBatch extra; the generic
+        # batch objects this fallback exists for do not accept it, so the
+        # None results it would have raised on are checked here instead.
+        batch = device.run_batch(circuits, shots=shots_list[0], **options)
+        tasks = getattr(batch, "tasks", None)
+        tasks = tasks if isinstance(tasks, (list, tuple)) else ()
 
-    return [
-        device.run(circuit, shots=shots, **options).result()
-        for circuit, shots in zip(circuits, shots_list)
-    ]
+        return [
+            _require_batch_result(index, tasks[index] if index < len(tasks) else None, result)
+            for index, result in enumerate(batch.results())
+        ]
+
+    results: list[Any] = []
+    for circuit, shots in zip(circuits, shots_list):
+        task = device.run(circuit, shots=shots, **options)
+        results.append(require_result(task, task.result()))
+
+    return results

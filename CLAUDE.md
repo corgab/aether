@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **Task failure reasons:** `check_task()` forwards Braket's `failureReason` as an optional `error` key; `TaskSnapshot->error` carries it and `TaskFailedException::forTask()` includes it in the message.
 
 ## Config
 

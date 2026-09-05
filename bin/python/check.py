@@ -23,9 +23,15 @@ or, once the task has finished::
 
     {"status": "COMPLETED", "counts": {"00": 503, "11": 497}}
 
+A task that ended as ``FAILED`` or ``CANCELLED`` may also carry the backend's
+own explanation::
+
+    {"status": "FAILED", "error": "Device is offline"}
+
 Status values must be one of ``CREATED``, ``QUEUED``, ``RUNNING``,
 ``COMPLETED``, ``FAILED``, ``CANCELLED`` (the PHP ``TaskStatus`` enum); the
-aws provider passes them through verbatim from Braket.
+aws provider passes them through verbatim from Braket, along with its
+``failureReason`` as the optional ``error`` key.
 
 On error the script writes ``{"error": "<message>"}`` to stderr and exits
 with code 1.
@@ -46,7 +52,8 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A dict with a ``"status"`` key, plus a ``"counts"`` key when the
-        task has completed.
+        task has completed and an ``"error"`` key when the provider reported
+        why a failed or cancelled task ended.
 
     Raises:
         ValueError: When no provider resolves for ``driver``, or when the

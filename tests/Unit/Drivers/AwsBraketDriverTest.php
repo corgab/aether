@@ -428,6 +428,25 @@ it('returns counts when the task has completed', function () {
     expect($snapshot->counts)->toBe(['00' => 512, '11' => 512]);
 });
 
+it('carries the backend failure reason reported by check.py', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $this->bridge->method('execute')->willReturn(['status' => 'FAILED', 'error' => 'Device offline']);
+
+    $snapshot = $driver->checkTask('arn:...');
+
+    expect($snapshot->status)->toBe(TaskStatus::Failed)
+        ->and($snapshot->error)->toBe('Device offline');
+});
+
+it('leaves the error null when check.py reports none', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $this->bridge->method('execute')->willReturn(['status' => 'FAILED']);
+
+    expect($driver->checkTask('arn:...')->error)->toBeNull();
+});
+
 it('throws QuantumExecutionException when check.py status is missing', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
 

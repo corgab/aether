@@ -81,6 +81,24 @@ it('throws TaskFailedException when the task terminates as failed or cancelled',
     $job->handle($manager, app(Dispatcher::class));
 })->with([TaskStatus::Failed, TaskStatus::Cancelled])->throws(TaskFailedException::class);
 
+it('surfaces the backend failure reason in the TaskFailedException', function () {
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Failed, null, 'Device is offline');
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+
+    try {
+        $job->handle($manager, app(Dispatcher::class));
+        $this->fail('Expected TaskFailedException to be thrown.');
+    } catch (TaskFailedException $exception) {
+        expect($exception->getMessage())->toContain('Device is offline')
+            ->and($exception->reason())->toBe('Device is offline');
+    }
+});
+
 it('dispatches CircuitCompleted with the counts and task arn once completed', function () {
     Event::fake();
 

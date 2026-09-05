@@ -201,6 +201,16 @@ it('checkTask reports Failed for an unknown task key', function () {
     expect($snapshot->counts)->toBeNull();
 });
 
+it('checkTask explains why an unknown task key failed', function () {
+    $taskArn = 'local:'.Str::uuid();
+
+    $snapshot = $this->driver->checkTask($taskArn);
+
+    expect($snapshot->error)
+        ->toContain($taskArn)
+        ->toContain('may have expired');
+});
+
 it('checkTask rejects a task arn that is not in local: form', function () {
     expect(fn () => $this->driver->checkTask('arn:aws:braket:us-east-1:123456789012:quantum-task/abc'))
         ->toThrow(QuantumExecutionException::class);

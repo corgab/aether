@@ -65,7 +65,11 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
         $counts = Cache::get($this->cacheKey($taskArn));
 
         if (! is_array($counts)) {
-            return new TaskSnapshot(TaskStatus::Failed);
+            return new TaskSnapshot(
+                TaskStatus::Failed,
+                null,
+                "No result found in the cache for task [{$taskArn}]; the entry may have expired or been written to a different cache store."
+            );
         }
 
         /** @var array<string, int> $counts */

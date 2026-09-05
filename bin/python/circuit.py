@@ -30,7 +30,7 @@ import json
 import sys
 from typing import Any
 
-from common import build_circuit, resolve_run_target
+from common import build_circuit, require_result, resolve_run_target
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -41,6 +41,10 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A dict with a single ``"counts"`` key mapping bitstrings to integers.
+
+    Raises:
+        RuntimeError: When the task finished without a result (``FAILED`` or
+            ``CANCELLED``); the message carries the backend failure reason.
     """
     qubits: int = payload["qubits"]
     gates: list[dict[str, Any]] = payload["gates"]
@@ -52,7 +56,7 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     device, run_options = resolve_run_target(driver, driver_config)
 
     task = device.run(circuit, shots=shots, **run_options)
-    result = task.result()
+    result = require_result(task, task.result())
 
     # measurement_counts is a Counter-like dict {bitstring: int}
     counts = dict(result.measurement_counts)
