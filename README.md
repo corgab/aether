@@ -8,7 +8,7 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 
 - PHP 8.3+
 - Laravel 13
-- Python 3.11+ with `amazon-braket-sdk` (CI runs 3.11 and 3.12)
+- Python 3.12+ with `amazon-braket-sdk` (CI runs 3.12 and 3.13)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation

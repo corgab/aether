@@ -46,7 +46,7 @@ Opening an issue before writing code helps ensure the enhancement aligns with th
 
 - **PHP**: 8.3 or higher
 - **Composer**: Latest 2.x
-- **Python**: 3.11+
+- **Python**: 3.12+
 
 ### Installation
 
