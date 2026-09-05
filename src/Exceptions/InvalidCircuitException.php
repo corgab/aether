@@ -128,7 +128,9 @@ class InvalidCircuitException extends AetherException
             "max_qubits ceiling of {$ceiling}. Statevector simulation memory doubles with every additional ".
             'qubit, so this ceiling protects the host from exhausting its memory. Raise the `max_qubits` '.
             "entry in the driver's config (e.g. the AETHER_MAX_QUBITS env var for the local driver) if the ".
-            'host has enough memory to spare, or set it to null to remove the ceiling entirely.'
+            'host has enough memory to spare, or set it to null to remove the ceiling entirely. For entropy '.
+            "generation, the qubit count comes from the driver's `entropy_qubits` setting, which can be ".
+            'lowered instead.'
         );
     }
 
@@ -141,7 +143,9 @@ class InvalidCircuitException extends AetherException
         return new self(
             "Estimated cost of {$estimate} exceeds the configured max_cost_per_run ceiling of ".
             CostEstimate::formatAmount($ceiling, $estimate->currency).'. Raise the `max_cost_per_run` entry in the '.
-            'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before retrying.'
+            'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before '.
+            'retrying. For entropy generation, request fewer bits per call: each call is one task and its shot '.
+            'count is ceil(bits / entropy_qubits).'
         );
     }
 

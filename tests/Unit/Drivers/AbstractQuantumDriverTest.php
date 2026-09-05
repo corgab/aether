@@ -496,3 +496,38 @@ it('does not enforce a ceiling on executeBatch when max_qubits is absent', funct
 
     expect($result)->toBeInstanceOf(BatchResult::class);
 });
+
+it('throws InvalidCircuitException on generateEntropy when entropy_qubits exceeds max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 8, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('entropy_qubits');
+    }
+});
+
+it('allows generateEntropy when entropy_qubits is within max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 16, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 16)]);
+
+    $bytes = $driver->generateEntropy(8);
+
+    expect(strlen($bytes))->toBe(1);
+});
