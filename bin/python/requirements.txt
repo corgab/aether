@@ -1,2 +1,2 @@
 amazon-braket-sdk>=1.80.0
-numpy>=1.24.0
+numpy>=2.5.2
