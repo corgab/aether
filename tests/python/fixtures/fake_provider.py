@@ -60,7 +60,10 @@ class StubDevice:
 
     def run(self, circuit: Any, shots: int, **kwargs: Any) -> StubTask:
         self.run_calls.append({"circuit": circuit, "shots": shots, **kwargs})
-        return StubTask({"0": shots}, shots=shots, qubits=_qubit_count(circuit))
+        # Distinct per run, like a real backend, so ordering assertions on
+        # announced ids are meaningful; the first run keeps "stub-task-1".
+        task_id = f"stub-task-{len(self.run_calls)}"
+        return StubTask({"0": shots}, task_id, shots=shots, qubits=_qubit_count(circuit))
 
     def run_batch(self, circuits: list[Any], shots: int, **kwargs: Any) -> StubBatch:
         self.run_batch_calls.append({"circuits": circuits, "shots": shots, **kwargs})

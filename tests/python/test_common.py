@@ -307,7 +307,7 @@ class TestDefaultRunBatchAnnouncesTasks:
 
         default_run_batch(device, ["c1", "c2"], [100, 200])
 
-        assert _announced(capsys) == ["stub-task-1", "stub-task-1"]
+        assert _announced(capsys) == ["stub-task-1", "stub-task-2"]
 
     def test_a_batch_without_tasks_is_tolerated(self, capsys):
         class TasklessBatch:

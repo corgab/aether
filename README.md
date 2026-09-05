@@ -220,7 +220,7 @@ A provider module may define four module-level hooks; only the first is required
 |------|----------|---------|
 | `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
 | `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
-| `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
+| `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. Call `common.announce_tasks(tasks)` as soon as the backend tasks exist, so a timeout can still name them. |
 | `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
 
 `config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
@@ -462,7 +462,7 @@ try {
 }
 ```
 
-`->taskArns()` returns an empty array when the script was killed before it submitted anything, and `->hasTaskArns()` answers the same question directly. The same ARNs are attached when a script exits non-zero after submitting. Aether never cancels the remote task for you — use `->dispatch()` for devices that queue.
+`->taskArns()` returns an empty array when no task identifier was announced before the kill, and `->hasTaskArns()` answers the same question directly. The built-in scripts announce every task; a custom provider with its own `run_batch` hook must call `common.announce_tasks()` itself, or its tasks stay invisible here. The same ARNs are attached when a script exits non-zero after submitting. Aether never cancels the remote task for you — use `->dispatch()` for devices that queue.
 
 ## Qubit Ceiling
 

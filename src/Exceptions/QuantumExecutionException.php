@@ -31,8 +31,8 @@ class QuantumExecutionException extends AetherException
         $message = "Python script [{$script}] failed with exit code {$exitCode}. Stderr: {$stderr}";
 
         if ($taskArns !== []) {
-            $message .= ' Submitted task(s): '.implode(', ', $taskArns).
-                '. The remote task may still be running; inspect or cancel it in the AWS Braket console.';
+            $message .= ' Task(s) submitted before the failure: '.implode(', ', $taskArns).
+                '. On a remote backend they may still be running; inspect or cancel them in the provider console (the AWS Braket console for the aws driver).';
         }
 
         return (new self($message, $exitCode))->withTaskArns($taskArns);
@@ -53,8 +53,8 @@ class QuantumExecutionException extends AetherException
 
         $message .= $taskArns !== []
             ? ' It had already submitted task(s) '.implode(', ', $taskArns).
-                ', which keep running (and billing) on the backend: inspect or cancel them in the AWS Braket console, and prefer ->dispatch() for devices that queue.'
-            : ' No task had been submitted yet.';
+                '. On a remote backend they keep running (and billing): inspect or cancel them in the provider console (the AWS Braket console for the aws driver), and prefer ->dispatch() for devices that queue.'
+            : ' No task identifier was announced before the kill.';
 
         return (new self($message))->withTaskArns($taskArns);
     }

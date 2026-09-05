@@ -45,7 +45,7 @@ it('from python error defaults to no task arns', function (): void {
 
     expect($exception->taskArns())->toBe([]);
     expect($exception->hasTaskArns())->toBeFalse();
-    expect($exception->getMessage())->not->toContain('Submitted task(s)');
+    expect($exception->getMessage())->not->toContain('Task(s) submitted before the failure');
 });
 
 it('from python error names the tasks submitted before the failure', function (): void {
@@ -58,7 +58,7 @@ it('from python error names the tasks submitted before the failure', function ()
 
     expect($exception->getMessage())
         ->toContain('boom')
-        ->toContain('Submitted task(s): arn:aws:braket:us-east-1:1:quantum-task/a, arn:aws:braket:us-east-1:1:quantum-task/b')
+        ->toContain('Task(s) submitted before the failure: arn:aws:braket:us-east-1:1:quantum-task/a, arn:aws:braket:us-east-1:1:quantum-task/b')
         ->toContain('AWS Braket console');
     expect($exception->taskArns())->toBe([
         'arn:aws:braket:us-east-1:1:quantum-task/a',
@@ -75,7 +75,7 @@ it('timed out reports the script and the timeout with no task submitted', functi
     expect($exception->getMessage())
         ->toContain('circuit.py')
         ->toContain('timed out after 300s')
-        ->toContain('No task had been submitted yet.');
+        ->toContain('No task identifier was announced before the kill.');
     expect($exception->taskArns())->toBe([]);
     expect($exception->hasTaskArns())->toBeFalse();
     expect($exception->getCode())->toBe(0);
@@ -91,7 +91,7 @@ it('timed out names the tasks still running on the backend', function (): void {
         ->toContain('arn:aws:braket:us-east-1:1:quantum-task/a')
         ->toContain('AWS Braket console')
         ->toContain('->dispatch()')
-        ->not->toContain('No task had been submitted');
+        ->not->toContain('No task identifier was announced');
     expect($exception->taskArns())->toBe(['arn:aws:braket:us-east-1:1:quantum-task/a']);
     expect($exception->hasTaskArns())->toBeTrue();
 });

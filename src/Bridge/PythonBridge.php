@@ -85,18 +85,26 @@ class PythonBridge implements PythonExecutor
         try {
             $decoded = json_decode($process->getOutput(), associative: true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
+            // The script may well have submitted a task before printing
+            // something unparseable, so the announced ARNs travel along.
+            ['taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
             throw QuantumExecutionException::fromPythonError(
                 $script,
                 'Invalid JSON output: '.$e->getMessage(),
                 0,
+                $taskArns,
             );
         }
 
         if (! is_array($decoded)) {
+            ['taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
             throw QuantumExecutionException::fromPythonError(
                 $script,
                 'Expected JSON object, got '.get_debug_type($decoded),
                 0,
+                $taskArns,
             );
         }
 
@@ -122,7 +130,10 @@ class PythonBridge implements PythonExecutor
         $message = null;
         $verbatim = [];
 
-        foreach (preg_split('/\R/', $stderr) ?: [] as $line) {
+        // An explicit alternation rather than \R: without the u modifier \R
+        // also matches the lone byte 0x85, which splits UTF-8 characters such
+        // as "Å" in the middle of a line.
+        foreach (preg_split('/\r\n|\n|\r/', $stderr) ?: [] as $line) {
             if (trim($line) === '') {
                 continue;
             }
