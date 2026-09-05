@@ -19,7 +19,7 @@ jobs:
     name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -50,19 +50,19 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python: ['3.11', '3.12']
+        python: ['3.12', '3.13']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
 
       - name: Install dependencies
-        run: pip install pytest -r bin/python/requirements.txt
+        run: pip install -r bin/python/requirements.txt pytest
 
       - name: Run tests
         run: pytest tests/python/ -v
