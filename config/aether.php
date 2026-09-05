@@ -57,9 +57,22 @@ return [
     | polling job gives up (the default allows one hour at five-second
     | intervals, which comfortably covers real QPU queue times).
     |
+    | "submit_timeout" is the number of seconds the queue worker lets one
+    | attempt of the submission job run. The local driver runs the whole
+    | simulation inside that job, so the attempt must outlive the Python
+    | process: 0 derives it from process_timeout plus a 30-second margin
+    | (unlimited when process_timeout is 0), then keeps it 10 seconds under
+    | the default queue connection's retry_after, so a slow attempt is
+    | killed here rather than handed to a second worker while still running.
+    | Set an explicit value to take control of that trade-off yourself. A
+    | timed-out attempt, whether killed by the worker or by the Python
+    | bridge, is failed, not retried.
+    |
     */
 
     'queue' => env('AETHER_QUEUE'),
+
+    'submit_timeout' => (int) env('AETHER_SUBMIT_TIMEOUT', 0),
 
     'poll_interval' => (int) env('AETHER_POLL_INTERVAL', 5),
 

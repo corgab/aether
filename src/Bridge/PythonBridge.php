@@ -6,6 +6,7 @@ namespace Aether\Bridge;
 
 use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
+use Aether\Exceptions\PythonProcessTimedOutException;
 use Aether\Exceptions\QuantumExecutionException;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Exception\RuntimeException as ProcessRuntimeException;
@@ -57,11 +58,7 @@ class PythonBridge implements PythonExecutor
             // ProcessTimedOutException extends the same RuntimeException caught
             // below, so it must be caught first — otherwise a timeout would be
             // misreported as a missing Python binary.
-            throw QuantumExecutionException::fromPythonError(
-                $script,
-                "Process timed out after {$this->timeout}s",
-                0,
-            );
+            throw PythonProcessTimedOutException::afterSeconds($script, $this->timeout);
         } catch (ProcessRuntimeException) {
             throw PythonEnvironmentException::pythonNotFound($this->pythonPath);
         }

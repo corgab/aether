@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **SubmitQuantumCircuit::$timeout** is `submit_timeout`, or `process_timeout` + 30 s capped 10 s under the default connection's `retry_after`; `$failOnTimeout` is true and a `PythonProcessTimedOutException` fails the job without retry. The local driver simulates inline inside that job, so the attempt must outlive the Python process without outliving `retry_after`.
 
 ## Config
 

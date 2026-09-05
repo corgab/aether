@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Aether\Bridge\PythonBridge;
 use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\PythonEnvironmentException;
+use Aether\Exceptions\PythonProcessTimedOutException;
 use Aether\Exceptions\QuantumExecutionException;
 
 /**
@@ -135,14 +136,16 @@ it('falls back to raw stderr when JSON is valid but has no error key', function 
 // execute() — process timeout
 // -------------------------------------------------------------------------
 
-it('throws QuantumExecutionException (not PythonEnvironmentException) when the process times out', function () {
+it('throws PythonProcessTimedOutException (not PythonEnvironmentException) when the process times out', function () {
     $python = fakePython('sleep 2');
 
     try {
         (new PythonBridge($python, timeout: 1))->execute('circuit.py', ['qubits' => 1]);
-        test()->fail('Expected QuantumExecutionException was not thrown.');
+        test()->fail('Expected PythonProcessTimedOutException was not thrown.');
     } catch (QuantumExecutionException $e) {
-        expect($e->getMessage())->toContain('timed out');
+        expect($e)->toBeInstanceOf(PythonProcessTimedOutException::class)
+            ->and($e->getMessage())->toContain('timed out after 1s')
+            ->toContain('circuit.py');
     }
 });
 
