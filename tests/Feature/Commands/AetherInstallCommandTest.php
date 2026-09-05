@@ -31,6 +31,7 @@ function bindFailingQuantumManager(): void
 function fakeInstallInterpreter(string $probeOutput, int $probeExitCode = 0): string
 {
     $path = tempnam(sys_get_temp_dir(), 'aether_install_fakepy_');
+    FakeInterpreters::$paths[] = $path;
     $body = <<<SH
         #!/bin/sh
         case "\$1" in
@@ -174,10 +175,22 @@ it('asks for confirmation and keeps the config file when the user declines to ov
 // Issue #71 — braket detection
 // -------------------------------------------------------------------------
 
+/**
+ * Tracks the fake interpreters created by this test file so cleanup removes
+ * only its own files, even under parallel test workers sharing the temp dir.
+ */
+final class FakeInterpreters
+{
+    /** @var list<string> */
+    public static array $paths = [];
+}
+
 afterEach(function () {
-    foreach (glob(sys_get_temp_dir().'/aether_install_fakepy_*') ?: [] as $tmp) {
+    foreach (FakeInterpreters::$paths as $tmp) {
         @unlink($tmp);
     }
+
+    FakeInterpreters::$paths = [];
 });
 
 it('reports amazon-braket-sdk as installed when the version meets the required floor', function () {
@@ -219,7 +232,8 @@ it('reports amazon-braket-sdk as not installed when the probe fails', function (
     $this->artisan('aether:install', ['--no-interaction' => true])
         ->assertSuccessful()
         ->expectsOutputToContain('NOT INSTALLED')
-        ->expectsOutputToContain('python3 -m venv .aether-venv');
+        ->expectsOutputToContain('-m venv')
+        ->expectsOutputToContain('AETHER_PYTHON_PATH=');
 });
 
 it('parses the amazon-braket-sdk floor from a requirements.txt-shaped string', function () {
@@ -232,11 +246,56 @@ it('parses the amazon-braket-sdk floor from a requirements.txt-shaped string', f
 // Issue #41 — smoke test never touches the configured default driver
 // -------------------------------------------------------------------------
 
-it('runs the smoke test on the local simulator even when the default driver is aws', function () {
+it('runs the smoke test on the local driver even when the default driver is aws', function () {
     config(['aether.default' => 'aws']);
+    $fake = Quantum::fake();
+
+    $manager = Mockery::mock(QuantumManager::class);
+    $manager->shouldReceive('driver')->once()->with('local')->andReturn($fake);
+    $manager->shouldNotReceive('driver')->withNoArgs();
+    $manager->shouldNotReceive('driver')->with('aws');
+    $manager->shouldNotReceive('circuit');
+    app()->instance(QuantumManager::class, $manager);
 
     $this->artisan('aether:install', ['--no-interaction' => true])
         ->assertSuccessful();
 
-    Quantum::assertCircuitRan(fn ($circuit) => $circuit->driverName() === 'local');
+    $fake->assertCircuitRan();
+});
+
+it('returns FAILURE when the smoke test circuit itself throws', function () {
+    Quantum::fake(fn () => throw new RuntimeException('boom'));
+
+    $this->artisan('aether:install', ['--no-interaction' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('test circuit failed');
+});
+
+it('returns FAILURE when the configured Python interpreter cannot be found', function () {
+    config(['aether.python_path' => sys_get_temp_dir().'/aether-missing-python']);
+
+    $this->artisan('aether:install', ['--no-interaction' => true])
+        ->assertFailed()
+        ->expectsOutputToContain('NOT FOUND')
+        ->doesntExpectOutputToContain('Aether installation complete');
+});
+
+it('tells the user to upgrade the SDK through the configured interpreter', function () {
+    $python = fakeInstallInterpreter('1.0.0');
+    config(['aether.python_path' => $python]);
+
+    Artisan::call('aether:install', ['--no-interaction' => true]);
+
+    expect(Artisan::output())->toContain("{$python} -m pip install --upgrade -r");
+});
+
+it('builds the manual instructions around the configured interpreter', function () {
+    $python = fakeInstallInterpreter('', 1);
+    config(['aether.python_path' => $python]);
+
+    Artisan::call('aether:install', ['--no-interaction' => true]);
+
+    expect(Artisan::output())
+        ->toContain("{$python} -m venv")
+        ->toContain('-m pip install -r');
 });

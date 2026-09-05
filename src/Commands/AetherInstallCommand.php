@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Aether\Commands;
 
-use Aether\Bridge\PythonBridge;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
-use Aether\Drivers\LocalSimulatorDriver;
 use Aether\QuantumManager;
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
@@ -56,7 +54,13 @@ class AetherInstallCommand extends Command
 
         $this->suggestGitignore();
 
-        if ($pythonOk && ! $this->verifyInstallation($manager, $venvPython)) {
+        if (! $pythonOk) {
+            $this->components->warn('Installation incomplete: no Python interpreter to run the circuits with.');
+
+            return self::FAILURE;
+        }
+
+        if (! $this->verifyInstallation($manager, $venvPython)) {
             $this->components->warn(
                 'The test circuit failed to run. Check that your Python dependencies are '
                 .'installed correctly, or that AETHER_PYTHON_PATH points to a valid interpreter.'
@@ -160,7 +164,8 @@ class AetherInstallCommand extends Command
             );
 
             $this->components->warn(
-                'An upgrade is available. Run: pip install --upgrade -r '.self::requirementsPath()
+                'The installed amazon-braket-sdk is older than this package requires. Upgrade it with:'
+                ."\n  {$pythonPath} -m pip install --upgrade -r ".self::requirementsPath()
             );
 
             return true;
@@ -193,7 +198,7 @@ class AetherInstallCommand extends Command
     protected function handleMissingDependencies(string $pythonPath): ?string
     {
         if (! $this->input->isInteractive()) {
-            $this->showManualInstructions();
+            $this->showManualInstructions($pythonPath);
 
             return null;
         }
@@ -206,7 +211,7 @@ class AetherInstallCommand extends Command
             return $this->createVenv($pythonPath);
         }
 
-        $this->showManualInstructions();
+        $this->showManualInstructions($pythonPath);
 
         return null;
     }
@@ -246,10 +251,7 @@ class AetherInstallCommand extends Command
     {
         try {
             $device = $venvPython !== null
-                ? new LocalSimulatorDriver(
-                    new PythonBridge($venvPython, (int) config('aether.process_timeout', 300)),
-                    (array) config('aether.drivers.local', []),
-                )
+                ? $manager->localDriver($venvPython)
                 : $manager->driver('local');
         } catch (Throwable) {
             return false;
@@ -313,21 +315,23 @@ class AetherInstallCommand extends Command
 
         $depsInstalled = false;
 
-        $this->components->task('Installing Python dependencies', function () use ($venvPython, $requirementsPath, &$depsInstalled): bool {
-            $process = new Process([$venvPython, '-m', 'pip', 'install', '-r', $requirementsPath]);
-            $process->setTimeout(300);
-            $process->run();
+        if ($venvCreated) {
+            $this->components->task('Installing Python dependencies', function () use ($venvPython, $requirementsPath, &$depsInstalled): bool {
+                $process = new Process([$venvPython, '-m', 'pip', 'install', '-r', $requirementsPath]);
+                $process->setTimeout(300);
+                $process->run();
 
-            $depsInstalled = $process->isSuccessful();
+                $depsInstalled = $process->isSuccessful();
 
-            return $depsInstalled;
-        });
+                return $depsInstalled;
+            });
+        }
 
-        if (! $venvCreated || ! $depsInstalled) {
+        if (! $depsInstalled) {
             $this->components->warn(
                 'The virtual environment could not be prepared. Fix the error above, or follow the manual steps:'
             );
-            $this->showManualInstructions();
+            $this->showManualInstructions($pythonPath);
 
             return null;
         }
@@ -346,19 +350,21 @@ class AetherInstallCommand extends Command
     }
 
     /**
-     * Display manual installation instructions for Python dependencies.
+     * Display manual installation instructions for Python dependencies,
+     * built around the configured interpreter and this platform's venv layout.
      */
-    protected function showManualInstructions(): void
+    protected function showManualInstructions(string $pythonPath): void
     {
-        $requirementsPath = self::requirementsPath();
+        $venvPath = base_path('.aether-venv');
+        $venvPython = $this->venvPythonPath($venvPath);
 
         $this->components->warn('Manual installation required. Run the following commands:');
         $this->line('');
-        $this->line('  python3 -m venv .aether-venv');
-        $this->line('  .aether-venv/bin/pip install -r '.$requirementsPath);
+        $this->line("  {$pythonPath} -m venv {$venvPath}");
+        $this->line("  {$venvPython} -m pip install -r ".self::requirementsPath());
         $this->line('');
         $this->line('Then add to your <fg=cyan>.env</>:');
-        $this->line('  AETHER_PYTHON_PATH='.base_path('.aether-venv').'/bin/python');
+        $this->line("  AETHER_PYTHON_PATH={$venvPython}");
         $this->line('');
     }
 
