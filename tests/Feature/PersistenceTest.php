@@ -94,6 +94,29 @@ it('still dispatches the poll job when the insert fails', function () {
     expect($this->device->submittedCircuits)->toHaveCount(1);
 });
 
+it('records the scheduling failure on the persisted task without retrying', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager);
+
+    $job->assertFailedWith(QuantumExecutionException::class);
+
+    $this->assertDatabaseCount('quantum_tasks', 1);
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Created)
+        ->and($task->error)->toContain('could not be queued')
+        ->and($task->failed_at)->not->toBeNull();
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
 // -------------------------------------------------------------------------
 // Polling
 // -------------------------------------------------------------------------

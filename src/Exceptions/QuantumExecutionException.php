@@ -93,4 +93,19 @@ class QuantumExecutionException extends AetherException
             "Driver [{$driver}] does not support cost estimation. Implement Aether\Contracts\EstimatesCost to enable CircuitBuilder::estimateCost()."
         );
     }
+
+    /**
+     * Create an exception when a task has already been submitted but the
+     * follow-up polling job could not be queued.
+     *
+     * The remote task already exists at this point, so the submission job
+     * must fail outright rather than retry: retrying would call
+     * submitCircuit() again and create a second billable task.
+     */
+    public static function pollingNotScheduled(string $taskArn, string $driver, \Throwable $previous): self
+    {
+        $message = "Quantum task [{$taskArn}] was submitted on driver [{$driver}] but its polling job could not be queued: {$previous->getMessage()}. The task is not being tracked; poll it manually or dispatch Aether\\Jobs\\PollQuantumTask for this ARN. The submission was not retried, to avoid creating a second billable task.";
+
+        return new self($message, 0, $previous);
+    }
 }

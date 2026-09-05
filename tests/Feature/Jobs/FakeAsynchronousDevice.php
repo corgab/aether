@@ -10,6 +10,7 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
+use RuntimeException;
 
 /**
  * Test double for a driver that supports asynchronous execution.
@@ -30,6 +31,12 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
 
     public TaskSnapshot $snapshotToReturn;
 
+    /**
+     * When true, submitCircuit() throws instead of recording the circuit and
+     * returning a task ARN, simulating a submission-time failure.
+     */
+    public bool $throwOnSubmit = false;
+
     public function __construct()
     {
         $this->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, ['00' => 5, '11' => 5]);
@@ -47,6 +54,10 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
 
     public function submitCircuit(CircuitBuilder $circuit): string
     {
+        if ($this->throwOnSubmit) {
+            throw new RuntimeException('submission failed');
+        }
+
         $this->submittedCircuits[] = $circuit;
 
         return $this->taskArnToReturn;

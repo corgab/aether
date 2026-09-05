@@ -57,3 +57,63 @@ it('mentions the unsupported driver name in the exception message', function () 
         expect($exception->getMessage())->toContain('fake-sync');
     }
 });
+
+it('fails without retrying when the poll job cannot be queued after submission', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $device = new FakeAsynchronousDevice;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = (new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))
+        ->withFakeQueueInteractions();
+
+    $job->handle($manager);
+
+    $job->assertFailedWith(QuantumExecutionException::class);
+    $job->assertNotReleased();
+
+    expect($device->submittedCircuits)->toHaveCount(1);
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('throws the scheduling failure when handled outside a queue worker', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $device = new FakeAsynchronousDevice;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+
+    expect(fn () => $job->handle($manager))
+        ->toThrow(QuantumExecutionException::class, 'could not be queued');
+
+    expect($device->submittedCircuits)->toHaveCount(1);
+});
+
+it('still retries when submission itself fails', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnSubmit = true;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+
+    expect(fn () => $job->handle($manager))->toThrow(RuntimeException::class, 'submission failed');
+
+    expect($device->submittedCircuits)->toHaveCount(0);
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});

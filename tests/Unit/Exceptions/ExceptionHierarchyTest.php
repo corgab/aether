@@ -47,6 +47,23 @@ it('synchronous unsafe includes driver name', function (): void {
     expect($exception->getMessage())->toContain('braket');
 });
 
+it('polling not scheduled includes arn, driver and previous message, and preserves the previous exception', function (): void {
+    $previous = new RuntimeException('queue down');
+
+    $exception = QuantumExecutionException::pollingNotScheduled(
+        'arn:aws:braket:us-east-1:123456789012:quantum-task/fake',
+        'aws',
+        $previous
+    );
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception->getMessage())
+        ->toContain('arn:aws:braket:us-east-1:123456789012:quantum-task/fake')
+        ->toContain('aws')
+        ->toContain('queue down');
+    expect($exception->getPrevious())->toBe($previous);
+});
+
 // -------------------------------------------------------------------------
 // PythonEnvironmentException
 // -------------------------------------------------------------------------

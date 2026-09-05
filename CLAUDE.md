@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **No double submission:** SubmitQuantumCircuit retries only before submitCircuit() returns; every post-submission failure calls $this->fail() instead of throwing, so a queued retry can never create a second billable task.
 
 ## Config
 
