@@ -109,6 +109,8 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+Each call is one circuit run of `entropy_qubits` qubits (default `16`) and `ceil(bits / entropy_qubits)` shots. The [qubit ceiling](#qubit-ceiling) and, on the `aws` driver, the [cost ceiling](#cost-estimation) apply to it exactly as they do to `->run()` — a `generate()` call that would need more qubits or would cost more than configured throws before any Python subprocess is spawned. `integer()` may issue several 256-bit batches under the hood, so on `aws` budget `max_cost_per_run` accordingly. `AETHER_ENTROPY_QUBITS` (or `entropy_qubits` in config) controls the circuit's width.
+
 ### Batch Execution
 
 Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.
@@ -464,7 +466,7 @@ This will throw a `QuantumExecutionException` on direct calls to `->run()`, forc
 
 ## Qubit Ceiling
 
-The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling on every `->run()`, `->dispatch()`, and `Quantum::batch()` call:
+The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling on every `->run()`, `->dispatch()`, `Quantum::batch()`, and entropy generation call:
 
 ```php
 // config/aether.php
@@ -474,7 +476,7 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()` and `Quantum::batch()` alike.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
 
 ## Cost Estimation
 
@@ -515,7 +517,7 @@ Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit 
 ],
 ```
 
-The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
+The guard runs on `->run()`, `->dispatch()`, `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend), and entropy generation. It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
 
 ## License
 

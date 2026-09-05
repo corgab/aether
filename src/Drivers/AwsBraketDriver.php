@@ -40,7 +40,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
 
     /**
      * Add the cost ceiling to the shared admission checks, so it holds on
-     * ->run(), Quantum::batch() and ->dispatch() alike.
+     * ->run(), Quantum::batch(), ->dispatch() and Quantum::entropy() alike.
      *
      * @param  list<CircuitBuilder>  $circuits
      *

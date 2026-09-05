@@ -146,6 +146,26 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for an entropy request that the driver's admission
+     * checks (qubit or cost ceiling) rejected, wrapping the underlying
+     * ceiling exception so the entropy-specific remedy is spelled out: the
+     * circuit width comes from `entropy_qubits`, the shot count from the
+     * requested bits.
+     */
+    public static function entropyRejected(int $bits, int $qubits, int $shots, self $previous): self
+    {
+        return new self(
+            "Entropy generation of {$bits} bit(s), a {$qubits}-qubit circuit run for {$shots} shot(s), was rejected: ".
+            $previous->getMessage().
+            ' For entropy generation, set `entropy_qubits` to a positive value that fits `max_qubits`, and '.
+            'request fewer bits per call to lower the estimated cost (each call is one task with '.
+            'ceil(bits / entropy_qubits) shots).',
+            0,
+            $previous,
+        );
+    }
+
+    /**
      * Create an exception for a gate angle that is NAN or infinite.
      */
     public static function nonFiniteAngle(float $angle): self
