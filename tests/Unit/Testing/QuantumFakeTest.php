@@ -13,7 +13,6 @@ use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
-use InvalidArgumentException;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\ExpectationFailedException;
 
