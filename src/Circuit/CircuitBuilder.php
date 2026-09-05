@@ -6,7 +6,9 @@ namespace Aether\Circuit;
 
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\Results\CircuitResult;
@@ -541,10 +543,15 @@ class CircuitBuilder
      * @return PendingDispatch Laravel's pending dispatch, chainable with ->onQueue() / ->delay().
      *
      * @throws InvalidCircuitException
+     * @throws InvalidDriverConfigException When the device implements ValidatesDispatch and rejects its cache store.
      */
     public function dispatch(): PendingDispatch
     {
         $this->validate();
+
+        if ($this->device instanceof ValidatesDispatch) {
+            $this->device->validateDispatch();
+        }
 
         return SubmitQuantumCircuit::dispatch($this->toArray(), $this->driverName);
     }
@@ -588,7 +595,11 @@ class CircuitBuilder
      * Used by the queued job to reconstruct the circuit after it has been
      * serialized onto the queue and deserialized on the worker.
      *
-     * @param  array{qubits?: int, gates?: array<int, array<string, mixed>>, shots?: int}  $definition
+     * The payload has travelled through the queue, so its shape is checked
+     * at runtime rather than trusted: a gate list or gate entry that is not
+     * an array is rejected with an InvalidCircuitException.
+     *
+     * @param  array<string, mixed>  $definition  The array shape produced by toArray().
      *
      * @throws InvalidCircuitException
      */
@@ -597,8 +608,18 @@ class CircuitBuilder
         $builder = new static($device, $driverName);
         $builder->qubits((int) ($definition['qubits'] ?? 0));
 
-        /** @var array<string, mixed> $gate */
-        foreach ($definition['gates'] ?? [] as $gate) {
+        $gates = $definition['gates'] ?? [];
+
+        if (! is_array($gates)) {
+            throw InvalidCircuitException::malformedGateList($gates);
+        }
+
+        foreach ($gates as $gate) {
+            if (! is_array($gate)) {
+                throw InvalidCircuitException::malformedGate($gate);
+            }
+
+            /** @var array<string, mixed> $gate */
             $builder->push(Gate::fromArray($gate));
         }
 

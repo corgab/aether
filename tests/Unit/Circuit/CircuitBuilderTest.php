@@ -589,6 +589,16 @@ it('throws when a gate targets an out-of-range qubit', function (string $method,
     return $dataset;
 });
 
+it('fromArray rejects a gate list that is not an array', function () use (&$device): void {
+    expect(fn () => CircuitBuilder::fromArray(['qubits' => 1, 'gates' => 'h', 'shots' => 10], $device))
+        ->toThrow(InvalidCircuitException::class, 'gates of a serialized circuit must be an array, string given');
+});
+
+it('fromArray rejects a gate entry that is not an array', function (mixed $gate) use (&$device): void {
+    expect(fn () => CircuitBuilder::fromArray(['qubits' => 1, 'gates' => [$gate], 'shots' => 10], $device))
+        ->toThrow(InvalidCircuitException::class, 'must be an array, '.get_debug_type($gate).' given');
+})->with(['string' => ['h'], 'integer' => [0], 'null' => [null]]);
+
 it('fromArray rejects a measure gate with an empty targets array', function () use (&$device): void {
     $definition = [
         'qubits' => 2,

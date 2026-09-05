@@ -7,9 +7,11 @@ namespace Aether\Tests\Feature\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
+use Throwable;
 
 /**
  * Test double for a driver that supports asynchronous execution.
@@ -18,7 +20,7 @@ use Aether\Tasks\TaskStatus;
  * configurable snapshot so tests can drive the polling job through every
  * branch of its state machine.
  */
-final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
+final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice, ValidatesDispatch
 {
     /** @var CircuitBuilder[] */
     public array $submittedCircuits = [];
@@ -29,6 +31,15 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
     public string $taskArnToReturn = 'arn:aws:braket:us-east-1:123456789012:quantum-task/fake';
 
     public TaskSnapshot $snapshotToReturn;
+
+    /** Throw this from submitCircuit() instead of returning an ARN. */
+    public ?Throwable $throwOnSubmit = null;
+
+    /** Throw this from validateDispatch(). */
+    public ?Throwable $throwOnValidate = null;
+
+    /** The queue connections validateDispatch() was called with. */
+    public array $validatedConnections = [];
 
     public function __construct()
     {
@@ -45,8 +56,21 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
         return str_repeat("\x00", (int) ceil($bits / 8));
     }
 
+    public function validateDispatch(?string $queueConnection = null): void
+    {
+        $this->validatedConnections[] = $queueConnection;
+
+        if ($this->throwOnValidate !== null) {
+            throw $this->throwOnValidate;
+        }
+    }
+
     public function submitCircuit(CircuitBuilder $circuit): string
     {
+        if ($this->throwOnSubmit !== null) {
+            throw $this->throwOnSubmit;
+        }
+
         $this->submittedCircuits[] = $circuit;
 
         return $this->taskArnToReturn;

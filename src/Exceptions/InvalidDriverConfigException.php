@@ -22,4 +22,41 @@ class InvalidDriverConfigException extends AetherException
             "Driver [{$driver}] is missing required configuration: {$keys}. Set these in config/aether.php under drivers.{$driver}."
         );
     }
+
+    /**
+     * Create an exception for the "local" driver about to cache an
+     * asynchronous result on the process-local array store while the queue
+     * connection runs jobs across multiple processes.
+     */
+    public static function processLocalCacheStore(string $driver, string $queueDriver): self
+    {
+        return new self(
+            "Driver [{$driver}] keeps asynchronous results in the default cache store, which is the process-local \"array\" store, while the queue connection uses the \"{$queueDriver}\" driver — the polling job would run in a different process and never see the result. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared by every process and host that runs the queue workers (\"database\", \"redis\", \"memcached\", \"dynamodb\"), or to \"array\" explicitly to accept the single-process limitation."
+        );
+    }
+
+    /**
+     * Create an exception for a cache_store the cache manager cannot resolve,
+     * wrapping the framework's own explanation (undefined store, unsupported
+     * driver).
+     */
+    public static function unknownCacheStore(string $driver, string $store, \Throwable $previous): self
+    {
+        return new self(
+            "Driver [{$driver}] cannot resolve cache store [{$store}] for its asynchronous results: {$previous->getMessage()} Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to one of the stores defined in config/cache.php.",
+            0,
+            $previous,
+        );
+    }
+
+    /**
+     * Create an exception for a cache store that discards every write, so an
+     * asynchronous result cached there could never be read back.
+     */
+    public static function discardingCacheStore(string $driver, string $store): self
+    {
+        return new self(
+            "Driver [{$driver}] would keep asynchronous results in cache store [{$store}], which is the \"null\" store and discards every write, so the polling job could never read a result back. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared by every process and host that runs the queue workers (\"database\", \"redis\", \"memcached\", \"dynamodb\")."
+        );
+    }
 }

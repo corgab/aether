@@ -118,7 +118,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         foreach ($this->requiredConfig() as $key) {
             $value = $this->config[$key] ?? null;
 
-            if ($value === null || (is_string($value) && trim($value) === '')) {
+            if ($value === null || (is_string($value) && $this->configString($key) === null)) {
                 $missing[] = $key;
             }
         }
@@ -126,6 +126,17 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         if ($missing !== []) {
             throw InvalidDriverConfigException::missingKeys($this->driverName(), $missing);
         }
+    }
+
+    /**
+     * Read a string option from the driver config, trimmed, treating a
+     * missing, non-string or blank value as unset.
+     */
+    protected function configString(string $key): ?string
+    {
+        $value = $this->config[$key] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     /**

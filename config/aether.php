@@ -75,6 +75,13 @@ return [
     | synthetic task identifier. This is how long, in seconds, those results
     | stay available to the polling job.
     |
+    | These cached results must live in a store shared by every process and
+    | host that runs the queue jobs (the submission job and the polling job
+    | may run in different worker processes, on different servers, or in a
+    | worker and a web process). The "array" store only works when the queue
+    | connection is "sync" or when a single long-running worker handles both
+    | jobs — see drivers.local.cache_store.
+    |
     */
 
     'local_task_ttl' => (int) env('AETHER_LOCAL_TASK_TTL', 3600),
@@ -125,6 +132,12 @@ return [
             // you've confirmed the host has memory to spare, or set it to
             // null to remove the ceiling entirely.
             'max_qubits' => env('AETHER_MAX_QUBITS', 25),
+
+            // The cache store used to hold results for asynchronously
+            // submitted circuits (see "Local Task Retention" above). null
+            // uses the application's default cache store; the value must
+            // name a store defined in config/cache.php.
+            'cache_store' => env('AETHER_LOCAL_CACHE_STORE'),
         ],
 
         'aws' => [

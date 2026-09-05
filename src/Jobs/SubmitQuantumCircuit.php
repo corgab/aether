@@ -7,7 +7,12 @@ namespace Aether\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
+use Aether\Exceptions\DriverNotFoundException;
+use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
+use Aether\Jobs\Concerns\FailsWithoutRetry;
 use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
 use Aether\Tasks\TaskStatus;
@@ -24,6 +29,7 @@ use Illuminate\Foundation\Queue\Queueable;
  */
 class SubmitQuantumCircuit implements ShouldQueue
 {
+    use FailsWithoutRetry;
     use Queueable;
 
     /**
@@ -37,7 +43,7 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Create a new job instance.
      *
-     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit.
+     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit; the shape is re-verified when the circuit is rebuilt, since it has travelled through the queue.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
      */
     public function __construct(
@@ -53,20 +59,63 @@ class SubmitQuantumCircuit implements ShouldQueue
     public function handle(QuantumManager $manager): void
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
-        $device = $manager->driver($this->driver);
 
-        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
-            throw QuantumExecutionException::asynchronousUnsupported($driverName);
+        try {
+            $device = $manager->driver($this->driver);
+        } catch (DriverNotFoundException $e) {
+            $this->failWithoutRetry($e);
+
+            return;
         }
 
-        $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
+        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
+            $this->failWithoutRetry(QuantumExecutionException::asynchronousUnsupported($driverName));
 
-        $taskArn = $device->submitCircuit($builder);
+            return;
+        }
+
+        try {
+            if ($device instanceof ValidatesDispatch) {
+                $device->validateDispatch($this->pollConnection());
+            }
+
+            $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
+            $taskArn = $device->submitCircuit($builder);
+        } catch (InvalidDriverConfigException|InvalidCircuitException $e) {
+            // A malformed payload, a configuration fault or a rejected circuit
+            // is deterministic: retrying would only replay the same failure
+            // $tries times. Everything else (a dropped connection, a Python
+            // crash) keeps the retry budget.
+            $this->failWithoutRetry($e);
+
+            return;
+        }
 
         $this->persistSubmission($taskArn, $driverName);
 
+        // The poll follows the submission onto the connection it was
+        // dispatched on, so the whole flow runs where the caller put it and
+        // the cache store check above holds for the job reading the result.
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
+            ->onConnection($this->connection)
             ->delay((int) config('aether.poll_interval', 5));
+    }
+
+    /**
+     * The queue connection the polling job will run on: the one this job was
+     * dispatched with, or the application default. Read from the dispatch
+     * options rather than the running job, so a synchronous dispatch of this
+     * job does not drag the poll onto the sync connection.
+     */
+    private function pollConnection(): ?string
+    {
+        if ($this->connection !== null) {
+            return $this->connection;
+        }
+
+        $default = config('queue.default');
+
+        return is_string($default) && $default !== '' ? $default : null;
     }
 
     /**
