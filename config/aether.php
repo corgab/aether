@@ -57,6 +57,14 @@ return [
     | polling job gives up (the default allows one hour at five-second
     | intervals, which comfortably covers real QPU queue times).
     |
+    | A transient polling error — a failed check.py run, a network blip —
+    | is retried after "poll_interval" seconds, up to "max_poll_exceptions"
+    | times, before the job fails for good. Configuration/environment
+    | errors (a missing driver key, a missing Python binary or dependency,
+    | an unregistered driver) and a task that finishes as failed or
+    | cancelled fail the job immediately instead, since retrying them can
+    | never succeed.
+    |
     */
 
     'queue' => env('AETHER_QUEUE'),
@@ -64,6 +72,8 @@ return [
     'poll_interval' => (int) env('AETHER_POLL_INTERVAL', 5),
 
     'max_poll_attempts' => (int) env('AETHER_MAX_POLL_ATTEMPTS', 720),
+
+    'max_poll_exceptions' => (int) env('AETHER_MAX_POLL_EXCEPTIONS', 5),
 
     /*
     |--------------------------------------------------------------------------

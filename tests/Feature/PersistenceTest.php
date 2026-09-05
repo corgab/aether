@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Events\CircuitCompleted;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\Jobs\PollQuantumTask;
@@ -143,9 +144,10 @@ it('keeps the backend status and records the error when polling is exhausted', f
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('attempts')->andReturn(1);
     $queueJob->shouldNotReceive('release');
+    $queueJob->shouldReceive('fail')->once()->with(Mockery::type(QuantumExecutionException::class));
     $job->setJob($queueJob);
 
-    expect(fn () => ($this->poll)($job))->toThrow(QuantumExecutionException::class);
+    ($this->poll)($job);
 
     $task = QuantumTask::query()->firstOrFail();
 
@@ -183,6 +185,52 @@ it('records a completed task that returned no counts as an error', function () {
         ->and($task->error)->toContain('returned no measurement counts')
         ->and($task->failed_at)->not->toBeNull()
         ->and($task->completed_at)->toBeNull();
+});
+
+it('records a configuration error without changing the last known status', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+    $job = ($this->submit)();
+    ($this->poll)($job); // mirrors RUNNING onto the row before the config error strikes.
+
+    $task = QuantumTask::query()->firstOrFail();
+    expect($task->status)->toBe(TaskStatus::Running);
+
+    $this->device->throwOnCheck = InvalidDriverConfigException::missingKeys('fake-async', ['bucket']);
+
+    expect(fn () => ($this->poll)($job))->toThrow(InvalidDriverConfigException::class);
+
+    $task->refresh();
+
+    expect($task->status)->toBe(TaskStatus::Running)
+        ->and($task->error)->toContain('missing required configuration')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
+it('records the terminal failure from the failed hook when transient errors are exhausted', function () {
+    $job = ($this->submit)();
+
+    $job->failed(new RuntimeException('gave up'));
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->error)->toContain('gave up')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
+it('does not overwrite an earlier persisted error when failed() runs afterwards', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Cancelled);
+    $job = ($this->submit)();
+
+    expect(fn () => ($this->poll)($job))->toThrow(TaskFailedException::class);
+
+    $task = QuantumTask::query()->firstOrFail();
+    $originalError = $task->error;
+
+    $job->failed(new RuntimeException('gave up'));
+
+    $task->refresh();
+
+    expect($task->error)->toBe($originalError);
 });
 
 it('still dispatches CircuitCompleted when the update fails', function () {

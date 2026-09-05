@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **Polling resilience:** PollQuantumTask lets transient checkTask() errors propagate (retried by the worker up to aether.max_poll_exceptions with poll_interval backoff); config/environment errors and terminal task states fail the job at once via FailsWithoutRetry.
 
 ## Config
 

@@ -160,11 +160,12 @@ Tune the polling in `config/aether.php`:
 AETHER_QUEUE=quantum
 AETHER_POLL_INTERVAL=5
 AETHER_MAX_POLL_ATTEMPTS=720
+AETHER_MAX_POLL_EXCEPTIONS=5
 ```
 
 `PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
 
-A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both fail the job immediately — the re-check loop is driven by `release()`, not by queue retries, so these deliberate outcomes never get another attempt. A transient error instead — a failed `check.py` run, an AWS throttle, a cache hiccup — is left for the worker to retry after `AETHER_POLL_INTERVAL` seconds, up to `AETHER_MAX_POLL_EXCEPTIONS` times (default 5), before the job fails for good. Configuration or environment errors (a missing driver key, a missing Python binary or dependency, an unregistered driver) always fail immediately, since retrying them can never succeed. Every failure lands in `failed_jobs` with the task ARN or error in the message, so you can inspect the task in the AWS console; when [task persistence](#task-persistence) is enabled, the failure is also recorded on the task's `quantum_tasks` row.
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
 
