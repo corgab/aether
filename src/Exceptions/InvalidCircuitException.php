@@ -128,9 +128,7 @@ class InvalidCircuitException extends AetherException
             "max_qubits ceiling of {$ceiling}. Statevector simulation memory doubles with every additional ".
             'qubit, so this ceiling protects the host from exhausting its memory. Raise the `max_qubits` '.
             "entry in the driver's config (e.g. the AETHER_MAX_QUBITS env var for the local driver) if the ".
-            'host has enough memory to spare, or set it to null to remove the ceiling entirely. For entropy '.
-            "generation, the qubit count comes from the driver's `entropy_qubits` setting, which can be ".
-            'lowered instead.'
+            'host has enough memory to spare, or set it to null to remove the ceiling entirely.'
         );
     }
 
@@ -143,9 +141,27 @@ class InvalidCircuitException extends AetherException
         return new self(
             "Estimated cost of {$estimate} exceeds the configured max_cost_per_run ceiling of ".
             CostEstimate::formatAmount($ceiling, $estimate->currency).'. Raise the `max_cost_per_run` entry in the '.
-            'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before '.
-            'retrying. For entropy generation, request fewer bits per call: each call is one task and its shot '.
-            'count is ceil(bits / entropy_qubits).'
+            'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before retrying.'
+        );
+    }
+
+    /**
+     * Create an exception for an entropy request that the driver's admission
+     * checks (qubit or cost ceiling) rejected, wrapping the underlying
+     * ceiling exception so the entropy-specific remedy is spelled out: the
+     * circuit width comes from `entropy_qubits`, the shot count from the
+     * requested bits.
+     */
+    public static function entropyRejected(int $bits, int $qubits, int $shots, self $previous): self
+    {
+        return new self(
+            "Entropy generation of {$bits} bit(s), a {$qubits}-qubit circuit run for {$shots} shot(s), was rejected: ".
+            $previous->getMessage().
+            ' For entropy generation, set `entropy_qubits` to a positive value that fits `max_qubits`, and '.
+            'request fewer bits per call to lower the estimated cost (each call is one task with '.
+            'ceil(bits / entropy_qubits) shots).',
+            0,
+            $previous,
         );
     }
 

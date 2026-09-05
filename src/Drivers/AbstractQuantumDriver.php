@@ -349,21 +349,30 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Describe the entropy circuit as a CircuitBuilder so it can be run
      * through the same admission funnel as any other circuit.
      *
-     * The actual entropy circuit — N Hadamards plus a measurement on N
-     * qubits — is built in Python (see bin/python/entropy.py); this PHP-side
-     * description carries no gates or measurement of its own and performs no
-     * I/O. It exists only so validateCircuits() can read its qubit and shot
-     * counts, letting the `max_qubits` and (on aws) `max_cost_per_run`
-     * ceilings apply to entropy generation exactly as they do to ->run(),
-     * ->dispatch() and Quantum::batch().
+     * Mirrors the circuit bin/python/entropy.py builds — a Hadamard on every
+     * qubit, then a measurement of them all — so any guard added to the
+     * funnel sees the same shape it would see for a user circuit. It is
+     * never executed from PHP: it exists only so the `max_qubits` and (on
+     * aws) `max_cost_per_run` ceilings apply to entropy generation exactly
+     * as they do to ->run(), ->dispatch() and Quantum::batch().
      */
     private function entropyCircuit(int $qubits, int $shots): CircuitBuilder
     {
-        return (new CircuitBuilder($this, $this->driverName()))->qubits($qubits)->shots($shots);
+        $circuit = (new CircuitBuilder($this, $this->driverName()))->qubits($qubits);
+
+        for ($qubit = 0; $qubit < $qubits; $qubit++) {
+            $circuit->h($qubit);
+        }
+
+        return $circuit->measure()->shots($shots);
     }
 
     public function generateEntropy(int $bits): string
     {
+        if ($bits < 1) {
+            throw new \InvalidArgumentException("Requested bit count ({$bits}) must be a positive integer.");
+        }
+
         $this->preflight();
 
         $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
@@ -377,7 +386,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $shots = (int) ceil($bits / $qubits);
 
-        $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
+        try {
+            $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
+        } catch (InvalidCircuitException $e) {
+            throw InvalidCircuitException::entropyRejected($bits, $qubits, $shots, $e);
+        }
 
         $payload = $this->payload([
             'qubits' => $qubits,

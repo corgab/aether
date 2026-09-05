@@ -715,7 +715,10 @@ it('throws InvalidCircuitException on generateEntropy when the estimated cost ex
         $driver->generateEntropy(256);
         $this->fail('Expected InvalidCircuitException was not thrown.');
     } catch (InvalidCircuitException $e) {
-        expect($e->getMessage())->toContain('max_cost_per_run');
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16 shot(s)')
+            ->toContain('max_cost_per_run')
+            ->toContain('fewer bits per call');
     }
 });
 
