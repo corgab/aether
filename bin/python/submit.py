@@ -24,15 +24,17 @@ Output (JSON on stdout)::
 
     {"task_arn": "arn:aws:braket:us-east-1:...:quantum-task/uuid"}
 
-On error the script writes ``{"error": "<message>"}`` to stderr and exits
-with code 1.
+The script writes a ``{"task_arn": "<id>"}`` line to stderr as soon as each
+backend task is created, so a task submitted before the PHP-side process
+timeout kills this script is still reported to the caller. On error the
+script writes ``{"error": "<message>"}`` to stderr and exits with code 1.
 """
 
 import json
 import sys
 from typing import Any
 
-from common import build_circuit, resolve_run_target
+from common import announce_task, build_circuit, resolve_run_target
 
 
 def _run(payload: dict[str, Any]) -> dict[str, Any]:
@@ -59,6 +61,7 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     device, run_options = resolve_run_target(driver, driver_config)
 
     task = device.run(circuit, shots=shots, **run_options)
+    announce_task(task)
 
     return {"task_arn": task.id}
 

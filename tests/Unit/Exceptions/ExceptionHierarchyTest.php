@@ -40,6 +40,62 @@ it('from python error includes script and stderr', function (): void {
     expect($exception->getCode())->toBe(1);
 });
 
+it('from python error defaults to no task arns', function (): void {
+    $exception = QuantumExecutionException::fromPythonError('circuit.py', 'boom', 1);
+
+    expect($exception->taskArns())->toBe([]);
+    expect($exception->hasTaskArns())->toBeFalse();
+    expect($exception->getMessage())->not->toContain('Task(s) submitted before the failure');
+});
+
+it('from python error names the tasks submitted before the failure', function (): void {
+    $exception = QuantumExecutionException::fromPythonError(
+        'batch.py',
+        'boom',
+        1,
+        ['arn:aws:braket:us-east-1:1:quantum-task/a', 'arn:aws:braket:us-east-1:1:quantum-task/b'],
+    );
+
+    expect($exception->getMessage())
+        ->toContain('boom')
+        ->toContain('Task(s) submitted before the failure: arn:aws:braket:us-east-1:1:quantum-task/a, arn:aws:braket:us-east-1:1:quantum-task/b')
+        ->toContain('AWS Braket console');
+    expect($exception->taskArns())->toBe([
+        'arn:aws:braket:us-east-1:1:quantum-task/a',
+        'arn:aws:braket:us-east-1:1:quantum-task/b',
+    ]);
+    expect($exception->hasTaskArns())->toBeTrue();
+    expect($exception->getCode())->toBe(1);
+});
+
+it('timed out reports the script and the timeout with no task submitted', function (): void {
+    $exception = QuantumExecutionException::timedOut('circuit.py', 300);
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception->getMessage())
+        ->toContain('circuit.py')
+        ->toContain('timed out after 300s')
+        ->toContain('No task identifier was announced before the kill.');
+    expect($exception->taskArns())->toBe([]);
+    expect($exception->hasTaskArns())->toBeFalse();
+    expect($exception->getCode())->toBe(0);
+});
+
+it('timed out names the tasks still running on the backend', function (): void {
+    $exception = QuantumExecutionException::timedOut('circuit.py', 300, [
+        'arn:aws:braket:us-east-1:1:quantum-task/a',
+    ]);
+
+    expect($exception->getMessage())
+        ->toContain('timed out after 300s')
+        ->toContain('arn:aws:braket:us-east-1:1:quantum-task/a')
+        ->toContain('AWS Braket console')
+        ->toContain('->dispatch()')
+        ->not->toContain('No task identifier was announced');
+    expect($exception->taskArns())->toBe(['arn:aws:braket:us-east-1:1:quantum-task/a']);
+    expect($exception->hasTaskArns())->toBeTrue();
+});
+
 it('synchronous unsafe includes driver name', function (): void {
     $exception = QuantumExecutionException::synchronousUnsafe('braket');
 

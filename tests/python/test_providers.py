@@ -7,6 +7,7 @@ actual Braket device need the SDK and are skipped when it is not installed.
 """
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -174,6 +175,38 @@ class TestDefaultRunBatch:
             {"circuit": "c2", "shots": 200},
         ]
         assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+
+
+class TestAwsRunBatch:
+    def test_announces_every_batch_task_before_awaiting_results(self, capsys):
+        announced_before_results: list[str] = []
+
+        class Batch:
+            def __init__(self, tasks):
+                self.tasks = tasks
+
+            def results(self, fail_unsuccessful=False):
+                # Draining the capture here proves the announcements were
+                # written before this blocking call, not after it.
+                announced_before_results.extend(capsys.readouterr().err.splitlines())
+                return ["r1", "r2"]
+
+        class Task:
+            def __init__(self, task_id):
+                self.id = task_id
+
+        class Device:
+            def run_batch(self, circuits, shots, **kwargs):
+                self.call = {"circuits": circuits, "shots": shots, **kwargs}
+                return Batch([Task("arn:task/one"), Task("arn:task/two")])
+
+        results = aws_provider.run_batch(Device(), ["c1", "c2"], [10, 20], {"bucket": "b"})
+
+        assert results == ["r1", "r2"]
+        assert [json.loads(line)["task_arn"] for line in announced_before_results] == [
+            "arn:task/one",
+            "arn:task/two",
+        ]
 
 
 class TestResolveRunTarget:

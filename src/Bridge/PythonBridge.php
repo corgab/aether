@@ -57,11 +57,13 @@ class PythonBridge implements PythonExecutor
             // ProcessTimedOutException extends the same RuntimeException caught
             // below, so it must be caught first — otherwise a timeout would be
             // misreported as a missing Python binary.
-            throw QuantumExecutionException::fromPythonError(
-                $script,
-                "Process timed out after {$this->timeout}s",
-                0,
-            );
+            //
+            // Killing the subprocess does not cancel a task already submitted to
+            // the backend, so stderr — still readable after the kill — is parsed
+            // for the task identifiers the script announced.
+            ['taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
+            throw QuantumExecutionException::timedOut($script, $this->timeout, $taskArns);
         } catch (ProcessRuntimeException) {
             throw PythonEnvironmentException::pythonNotFound($this->pythonPath);
         }
@@ -75,28 +77,34 @@ class PythonBridge implements PythonExecutor
         }
 
         if (! $process->isSuccessful()) {
-            throw QuantumExecutionException::fromPythonError(
-                $script,
-                $this->extractErrorMessage($process->getErrorOutput()),
-                $exitCode,
-            );
+            ['message' => $message, 'taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
+            throw QuantumExecutionException::fromPythonError($script, $message, $exitCode, $taskArns);
         }
 
         try {
             $decoded = json_decode($process->getOutput(), associative: true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $e) {
+            // The script may well have submitted a task before printing
+            // something unparseable, so the announced ARNs travel along.
+            ['taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
             throw QuantumExecutionException::fromPythonError(
                 $script,
                 'Invalid JSON output: '.$e->getMessage(),
                 0,
+                $taskArns,
             );
         }
 
         if (! is_array($decoded)) {
+            ['taskArns' => $taskArns] = $this->parseStderr($process->getErrorOutput());
+
             throw QuantumExecutionException::fromPythonError(
                 $script,
                 'Expected JSON object, got '.get_debug_type($decoded),
                 0,
+                $taskArns,
             );
         }
 
@@ -104,25 +112,63 @@ class PythonBridge implements PythonExecutor
     }
 
     /**
-     * Extract a human-readable error message from a failed process's stderr.
+     * Split a process's stderr into an error message and the announced task ARNs.
      *
-     * Python scripts write {"error": "message"} to stderr on failure. When
-     * stderr is valid JSON containing an "error" key, the bare message is
-     * returned; otherwise the raw stderr is returned unchanged.
+     * Stderr is the bridge side-channel: Python scripts write one JSON object
+     * per line, {"task_arn": "..."} as soon as a backend task exists and
+     * {"error": "message"} when the script fails. The task identifiers are
+     * collected in announcement order (deduplicated) so a timeout or failure
+     * can name the tasks left running on the backend. An "error" line supplies
+     * the bare message; without one, the lines that are not JSON objects are
+     * returned verbatim so a raw traceback still reaches the caller.
+     *
+     * @return array{message: string, taskArns: list<string>}
      */
-    private function extractErrorMessage(string $stderr): string
+    private function parseStderr(string $stderr): array
     {
-        try {
-            $decoded = json_decode($stderr, associative: true, flags: JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            return $stderr;
+        $taskArns = [];
+        $message = null;
+        $verbatim = [];
+
+        // An explicit alternation rather than \R: without the u modifier \R
+        // also matches the lone byte 0x85, which splits UTF-8 characters such
+        // as "Å" in the middle of a line.
+        foreach (preg_split('/\r\n|\n|\r/', $stderr) ?: [] as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+
+            $decoded = json_decode($line, associative: true);
+
+            if (! is_array($decoded)) {
+                $verbatim[] = $line;
+
+                continue;
+            }
+
+            if (isset($decoded['task_arn']) && is_string($decoded['task_arn'])) {
+                // in_array rather than an array key: a numeric-string ARN would
+                // be cast to an int key and come back out as one.
+                if (! in_array($decoded['task_arn'], $taskArns, strict: true)) {
+                    $taskArns[] = $decoded['task_arn'];
+                }
+
+                continue;
+            }
+
+            if (isset($decoded['error']) && is_string($decoded['error'])) {
+                $message = $decoded['error'];
+
+                continue;
+            }
+
+            $verbatim[] = $line;
         }
 
-        if (is_array($decoded) && isset($decoded['error']) && is_string($decoded['error'])) {
-            return $decoded['error'];
-        }
-
-        return $stderr;
+        return [
+            'message' => $message ?? implode("\n", $verbatim),
+            'taskArns' => $taskArns,
+        ];
     }
 
     /**

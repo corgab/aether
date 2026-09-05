@@ -38,7 +38,11 @@ return [
     | The maximum number of seconds a Python subprocess is allowed to run
     | before it is killed. Increase this if you run circuits with a large
     | number of shots or qubits that take longer than the default to
-    | complete.
+    | complete. Killing the subprocess does not cancel a task already
+    | submitted to the backend: the QuantumExecutionException names the
+    | submitted task ARN(s) so you can inspect or cancel them in the AWS
+    | Braket console. QPU devices queue for far longer than any sensible
+    | timeout, so use ->dispatch() for those instead (see synchronous_safe).
     |
     */
 

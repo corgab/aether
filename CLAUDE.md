@@ -52,6 +52,7 @@ Quantum (Facade)
 - **Exceptions** all extend `AetherException` with static factory methods (`::fromPythonError()`, `::forDriver()`, etc.)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
+- **Bridge side-channel:** Python scripts write {"task_arn": ...} lines to stderr the moment a task is created; stdout is only the final JSON result. PythonBridge surfaces those ARNs on timeout/failure via QuantumExecutionException::taskArns().
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
 
 ## Config

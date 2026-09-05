@@ -9,6 +9,8 @@ per-task shot counts via ``run_batch``, and ARN-based polling via
 
 from typing import Any
 
+from common import announce_tasks
+
 _DEFAULT_DEVICE_ARN = "arn:aws:braket:::device/quantum-simulator/amazon/sv1"
 
 
@@ -64,8 +66,16 @@ def run_batch(
 
     ``AwsDevice.run_batch`` accepts one shot count per task natively, so the
     whole batch always goes through in one call regardless of mixed shots.
+
+    Every task ARN is announced on stderr before the blocking ``results()``
+    call, so a batch killed by the PHP-side process timeout still names the
+    tasks it left running on Braket. The announcement can only happen once
+    ``run_batch`` has returned: if the SDK fails while creating the Nth task,
+    the tasks it created before that are not exposed to this code and cannot
+    be announced.
     """
     batch = device.run_batch(circuits, shots=shots_list, **run_options(config))
+    announce_tasks(batch.tasks)
     # Without fail_unsuccessful the SDK returns None for FAILED/CANCELLED
     # tasks; let it raise a clear RuntimeError instead.
     return batch.results(fail_unsuccessful=True)
