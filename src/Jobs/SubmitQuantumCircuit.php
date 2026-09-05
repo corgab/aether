@@ -93,7 +93,11 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $this->persistSubmission($taskArn, $driverName);
 
+        // The poll follows the submission onto the same connection, so the
+        // whole flow runs where it was dispatched and the cache store check
+        // above holds for the job that reads the result back.
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
+            ->onConnection($this->job?->getConnectionName())
             ->delay((int) config('aether.poll_interval', 5));
     }
 

@@ -59,11 +59,6 @@ beforeEach(function () use ($config) {
                     'shared' => ['driver' => 'array'],
                 ],
             ],
-            // Left unset (null) here so the array-store guard passes for
-            // every pre-existing test; individual tests below override it.
-            'queue' => [
-                'default' => null,
-            ],
         ]));
     });
 
@@ -266,6 +261,7 @@ it('falls back to the default cache store when cache_store is not set', function
 })->with([
     'null' => [null],
     'blank string' => [''],
+    'whitespace' => ['  '],
 ]);
 
 it('refuses the array store when the submission job runs on a connection that crosses processes', function () {
@@ -300,7 +296,6 @@ it('allows the array store when the connection is unknown or cannot be resolved'
 })->with(['dispatch time' => [null], 'undefined connection' => ['ghost']]);
 
 it('does not consult the queue when submitCircuit is called directly', function () {
-    Container::getInstance()->make('config')->set('queue.default', 'redis');
     Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -325,6 +320,18 @@ it('trusts an explicitly configured array store', function () use ($config) {
     $taskArn = $driver->submitCircuit($circuit);
 
     expect(Cache::store('array')->get('aether:local-task:'.$taskArn))->toBe(['0' => 100]);
+});
+
+it('trims surrounding whitespace from cache_store', function () use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => ' shared ']);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect(Cache::store('shared')->get('aether:local-task:'.$taskArn))->toBe(['0' => 100]);
 });
 
 it('refuses a cache_store the cache manager cannot resolve', function (string $store) use ($config) {

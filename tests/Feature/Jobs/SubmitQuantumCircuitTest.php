@@ -35,7 +35,8 @@ it('submits the circuit and queues a poll job with the configured delay', functi
         PollQuantumTask::class,
         fn (PollQuantumTask $polled): bool => $polled->taskArn === $device->taskArnToReturn
             && $polled->driver === 'fake-async'
-            && $polled->delay === 7,
+            && $polled->delay === 7
+            && $polled->connection === null,
     );
 });
 
@@ -173,6 +174,11 @@ it('hands the device the connection the job actually runs on before submitting',
 
     expect($device->validatedConnections)->toBe(['redis'])
         ->and($device->submittedCircuits)->toHaveCount(1);
+
+    Queue::assertPushed(
+        PollQuantumTask::class,
+        fn (PollQuantumTask $polled): bool => $polled->connection === 'redis',
+    );
 });
 
 it('fails without retry when the device rejects the dispatch for its connection', function () {

@@ -162,7 +162,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
     private function stringOrNull(mixed $value): ?string
     {
-        return is_string($value) && trim($value) !== '' ? $value : null;
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
     private function cacheKey(string $taskArn): string
