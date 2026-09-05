@@ -604,8 +604,12 @@ class CircuitBuilder
         $builder = new static($device, $driverName);
         $builder->qubits((int) ($definition['qubits'] ?? 0));
 
-        /** @var array<string, mixed> $gate */
         foreach ($definition['gates'] ?? [] as $gate) {
+            if (! is_array($gate)) {
+                throw InvalidCircuitException::malformedGate($gate);
+            }
+
+            /** @var array<string, mixed> $gate */
             $builder->push(Gate::fromArray($gate));
         }
 

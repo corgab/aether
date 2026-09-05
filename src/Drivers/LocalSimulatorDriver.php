@@ -13,6 +13,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
+use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -119,15 +120,13 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
             $store = $this->cache()->getStore();
         } catch (InvalidArgumentException $e) {
             // CacheManager rejects both an undefined store and an unsupported driver.
-            throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name ?? 'default', $e);
+            throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name ?? $this->defaultCacheStoreName(), $e);
         }
 
         if ($store instanceof NullStore) {
-            $default = config('cache.default');
-
             throw InvalidDriverConfigException::discardingCacheStore(
                 $this->driverName(),
-                $name ?? (is_string($default) ? $default : 'null'),
+                $name ?? $this->defaultCacheStoreName(),
             );
         }
 
@@ -165,7 +164,25 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      */
     protected function cache(): Repository
     {
-        return Cache::store($this->configuredCacheStoreName());
+        $root = Cache::getFacadeRoot();
+
+        // Tests may swap the facade with a bare repository instead of the
+        // manager; that repository is then the only store there is.
+        if (! $root instanceof Factory) {
+            return $root;
+        }
+
+        return $root->store($this->configuredCacheStoreName());
+    }
+
+    /**
+     * The name of the application's default cache store, for messages.
+     */
+    private function defaultCacheStoreName(): string
+    {
+        $default = config('cache.default');
+
+        return is_string($default) && $default !== '' ? $default : 'null';
     }
 
     private function configuredCacheStoreName(): ?string

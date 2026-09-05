@@ -89,6 +89,16 @@ class InvalidCircuitException extends AetherException
      * Create an exception for an unrecognized gate type encountered while
      * rebuilding a circuit from its array definition (see CircuitBuilder::fromArray()).
      */
+    /**
+     * Create an exception for a serialized gate entry that is not an array.
+     */
+    public static function malformedGate(mixed $gate): self
+    {
+        return new self(
+            'Each gate in a serialized circuit must be an array, '.get_debug_type($gate).' given.'
+        );
+    }
+
     public static function unknownGateType(string $type): self
     {
         return new self(

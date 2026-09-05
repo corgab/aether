@@ -122,7 +122,7 @@ it('fails without retry when the driver does not exist under a worker', function
     $job->handle(app(QuantumManager::class));
 });
 
-it('fails without retry when the serialized circuit cannot be rebuilt under a worker', function () {
+it('fails without retry when the serialized circuit cannot be rebuilt under a worker', function (mixed $gate) {
     $device = new FakeAsynchronousDevice;
     $manager = app(QuantumManager::class);
     $manager->extend('fake-async', fn () => $device);
@@ -130,12 +130,12 @@ it('fails without retry when the serialized circuit cannot be rebuilt under a wo
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('fail')->once()->with(Mockery::type(InvalidCircuitException::class));
 
-    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [['type' => 'nope']], 'shots' => 100], 'fake-async');
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [$gate], 'shots' => 100], 'fake-async');
     $job->setJob($queueJob);
     $job->handle($manager);
 
     expect($device->submittedCircuits)->toBeEmpty();
-});
+})->with(['unknown gate type' => [['type' => 'nope']], 'gate that is not an array' => ['h']]);
 
 it('rethrows a configuration fault when there is no queue job to fail', function () {
     Queue::fake();

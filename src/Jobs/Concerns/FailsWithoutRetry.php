@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Aether\Jobs\Concerns;
 
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
 use Throwable;
 
 /**
  * Fails a queued job immediately, bypassing any remaining tries/exceptions
  * budget, for deliberate terminal outcomes that must never be retried.
+ *
+ * Relies on the job also using InteractsWithQueue (included in the
+ * Foundation Queueable composite) for $job and fail().
+ *
+ * @mixin InteractsWithQueue
  */
 trait FailsWithoutRetry
 {

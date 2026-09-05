@@ -8,7 +8,6 @@ use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
-use InvalidArgumentException;
 
 // -------------------------------------------------------------------------
 // AetherException
