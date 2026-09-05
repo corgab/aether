@@ -43,7 +43,7 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Create a new job instance.
      *
-     * @param  array<string, mixed>  $circuit  The CircuitBuilder::toArray() payload to submit; its shape is verified when the circuit is rebuilt.
+     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit; the shape is re-verified when the circuit is rebuilt, since it has travelled through the queue.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
      */
     public function __construct(
