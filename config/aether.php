@@ -60,16 +60,19 @@ return [
     | "submit_timeout" is the number of seconds the queue worker lets one
     | attempt of the submission job run. The local driver runs the whole
     | simulation inside that job, so the attempt must outlive the Python
-    | process: null derives it from process_timeout plus a 30-second margin.
-    | Keep your queue connection's retry_after above this value, or a slow
-    | submission will be handed to a second worker while still running. A
-    | timed-out attempt is failed, not retried.
+    | process: 0 derives it from process_timeout plus a 30-second margin
+    | (unlimited when process_timeout is 0), then keeps it 10 seconds under
+    | the default queue connection's retry_after, so a slow attempt is
+    | killed here rather than handed to a second worker while still running.
+    | Set an explicit value to take control of that trade-off yourself. A
+    | timed-out attempt, whether killed by the worker or by the Python
+    | bridge, is failed, not retried.
     |
     */
 
     'queue' => env('AETHER_QUEUE'),
 
-    'submit_timeout' => env('AETHER_SUBMIT_TIMEOUT'),
+    'submit_timeout' => (int) env('AETHER_SUBMIT_TIMEOUT', 0),
 
     'poll_interval' => (int) env('AETHER_POLL_INTERVAL', 5),
 

@@ -7,6 +7,7 @@ use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\PythonEnvironmentException;
+use Aether\Exceptions\PythonProcessTimedOutException;
 use Aether\Exceptions\QuantumExecutionException;
 
 // -------------------------------------------------------------------------
@@ -132,4 +133,15 @@ it('missing keys includes driver name and every missing key', function (): void 
         ->toContain('aws')
         ->toContain('region')
         ->toContain('device_arn');
+});
+
+it('python process timed out exception is a quantum execution exception naming the script and the limit', function (): void {
+    $exception = PythonProcessTimedOutException::afterSeconds('circuit.py', 300);
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception)->toBeInstanceOf(AetherException::class);
+    expect($exception->getMessage())
+        ->toContain('circuit.py')
+        ->toContain('300s')
+        ->toContain('AETHER_PROCESS_TIMEOUT');
 });

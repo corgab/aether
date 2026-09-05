@@ -7,7 +7,9 @@ namespace Aether\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\PythonProcessTimedOutException;
 use Aether\Exceptions\QuantumExecutionException;
+use Aether\Jobs\Concerns\FailsWithoutRetry;
 use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
 use Aether\Tasks\TaskStatus;
@@ -24,6 +26,7 @@ use Illuminate\Foundation\Queue\Queueable;
  */
 class SubmitQuantumCircuit implements ShouldQueue
 {
+    use FailsWithoutRetry;
     use Queueable;
 
     /**
@@ -41,7 +44,10 @@ class SubmitQuantumCircuit implements ShouldQueue
      * an attempt has to outlive the Python process it spawns: without this
      * the worker's default of 60 seconds would kill any simulation longer
      * than a minute while the bridge itself still allowed process_timeout.
-     * Resolved from aether.submit_timeout, or process_timeout plus a margin.
+     * Resolved from aether.submit_timeout when set, otherwise derived from
+     * process_timeout plus a margin and kept below the default queue
+     * connection's retry_after, so a slow attempt is killed by this worker
+     * rather than handed to a second one while still running.
      */
     public int $timeout;
 
@@ -58,6 +64,13 @@ class SubmitQuantumCircuit implements ShouldQueue
     private const TIMEOUT_MARGIN = 30;
 
     /**
+     * Seconds kept between the derived timeout and the connection's
+     * retry_after, so the worker kills the attempt before the queue
+     * releases it to another worker.
+     */
+    private const RETRY_AFTER_MARGIN = 10;
+
+    /**
      * Create a new job instance.
      *
      * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit.
@@ -72,18 +85,45 @@ class SubmitQuantumCircuit implements ShouldQueue
     }
 
     /**
-     * The configured submit_timeout when it is a positive number, otherwise
-     * process_timeout plus the margin.
+     * The configured submit_timeout when positive, otherwise a value derived
+     * from process_timeout (0, meaning unlimited, stays unlimited) and capped
+     * under the default queue connection's retry_after when that is known.
      */
     private static function resolveTimeout(): int
     {
-        $configured = config('aether.submit_timeout');
+        $configured = (int) config('aether.submit_timeout', 0);
 
-        if (is_numeric($configured) && (int) $configured > 0) {
-            return (int) $configured;
+        if ($configured > 0) {
+            return $configured;
         }
 
-        return (int) config('aether.process_timeout', 300) + self::TIMEOUT_MARGIN;
+        $processTimeout = (int) config('aether.process_timeout', 300);
+        $timeout = $processTimeout > 0 ? $processTimeout + self::TIMEOUT_MARGIN : 0;
+
+        $retryAfter = self::defaultConnectionRetryAfter();
+
+        if ($retryAfter !== null && ($timeout === 0 || $timeout >= $retryAfter)) {
+            $timeout = max($retryAfter - self::RETRY_AFTER_MARGIN, 1);
+        }
+
+        return $timeout;
+    }
+
+    /**
+     * The retry_after of the default queue connection, or null when the
+     * connection does not define one (sync, for instance).
+     */
+    private static function defaultConnectionRetryAfter(): ?int
+    {
+        $connection = config('queue.default');
+
+        if (! is_string($connection) || $connection === '') {
+            return null;
+        }
+
+        $retryAfter = config("queue.connections.{$connection}.retry_after");
+
+        return is_numeric($retryAfter) && (int) $retryAfter > 0 ? (int) $retryAfter : null;
     }
 
     /**
@@ -100,7 +140,16 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
 
-        $taskArn = $device->submitCircuit($builder);
+        try {
+            $taskArn = $device->submitCircuit($builder);
+        } catch (PythonProcessTimedOutException $e) {
+            // Retrying would run the same circuit against the same limit and,
+            // on a remote backend, could duplicate a task the backend already
+            // accepted before the process was killed.
+            $this->failWithoutRetry($e);
+
+            return;
+        }
 
         $this->persistSubmission($taskArn, $driverName);
 
