@@ -11,6 +11,7 @@ use Aether\Exceptions\QuantumExecutionException;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\NullStore;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -84,40 +85,66 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      * Guard against caching an asynchronous result where the polling job
      * would never be able to read it back.
      *
-     * The default cache store resolves to the process-local ArrayStore, so
-     * when the queue connection actually crosses process boundaries (any
-     * driver other than "sync") the job that submits the circuit and the job
-     * that polls it can land in different worker processes and the poll
-     * would always miss. An explicitly configured cache_store — including
-     * "array" — is trusted as a deliberate opt-out and skips this check.
+     * The "null" store discards every write, so it can never work. The
+     * "array" store is process-local: when the queue connection crosses
+     * process boundaries (any driver other than "sync") the job that submits
+     * the circuit and the job that polls it can land in different worker
+     * processes and the poll would always miss. An explicitly configured
+     * cache_store — including "array" — is trusted as a deliberate opt-out of
+     * that second check, but it still has to name a defined, non-null store.
+     *
+     * The queue check reads the default queue connection; a job dispatched
+     * onto another connection with onConnection() is not covered, so name
+     * the store explicitly in that setup.
      *
      * @throws InvalidDriverConfigException
      */
     protected function assertCacheStoreIsShared(): void
     {
-        if ($this->configuredCacheStoreName() !== null) {
+        $name = $this->configuredCacheStoreName();
+
+        if ($name !== null && ! is_array(config("cache.stores.{$name}"))) {
+            throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name);
+        }
+
+        $store = $this->cache()->getStore();
+
+        if ($store instanceof NullStore) {
+            $default = config('cache.default');
+
+            throw InvalidDriverConfigException::discardingCacheStore(
+                $this->driverName(),
+                $name ?? (is_string($default) ? $default : 'null'),
+            );
+        }
+
+        if ($name !== null || ! $store instanceof ArrayStore) {
             return;
         }
 
-        $repository = $this->cache();
+        $queueDriver = $this->defaultQueueDriver();
 
-        if (! method_exists($repository, 'getStore') || ! $repository->getStore() instanceof ArrayStore) {
-            return;
-        }
-
-        $connection = config('queue.default');
-
-        if (! is_string($connection) || trim($connection) === '') {
-            return;
-        }
-
-        $queueDriver = config("queue.connections.{$connection}.driver");
-
-        if (! is_string($queueDriver) || trim($queueDriver) === '' || $queueDriver === 'sync') {
+        if ($queueDriver === null || $queueDriver === 'sync') {
             return;
         }
 
         throw InvalidDriverConfigException::processLocalCacheStore($this->driverName(), $queueDriver);
+    }
+
+    /**
+     * The driver of the default queue connection, or null when it cannot be resolved.
+     */
+    private function defaultQueueDriver(): ?string
+    {
+        $connection = config('queue.default');
+
+        if (! is_string($connection) || trim($connection) === '') {
+            return null;
+        }
+
+        $driver = config("queue.connections.{$connection}.driver");
+
+        return is_string($driver) && trim($driver) !== '' ? $driver : null;
     }
 
     /**

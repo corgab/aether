@@ -134,6 +134,26 @@ it('missing keys includes driver name and every missing key', function (): void 
         ->toContain('device_arn');
 });
 
+it('unknown cache store names the driver, the store and the env var', function (): void {
+    $exception = InvalidDriverConfigException::unknownCacheStore('local', 'reddis');
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('[reddis]')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
+});
+
+it('discarding cache store names the driver, the store and the env var', function (): void {
+    $exception = InvalidDriverConfigException::discardingCacheStore('local', 'void');
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('[void]')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
+});
+
 it('process local cache store includes driver name, queue driver and the env var', function (): void {
     $exception = InvalidDriverConfigException::processLocalCacheStore('local', 'redis');
 

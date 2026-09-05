@@ -333,6 +333,33 @@ it('trusts an explicitly configured array store', function () use ($config) {
 // max_qubits ceiling: dispatch() / submitCircuit() path
 // -------------------------------------------------------------------------
 
+it('refuses a cache_store that names no configured store', function () use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => 'reddis']);
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->submitCircuit(
+        (new CircuitBuilder($driver, 'local'))->qubits(1)->h(0)->measure()->shots(10)
+    ))->toThrow(InvalidDriverConfigException::class, 'cache_store [reddis]');
+});
+
+it('refuses the null store whether it is the default or named explicitly', function (?string $cacheStore, string $named) use ($config) {
+    $repository = Container::getInstance()->make('config');
+    $repository->set('cache.stores.void', ['driver' => 'null']);
+    $repository->set('cache.default', $cacheStore === null ? 'void' : 'array');
+    $repository->set('queue.default', 'sync');
+    $repository->set('queue.connections.sync.driver', 'sync');
+
+    $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => $cacheStore]);
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->submitCircuit(
+        (new CircuitBuilder($driver, 'local'))->qubits(1)->h(0)->measure()->shots(10)
+    ))->toThrow(InvalidDriverConfigException::class, "cache store [{$named}]");
+})->with([
+    'default store' => [null, 'void'],
+    'explicit store' => ['void', 'void'],
+]);
+
 it('rejects submitCircuit when the circuit exceeds max_qubits', function () use ($config) {
     $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));
 

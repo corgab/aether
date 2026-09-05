@@ -3,12 +3,14 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\QuantumManager;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Aether\Tests\Feature\Jobs\FakeSynchronousOnlyDevice;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Queue;
 
 it('submits the circuit and queues a poll job with the configured delay', function () {
@@ -56,4 +58,36 @@ it('mentions the unsupported driver name in the exception message', function () 
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain('fake-sync');
     }
+});
+
+it('fails without retry when the driver rejects its configuration under a worker', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnSubmit = InvalidDriverConfigException::missingKeys('fake-async', ['bucket']);
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($queueJob);
+    $job->handle($manager);
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('rethrows a configuration fault when there is no queue job to fail', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnSubmit = InvalidDriverConfigException::missingKeys('fake-async', ['bucket']);
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+
+    expect(fn () => $job->handle($manager))->toThrow(InvalidDriverConfigException::class);
+    Queue::assertNotPushed(PollQuantumTask::class);
 });

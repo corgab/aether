@@ -7,7 +7,9 @@ namespace Aether\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
+use Aether\Jobs\Concerns\FailsWithoutRetry;
 use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
 use Aether\Tasks\TaskStatus;
@@ -24,6 +26,7 @@ use Illuminate\Foundation\Queue\Queueable;
  */
 class SubmitQuantumCircuit implements ShouldQueue
 {
+    use FailsWithoutRetry;
     use Queueable;
 
     /**
@@ -61,7 +64,15 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
 
-        $taskArn = $device->submitCircuit($builder);
+        try {
+            $taskArn = $device->submitCircuit($builder);
+        } catch (InvalidDriverConfigException $e) {
+            // A configuration fault is deterministic: retrying would only
+            // resubmit the same broken setup $tries times.
+            $this->failWithoutRetry($e);
+
+            return;
+        }
 
         $this->persistSubmission($taskArn, $driverName);
 
