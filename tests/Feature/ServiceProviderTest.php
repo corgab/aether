@@ -45,6 +45,12 @@ it('makes the aether.drivers config available', function () {
         ->and($drivers)->toHaveKey('aws');
 });
 
+it('defaults aether.max_poll_exceptions to 5', function () {
+    $maxPollExceptions = $this->app['config']->get('aether.max_poll_exceptions');
+
+    expect($maxPollExceptions)->toBe(5);
+});
+
 // -------------------------------------------------------------------------
 // Facade
 // -------------------------------------------------------------------------
