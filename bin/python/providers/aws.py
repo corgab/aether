@@ -64,6 +64,8 @@ def run_batch(
 
     ``AwsDevice.run_batch`` accepts one shot count per task natively, so the
     whole batch always goes through in one call regardless of mixed shots.
+    Per-task shot counts require ``amazon-braket-sdk`` >= 1.125.0, which is
+    the floor declared in ``bin/python/requirements.txt``.
     """
     batch = device.run_batch(circuits, shots=shots_list, **run_options(config))
     # Without fail_unsuccessful the SDK returns None for FAILED/CANCELLED

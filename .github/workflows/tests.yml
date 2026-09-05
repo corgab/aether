@@ -62,7 +62,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pytest amazon-braket-sdk
+        run: pip install pytest -r bin/python/requirements.txt
 
       - name: Run tests
         run: pytest tests/python/ -v

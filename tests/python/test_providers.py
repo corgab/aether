@@ -7,6 +7,7 @@ actual Braket device need the SDK and are skipped when it is not installed.
 """
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -174,6 +175,51 @@ class TestDefaultRunBatch:
             {"circuit": "c2", "shots": 200},
         ]
         assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+
+
+class TestAwsRunBatch:
+    def test_passes_one_shot_count_per_task_and_fails_unsuccessful_tasks(self):
+        device = _load_fake_provider().resolve_device({})
+
+        results = aws_provider.run_batch(device, ["c1", "c2"], [100, 200], {"bucket": "my-bucket"})
+
+        assert device.run_batch_calls == [
+            {
+                "circuits": ["c1", "c2"],
+                "shots": [100, 200],
+                "s3_destination_folder": ("my-bucket", "results"),
+            }
+        ]
+        assert device.last_batch.fail_unsuccessful is True
+        assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+
+    def test_requirements_floor_supports_per_task_shots(self):
+        requirements_path = Path(__file__).resolve().parents[2] / "bin/python/requirements.txt"
+        requirements_text = requirements_path.read_text()
+
+        match = re.search(
+            r"^amazon-braket-sdk>=(\d+)\.(\d+)\.(\d+)", requirements_text, re.MULTILINE
+        )
+        assert match is not None, "amazon-braket-sdk requirement not found in requirements.txt"
+
+        floor = tuple(int(part) for part in match.groups())
+
+        assert floor >= (1, 125, 0), (
+            "AwsDevice.run_batch only accepts a per-task shot count (a "
+            "Sequence[int] for `shots`) from amazon-braket-sdk 1.125.0 "
+            "onward; bin/python/requirements.txt must declare at least "
+            "that floor or aws_provider.run_batch breaks on older SDKs."
+        )
+
+    @requires_braket
+    def test_installed_sdk_accepts_a_sequence_of_shots(self):
+        import inspect
+
+        from braket.aws import AwsDevice
+
+        annotation = inspect.signature(AwsDevice.run_batch).parameters["shots"].annotation
+
+        assert "Sequence" in str(annotation)
 
 
 class TestResolveRunTarget:

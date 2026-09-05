@@ -8,7 +8,7 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 
 - PHP 8.3+
 - Laravel 13
-- Python 3.11+ with `amazon-braket-sdk` (CI runs 3.11 and 3.12)
+- Python 3.11+ with `amazon-braket-sdk` >= 1.125.0 (see `bin/python/requirements.txt`; CI runs 3.11 and 3.12)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation
@@ -114,7 +114,7 @@ $batch[0]->probabilities();
 ```
 
 * **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
-* **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
+* **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process. Per-task shot counts on AWS rely on `AwsDevice.run_batch` accepting a shot count per task, available from `amazon-braket-sdk` 1.125.0, the minimum this package requires.
 * **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
 * **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver marked `synchronous_safe: false` throws, exactly like a single `->run()`.
 * **Contracts**: batch-capable drivers implement `Aether\Contracts\BatchableDevice`; `Quantum::batch()` on a driver that does not throws `QuantumExecutionException::batchUnsupported`. The core `Aether\Contracts\QuantumDevice` contract is unchanged, so third-party drivers keep working.

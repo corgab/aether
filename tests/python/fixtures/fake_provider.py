@@ -24,8 +24,10 @@ class StubTask:
 class StubBatch:
     def __init__(self, results: list[StubResult]) -> None:
         self._results = results
+        self.fail_unsuccessful: bool | None = None
 
-    def results(self) -> list[StubResult]:
+    def results(self, fail_unsuccessful: bool = False) -> list[StubResult]:
+        self.fail_unsuccessful = fail_unsuccessful
         return self._results
 
 
@@ -35,14 +37,18 @@ class StubDevice:
     def __init__(self) -> None:
         self.run_calls: list[dict[str, Any]] = []
         self.run_batch_calls: list[dict[str, Any]] = []
+        self.last_batch: StubBatch | None = None
 
     def run(self, circuit: Any, shots: int, **kwargs: Any) -> StubTask:
         self.run_calls.append({"circuit": circuit, "shots": shots, **kwargs})
         return StubTask({"0": shots})
 
-    def run_batch(self, circuits: list[Any], shots: int, **kwargs: Any) -> StubBatch:
+    def run_batch(self, circuits: list[Any], shots: int | list[int], **kwargs: Any) -> StubBatch:
         self.run_batch_calls.append({"circuits": circuits, "shots": shots, **kwargs})
-        return StubBatch([StubResult({"0": shots}) for _ in circuits])
+        shot_counts = shots if isinstance(shots, list) else [shots] * len(circuits)
+        batch = StubBatch([StubResult({"0": count}) for count in shot_counts])
+        self.last_batch = batch
+        return batch
 
 
 def resolve_device(config: dict[str, Any]) -> StubDevice:
