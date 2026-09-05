@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **aether:install never touches the default driver:** the smoke test runs on the local simulator, through the venv interpreter when the command just created one; an existing config/aether.php is kept unless --force.
 
 ## Config
 

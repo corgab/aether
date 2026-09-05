@@ -129,9 +129,25 @@ class QuantumManager extends Manager
      *         config('aether.drivers.ionq'),
      *     ));
      */
-    public function bridge(): PythonBridge
+    public function bridge(?string $pythonPath = null): PythonBridge
     {
-        return $this->createBridge();
+        return $this->createBridge($pythonPath);
+    }
+
+    /**
+     * Create the local simulator driver over the given interpreter, or over
+     * the configured one when none is given.
+     *
+     * Bypasses the fake and the resolved-driver cache on purpose: this is how
+     * aether:install verifies an interpreter it has just created, with the
+     * exact wiring the application will use afterwards.
+     */
+    public function localDriver(?string $pythonPath = null): LocalSimulatorDriver
+    {
+        return new LocalSimulatorDriver(
+            $this->createBridge($pythonPath),
+            $this->config->get('aether.drivers.local', []),
+        );
     }
 
     /**
@@ -157,10 +173,7 @@ class QuantumManager extends Manager
      */
     protected function createLocalDriver(): LocalSimulatorDriver
     {
-        return new LocalSimulatorDriver(
-            $this->createBridge(),
-            $this->config->get('aether.drivers.local', []),
-        );
+        return $this->localDriver();
     }
 
     /**
@@ -175,12 +188,13 @@ class QuantumManager extends Manager
     }
 
     /**
-     * Create a PythonBridge configured with the python_path from config.
+     * Create a PythonBridge over the given interpreter, or over the
+     * python_path from config when none is given.
      */
-    private function createBridge(): PythonBridge
+    private function createBridge(?string $pythonPath = null): PythonBridge
     {
         return new PythonBridge(
-            $this->config->get('aether.python_path', 'python3'),
+            $pythonPath ?? $this->config->get('aether.python_path', 'python3'),
             (int) $this->config->get('aether.process_timeout', 300),
         );
     }
