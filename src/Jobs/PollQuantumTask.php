@@ -47,7 +47,7 @@ class PollQuantumTask implements ShouldQueue
      * Create a new job instance.
      *
      * @param  string  $taskArn  The task identifier returned by submitCircuit().
-     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The original CircuitBuilder::toArray() payload.
+     * @param  array<string, mixed>  $circuit  The original CircuitBuilder::toArray() payload.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
      */
     public function __construct(

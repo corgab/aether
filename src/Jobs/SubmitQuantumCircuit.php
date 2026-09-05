@@ -43,7 +43,7 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Create a new job instance.
      *
-     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload to submit.
+     * @param  array<string, mixed>  $circuit  The CircuitBuilder::toArray() payload to submit; its shape is verified when the circuit is rebuilt.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
      */
     public function __construct(
@@ -76,7 +76,7 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         try {
             if ($device instanceof ValidatesDispatch) {
-                $device->validateDispatch($this->job?->getConnectionName());
+                $device->validateDispatch($this->pollConnection());
             }
 
             $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
@@ -93,12 +93,29 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $this->persistSubmission($taskArn, $driverName);
 
-        // The poll follows the submission onto the same connection, so the
-        // whole flow runs where it was dispatched and the cache store check
-        // above holds for the job that reads the result back.
+        // The poll follows the submission onto the connection it was
+        // dispatched on, so the whole flow runs where the caller put it and
+        // the cache store check above holds for the job reading the result.
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
-            ->onConnection($this->job?->getConnectionName())
+            ->onConnection($this->connection)
             ->delay((int) config('aether.poll_interval', 5));
+    }
+
+    /**
+     * The queue connection the polling job will run on: the one this job was
+     * dispatched with, or the application default. Read from the dispatch
+     * options rather than the running job, so a synchronous dispatch of this
+     * job does not drag the poll onto the sync connection.
+     */
+    private function pollConnection(): ?string
+    {
+        if ($this->connection !== null) {
+            return $this->connection;
+        }
+
+        $default = config('queue.default');
+
+        return is_string($default) && $default !== '' ? $default : null;
     }
 
     /**

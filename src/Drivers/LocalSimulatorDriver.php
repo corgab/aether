@@ -16,7 +16,7 @@ use Illuminate\Cache\NullStore;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
+use Throwable;
 
 /**
  * Quantum driver for the local Braket simulator.
@@ -114,8 +114,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
         try {
             $store = $this->cache()->getStore();
-        } catch (InvalidArgumentException $e) {
-            // CacheManager rejects both an undefined store and an unsupported driver.
+        } catch (Throwable $e) {
+            // An undefined store or unsupported driver is an InvalidArgumentException;
+            // a driver whose extension is missing surfaces as an Error. Both are config.
             throw InvalidDriverConfigException::unknownCacheStore($this->driverName(), $name ?? $this->defaultCacheStoreName(), $e);
         }
 
@@ -130,9 +131,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
             return;
         }
 
-        $queueDriver = $this->stringOrNull(config("queue.connections.{$queueConnection}.driver"));
+        $queueDriver = config("queue.connections.{$queueConnection}.driver");
 
-        if ($queueDriver === null || $queueDriver === 'sync') {
+        if (! is_string($queueDriver) || $queueDriver === '' || $queueDriver === 'sync') {
             return;
         }
 
@@ -149,7 +150,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
     private function configuredCacheStoreName(): ?string
     {
-        return $this->stringOrNull($this->config['cache_store'] ?? null);
+        return $this->configString('cache_store');
     }
 
     /**
@@ -157,12 +158,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      */
     private function defaultCacheStoreName(): string
     {
-        return $this->stringOrNull(config('cache.default')) ?? 'null';
-    }
+        $default = config('cache.default');
 
-    private function stringOrNull(mixed $value): ?string
-    {
-        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+        return is_string($default) && $default !== '' ? $default : 'null';
     }
 
     private function cacheKey(string $taskArn): string

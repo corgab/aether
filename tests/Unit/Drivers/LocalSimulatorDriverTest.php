@@ -336,13 +336,17 @@ it('trims surrounding whitespace from cache_store', function () use ($config) {
 
 it('refuses a cache_store the cache manager cannot resolve', function (string $store) use ($config) {
     Container::getInstance()->make('config')->set('cache.stores.typo', ['driver' => 'reddis']);
+    Container::getInstance()->make('config')->set('cache.stores.broken', ['driver' => 'broken']);
+    Cache::extend('broken', function (): never {
+        throw new Error('Class "Memcached" not found');
+    });
     $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => $store]);
     $this->bridge->expects($this->never())->method('execute');
 
     expect(fn () => $driver->submitCircuit(
         (new CircuitBuilder($driver, 'local'))->qubits(1)->h(0)->measure()->shots(10)
     ))->toThrow(InvalidDriverConfigException::class, "cache store [{$store}]");
-})->with(['undefined store' => 'reddis', 'unsupported driver' => 'typo']);
+})->with(['undefined store' => 'reddis', 'unsupported driver' => 'typo', 'driver whose creator throws' => 'broken']);
 
 it('refuses the null store whether it is the default or named explicitly', function (?string $cacheStore, string $named) use ($config) {
     $repository = Container::getInstance()->make('config');
