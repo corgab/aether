@@ -117,6 +117,29 @@ it('records the scheduling failure on the persisted task without retrying', func
     Queue::assertNotPushed(PollQuantumTask::class);
 });
 
+it('clears a recorded scheduling failure once the task completes', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager);
+
+    expect(QuantumTask::query()->firstOrFail()->failed_at)->not->toBeNull();
+
+    // An operator picks polling up by hand; the task then completes.
+    ($this->poll)(new PollQuantumTask($this->device->taskArnToReturn, $this->circuit, 'fake-async'));
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Completed)
+        ->and($task->error)->toBeNull()
+        ->and($task->failed_at)->toBeNull()
+        ->and($task->completed_at)->not->toBeNull();
+});
+
 // -------------------------------------------------------------------------
 // Polling
 // -------------------------------------------------------------------------

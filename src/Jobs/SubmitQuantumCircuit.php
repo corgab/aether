@@ -13,6 +13,7 @@ use Aether\QuantumManager;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Jobs\SyncJob;
 
 /**
  * Submits a circuit for asynchronous execution and schedules the first
@@ -33,8 +34,9 @@ class SubmitQuantumCircuit implements ShouldQueue
      * dropped connection to the backend) without operator intervention.
      * Retries only cover failures *before* a task is submitted: once
      * submitCircuit() has returned, retrying would risk creating a second
-     * billable task, so every post-submission failure calls $this->fail()
-     * instead of throwing.
+     * billable task, so a post-submission failure fails the job outright
+     * (or rethrows when not running under a worker) instead of letting a
+     * retryable exception escape.
      */
     public int $tries = 3;
 
@@ -76,9 +78,17 @@ class SubmitQuantumCircuit implements ShouldQueue
 
             $this->persistSchedulingFailure($taskArn, $exception->getMessage());
 
-            if ($this->job === null) {
+            // Outside a real worker there is nothing to mark as failed: with no
+            // queue job, or on the sync connection (where the poll job has just
+            // run inline and any exception is its own, not a scheduling one),
+            // rethrow so the caller sees it and the worker, if any, reports it.
+            if ($this->job === null || $this->job instanceof SyncJob) {
                 throw $exception;
             }
+
+            // fail() bypasses the worker's reporting path, so report here or the
+            // untracked billable task never reaches the application's logs.
+            report($exception);
 
             $this->fail($exception);
         }
