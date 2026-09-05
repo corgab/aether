@@ -13,6 +13,7 @@ use Aether\QuantumManager;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Aether\Tests\Feature\Jobs\FakeSynchronousOnlyDevice;
 use Illuminate\Contracts\Queue\Job;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Facades\Queue;
 
 it('submits the circuit and queues a poll job with the configured delay', function () {
@@ -71,6 +72,7 @@ it('fails without retry when the driver rejects its configuration under a worker
     $manager->extend('fake-async', fn () => $device);
 
     $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
     $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
@@ -89,6 +91,7 @@ it('fails without retry when the circuit is rejected by a ceiling under a worker
     $manager->extend('fake-async', fn () => $device);
 
     $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
     $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
 
     $job = new SubmitQuantumCircuit(['qubits' => 30, 'gates' => [], 'shots' => 100], 'fake-async');
@@ -104,6 +107,7 @@ it('fails without retry when the driver has no asynchronous support under a work
     $manager->extend('fake-sync', fn () => $device);
 
     $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
     $queueJob->shouldReceive('fail')->once()->with(Mockery::on(
         fn (QuantumExecutionException $e): bool => str_contains($e->getMessage(), 'fake-sync')
     ));
@@ -115,6 +119,7 @@ it('fails without retry when the driver has no asynchronous support under a work
 
 it('fails without retry when the driver does not exist under a worker', function () {
     $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
     $queueJob->shouldReceive('fail')->once()->with(Mockery::type(DriverNotFoundException::class));
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'nope');
@@ -128,6 +133,7 @@ it('fails without retry when the serialized circuit cannot be rebuilt under a wo
     $manager->extend('fake-async', fn () => $device);
 
     $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
     $queueJob->shouldReceive('fail')->once()->with(Mockery::type(InvalidCircuitException::class));
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [$gate], 'shots' => 100], 'fake-async');
@@ -149,4 +155,57 @@ it('rethrows a configuration fault when there is no queue job to fail', function
 
     expect(fn () => $job->handle($manager))->toThrow(InvalidDriverConfigException::class);
     Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('hands the device the connection the job actually runs on before submitting', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($queueJob);
+    $job->handle($manager);
+
+    expect($device->validatedConnections)->toBe(['redis'])
+        ->and($device->submittedCircuits)->toHaveCount(1);
+});
+
+it('fails without retry when the device rejects the dispatch for its connection', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnValidate = InvalidDriverConfigException::processLocalCacheStore('fake-async', 'redis');
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $queueJob = Mockery::mock(Job::class);
+    $queueJob->shouldReceive('getConnectionName')->andReturn('redis');
+    $queueJob->shouldReceive('fail')->once()->with($device->throwOnValidate);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($queueJob);
+    $job->handle($manager);
+
+    expect($device->submittedCircuits)->toBeEmpty();
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('rethrows a configuration fault on the sync connection so the dispatcher sees it', function () {
+    Queue::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->throwOnSubmit = InvalidDriverConfigException::missingKeys('fake-async', ['bucket']);
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob(new SyncJob(app(), '{}', 'sync', 'default'));
+
+    expect(fn () => $job->handle($manager))->toThrow(InvalidDriverConfigException::class);
+    expect($device->validatedConnections)->toBe(['sync']);
 });

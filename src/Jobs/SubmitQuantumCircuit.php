@@ -7,6 +7,7 @@ namespace Aether\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
@@ -74,6 +75,10 @@ class SubmitQuantumCircuit implements ShouldQueue
         }
 
         try {
+            if ($device instanceof ValidatesDispatch) {
+                $device->validateDispatch($this->job?->getConnectionName());
+            }
+
             $builder = CircuitBuilder::fromArray($this->circuit, $device, $driverName);
             $taskArn = $device->submitCircuit($builder);
         } catch (InvalidDriverConfigException|InvalidCircuitException $e) {

@@ -7,6 +7,7 @@ namespace Aether\Tests\Feature\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
@@ -19,7 +20,7 @@ use Throwable;
  * configurable snapshot so tests can drive the polling job through every
  * branch of its state machine.
  */
-final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
+final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice, ValidatesDispatch
 {
     /** @var CircuitBuilder[] */
     public array $submittedCircuits = [];
@@ -34,6 +35,12 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
     /** Throw this from submitCircuit() instead of returning an ARN. */
     public ?Throwable $throwOnSubmit = null;
 
+    /** Throw this from validateDispatch(). */
+    public ?Throwable $throwOnValidate = null;
+
+    /** The queue connections validateDispatch() was called with. */
+    public array $validatedConnections = [];
+
     public function __construct()
     {
         $this->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, ['00' => 5, '11' => 5]);
@@ -47,6 +54,15 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
     public function generateEntropy(int $bits): string
     {
         return str_repeat("\x00", (int) ceil($bits / 8));
+    }
+
+    public function validateDispatch(?string $queueConnection = null): void
+    {
+        $this->validatedConnections[] = $queueConnection;
+
+        if ($this->throwOnValidate !== null) {
+            throw $this->throwOnValidate;
+        }
     }
 
     public function submitCircuit(CircuitBuilder $circuit): string

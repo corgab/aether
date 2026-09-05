@@ -53,7 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
-- **Local async results:** `LocalSimulatorDriver` caches them in `drivers.local.cache_store` (default store when null) and refuses the process-local array store with a non-sync queue unless the store is named explicitly.
+- **Local async results:** `LocalSimulatorDriver` caches them in `drivers.local.cache_store` (default store when null) and refuses the process-local array store when the submission job runs on a non-sync connection, unless the store is named explicitly; an unresolvable or null store is refused at dispatch time.
 
 ## Config
 

@@ -543,7 +543,7 @@ class CircuitBuilder
      * @return PendingDispatch Laravel's pending dispatch, chainable with ->onQueue() / ->delay().
      *
      * @throws InvalidCircuitException
-     * @throws InvalidDriverConfigException When the device implements ValidatesDispatch and rejects the dispatch.
+     * @throws InvalidDriverConfigException When the device implements ValidatesDispatch and rejects its cache store.
      */
     public function dispatch(): PendingDispatch
     {
@@ -604,7 +604,13 @@ class CircuitBuilder
         $builder = new static($device, $driverName);
         $builder->qubits((int) ($definition['qubits'] ?? 0));
 
-        foreach ($definition['gates'] ?? [] as $gate) {
+        $gates = $definition['gates'] ?? [];
+
+        if (! is_array($gates)) {
+            throw InvalidCircuitException::malformedGateList($gates);
+        }
+
+        foreach ($gates as $gate) {
             if (! is_array($gate)) {
                 throw InvalidCircuitException::malformedGate($gate);
             }

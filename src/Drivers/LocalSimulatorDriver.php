@@ -13,7 +13,6 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
-use Illuminate\Contracts\Cache\Factory;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -36,7 +35,8 @@ use InvalidArgumentException;
  *    reports it as Completed (or Failed if the key is missing/expired).
  *
  * The cache store used to hold those results is configurable via
- * drivers.local.cache_store (null uses the application's default store).
+ * drivers.local.cache_store (null uses the application's default store) and
+ * is checked before anything runs: see assertCacheStoreIsShared().
  *
  * No process ever actually queues or polls anything; check.py explicitly
  * refuses to run for the "local" driver (see bin/python/check.py).
@@ -55,9 +55,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     /**
      * Reject a dispatch whose result could never be read back by the polling job.
      */
-    public function validateDispatch(): void
+    public function validateDispatch(?string $queueConnection = null): void
     {
-        $this->assertCacheStoreIsShared();
+        $this->assertCacheStoreIsShared($queueConnection);
     }
 
     public function submitCircuit(CircuitBuilder $circuit): string
@@ -78,7 +78,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
         if (! str_starts_with($taskArn, self::ARN_PREFIX)) {
             throw QuantumExecutionException::malformedResponse(
                 'checkTask',
-                'expected a local task identifier of the form "'.self::ARN_PREFIX.'<uuid>", got "'.$taskArn.'".'
+                "Expected a local: task identifier, got [{$taskArn}]."
             );
         }
 
@@ -96,23 +96,19 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      * Guard against caching an asynchronous result where the polling job
      * would never be able to read it back.
      *
-     * The "null" store discards every write, so it can never work. The
-     * "array" store is process-local: when the queue connection crosses
-     * process boundaries (any driver other than "sync") the job that submits
-     * the circuit and the job that polls it can land in different worker
-     * processes and the poll would always miss. An explicitly configured
-     * cache_store — including "array" — is trusted as a deliberate opt-out of
-     * that second check, but it still has to name a defined, non-null store.
+     * The store must resolve and must not be the "null" store, which
+     * discards every write. The "array" store is process-local, so when the
+     * submission job runs on a queue connection that crosses process
+     * boundaries (any driver other than "sync") the polling job would miss;
+     * that check needs the real connection, so it only runs when one is
+     * given, and an explicitly configured cache_store — "array" included —
+     * is trusted as a deliberate opt-out of it.
      *
-     * The queue check reads the default queue connection; a job dispatched
-     * onto another connection with onConnection() is not covered, so name
-     * the store explicitly in that setup. The check runs twice on purpose:
-     * at dispatch time through validateDispatch(), where the developer is
-     * looking, and again in submitCircuit() as the worker-side safety net.
+     * @param  string|null  $queueConnection  The connection the submission job runs on, or null when unknown.
      *
      * @throws InvalidDriverConfigException
      */
-    protected function assertCacheStoreIsShared(): void
+    protected function assertCacheStoreIsShared(?string $queueConnection = null): void
     {
         $name = $this->configuredCacheStoreName();
 
@@ -130,11 +126,11 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
             );
         }
 
-        if ($name !== null || ! $store instanceof ArrayStore) {
+        if ($name !== null || $queueConnection === null || ! $store instanceof ArrayStore) {
             return;
         }
 
-        $queueDriver = $this->defaultQueueDriver();
+        $queueDriver = $this->stringOrNull(config("queue.connections.{$queueConnection}.driver"));
 
         if ($queueDriver === null || $queueDriver === 'sync') {
             return;
@@ -144,35 +140,16 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     }
 
     /**
-     * The driver of the default queue connection, or null when it cannot be resolved.
-     */
-    private function defaultQueueDriver(): ?string
-    {
-        $connection = config('queue.default');
-
-        if (! is_string($connection) || trim($connection) === '') {
-            return null;
-        }
-
-        $driver = config("queue.connections.{$connection}.driver");
-
-        return is_string($driver) && trim($driver) !== '' ? $driver : null;
-    }
-
-    /**
      * Resolve the cache repository asynchronous results are stored in.
      */
     protected function cache(): Repository
     {
-        $root = Cache::getFacadeRoot();
+        return Cache::store($this->configuredCacheStoreName());
+    }
 
-        // Tests may swap the facade with a bare repository instead of the
-        // manager; that repository is then the only store there is.
-        if (! $root instanceof Factory) {
-            return $root;
-        }
-
-        return $root->store($this->configuredCacheStoreName());
+    private function configuredCacheStoreName(): ?string
+    {
+        return $this->stringOrNull($this->config['cache_store'] ?? null);
     }
 
     /**
@@ -180,15 +157,11 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      */
     private function defaultCacheStoreName(): string
     {
-        $default = config('cache.default');
-
-        return is_string($default) && $default !== '' ? $default : 'null';
+        return $this->stringOrNull(config('cache.default')) ?? 'null';
     }
 
-    private function configuredCacheStoreName(): ?string
+    private function stringOrNull(mixed $value): ?string
     {
-        $value = $this->config['cache_store'] ?? null;
-
         return is_string($value) && trim($value) !== '' ? $value : null;
     }
 

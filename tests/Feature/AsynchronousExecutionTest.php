@@ -36,7 +36,7 @@ it('dispatches a circuit as a queued submission job carrying the pinned driver',
     });
 });
 
-it('refuses to dispatch on the local driver when the cache store cannot be shared', function () {
+it('does not judge the cache store by the default queue connection at dispatch time', function () {
     Queue::fake();
     config([
         'cache.default' => 'array',
@@ -44,8 +44,20 @@ it('refuses to dispatch on the local driver when the cache store cannot be share
         'queue.connections.redis.driver' => 'redis',
     ]);
 
+    Quantum::circuit('local')->qubits(1)->h(0)->measure()->dispatch();
+
+    Queue::assertPushed(SubmitQuantumCircuit::class);
+});
+
+it('refuses to dispatch on the local driver when the default store discards writes', function () {
+    Queue::fake();
+    config([
+        'cache.stores.void' => ['driver' => 'null'],
+        'cache.default' => 'void',
+    ]);
+
     expect(fn () => Quantum::circuit('local')->qubits(1)->h(0)->measure()->dispatch())
-        ->toThrow(InvalidDriverConfigException::class, 'AETHER_LOCAL_CACHE_STORE');
+        ->toThrow(InvalidDriverConfigException::class, 'cache store [void]');
 
     Queue::assertNothingPushed();
 });

@@ -268,16 +268,13 @@ it('falls back to the default cache store when cache_store is not set', function
     'blank string' => [''],
 ]);
 
-it('refuses to submit on the array store when the queue connection is not synchronous', function () {
-    Container::getInstance()->make('config')->set('queue.default', 'redis');
+it('refuses the array store when the submission job runs on a connection that crosses processes', function () {
     Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
-
-    $this->bridge->expects($this->never())->method('execute');
 
     $exception = null;
 
     try {
-        $this->driver->submitCircuit($this->createMock(CircuitBuilder::class));
+        $this->driver->validateDispatch('redis');
     } catch (InvalidDriverConfigException $caught) {
         $exception = $caught;
     }
@@ -288,37 +285,37 @@ it('refuses to submit on the array store when the queue connection is not synchr
         ->toContain('redis');
 });
 
-it('allows the array store when the queue connection is synchronous', function () {
-    Container::getInstance()->make('config')->set('queue.default', 'sync');
+it('allows the array store when the submission job runs on the sync connection', function () {
     Container::getInstance()->make('config')->set('queue.connections.sync.driver', 'sync');
 
-    $circuit = $this->createMock(CircuitBuilder::class);
-    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+    $this->driver->validateDispatch('sync');
 
-    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
-
-    $taskArn = $this->driver->submitCircuit($circuit);
-
-    expect($taskArn)->toStartWith('local:');
+    expect(true)->toBeTrue();
 });
 
-it('allows the array store when the queue connection cannot be resolved', function () {
-    // No "queue.default" configured at all (the shared beforeEach leaves it null).
-    $circuit = $this->createMock(CircuitBuilder::class);
-    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+it('allows the array store when the connection is unknown or cannot be resolved', function (?string $connection) {
+    $this->driver->validateDispatch($connection);
 
-    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+    expect(true)->toBeTrue();
+})->with(['dispatch time' => [null], 'undefined connection' => ['ghost']]);
 
-    $taskArn = $this->driver->submitCircuit($circuit);
-
-    expect($taskArn)->toStartWith('local:');
-});
-
-it('trusts an explicitly configured array store', function () use ($config) {
+it('does not consult the queue when submitCircuit is called directly', function () {
     Container::getInstance()->make('config')->set('queue.default', 'redis');
     Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
 
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    expect($this->driver->submitCircuit($circuit))->toStartWith('local:');
+});
+
+it('trusts an explicitly configured array store', function () use ($config) {
+    Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
+
     $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['cache_store' => 'array']));
+    $driver->validateDispatch('redis');
 
     $circuit = $this->createMock(CircuitBuilder::class);
     $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
@@ -344,9 +341,6 @@ it('refuses the null store whether it is the default or named explicitly', funct
     $repository = Container::getInstance()->make('config');
     $repository->set('cache.stores.void', ['driver' => 'null']);
     $repository->set('cache.default', $cacheStore === null ? 'void' : 'array');
-    $repository->set('queue.default', 'sync');
-    $repository->set('queue.connections.sync.driver', 'sync');
-
     $driver = new LocalSimulatorDriver($this->bridge, [...$config, 'cache_store' => $cacheStore]);
     $this->bridge->expects($this->never())->method('execute');
 
@@ -359,13 +353,14 @@ it('refuses the null store whether it is the default or named explicitly', funct
     "Laravel's implicit null store" => ['null', 'null'],
 ]);
 
-it('rejects a dispatch up front through validateDispatch', function () {
-    Container::getInstance()->make('config')->set('queue.default', 'redis');
-    Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
+it('rejects a discarding default store already at dispatch time', function () {
+    $repository = Container::getInstance()->make('config');
+    $repository->set('cache.stores.void', ['driver' => 'null']);
+    $repository->set('cache.default', 'void');
 
     expect($this->driver)->toBeInstanceOf(ValidatesDispatch::class)
         ->and(fn () => $this->driver->validateDispatch())
-        ->toThrow(InvalidDriverConfigException::class, 'AETHER_LOCAL_CACHE_STORE');
+        ->toThrow(InvalidDriverConfigException::class, 'cache store [void]');
 });
 
 // -------------------------------------------------------------------------
