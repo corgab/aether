@@ -8,7 +8,7 @@ Build quantum circuits, generate hardware-grade entropy, and swap backends with 
 
 - PHP 8.3+
 - Laravel 13
-- Python 3.11+ with `amazon-braket-sdk` (CI runs 3.11 and 3.12)
+- Python 3.12+ with `amazon-braket-sdk` (CI runs 3.12 and 3.13)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation
@@ -49,9 +49,22 @@ AETHER_S3_BUCKET=your-bucket
 AETHER_DEVICE_ARN=arn:aws:braket:::device/quantum-simulator/amazon/sv1
 ```
 
-`AETHER_S3_BUCKET` is required by the `aws` driver, together with the region and the device ARN: a missing or empty value throws an `InvalidDriverConfigException` on every call, including a synchronous `->run()` against the SV1 simulator. Braket writes the task results to `s3://<bucket>/results`.
+`AETHER_S3_BUCKET` is required by the `aws` driver, together with the region and the device ARN: a missing or empty value throws an `InvalidDriverConfigException` on every call. Braket writes the task results to `s3://<bucket>/results`.
+
+See [Choosing a Driver](#choosing-a-driver) for a comparison of the available backends.
 
 ## Usage
+
+### Choosing a Driver
+
+| | `local` | `aws` + SV1 | `aws` + QPU |
+|---|---|---|---|
+| Sync `->run()` | yes | yes | no — `synchronous_safe: false` |
+| Async `->dispatch()` | yes (inline) | yes | yes, requires queue worker |
+| Limits | `max_qubits` (25 ≈ 512 MB) | Braket device limits | device qubits + queue time |
+| Guards | qubit ceiling | `max_cost_per_run` (rough) | `max_cost_per_run` |
+
+Typically, you will develop on the `local` simulator to iterate quickly for free. Once your circuit is ready, you can validate it against AWS Braket using the SV1 simulator to catch any provider-specific validation errors. Finally, you can submit the validated circuit to a real QPU asynchronously.
 
 ### Quantum Circuits
 
@@ -123,7 +136,7 @@ $batch[0]->probabilities();
 
 ### Asynchronous Execution
 
-Real QPU tasks queue for minutes or hours, so a synchronous `->run()` would block the request. Use `->dispatch()` instead: the circuit is submitted by a queued job, polled until it reaches a terminal state, and the result is delivered through an event.
+Use `->dispatch()` for asynchronous execution: the circuit is submitted by a queued job, polled until it reaches a terminal state, and the result is delivered through an event.
 
 ```php
 use Aether\Facades\Quantum;
@@ -439,7 +452,7 @@ composer test
 
 ## Synchronous Safety
 
-When using real QPU hardware, requests can take minutes. Set `synchronous_safe` to `false` in your driver config to prevent accidental synchronous calls that would block your HTTP request:
+Set `synchronous_safe` to `false` in your driver config to prevent accidental synchronous calls that would block your HTTP request:
 
 ```php
 // config/aether.php
@@ -453,7 +466,7 @@ This will throw a `QuantumExecutionException` on direct calls to `->run()`, forc
 
 ## Qubit Ceiling
 
-The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling (default `25`, roughly 512 MB) on every `->run()`, `->dispatch()`, `Quantum::batch()`, and entropy generation call:
+The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling on every `->run()`, `->dispatch()`, `Quantum::batch()`, and entropy generation call:
 
 ```php
 // config/aether.php
@@ -463,7 +476,7 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default — Braket enforces its own per-device qubit limits — but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
 
 ## Cost Estimation
 
@@ -492,7 +505,7 @@ AETHER_AWS_PRICE_PER_TASK=0.30
 AETHER_AWS_PRICE_PER_SHOT=0.00035
 ```
 
-Managed simulators (e.g. SV1) bill per-minute instead, so treat simulator estimates as a rough proxy rather than an exact figure. `estimateCost()` is only available on drivers implementing `EstimatesCost`; calling it on the `local` driver (which is free) throws a `QuantumExecutionException`. `Quantum::fake()` implements the contract too — every estimate is free by default, and `$fake->respondCostWith($estimate)` (a `CostEstimate` or a `fn (int $shots, int $tasks): CostEstimate` closure) stubs a specific one, so budgeting code stays testable.
+Treat simulator estimates as a rough proxy rather than an exact figure. `estimateCost()` is only available on drivers implementing `EstimatesCost`; calling it on the `local` driver throws a `QuantumExecutionException`. `Quantum::fake()` implements the contract too — every estimate is free by default, and `$fake->respondCostWith($estimate)` (a `CostEstimate` or a `fn (int $shots, int $tasks): CostEstimate` closure) stubs a specific one, so budgeting code stays testable.
 
 Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit or batch whose estimated cost exceeds it, before any AWS call:
 
