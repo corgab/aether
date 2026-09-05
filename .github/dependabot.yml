@@ -13,3 +13,10 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore(deps)"
+
+  - package-ecosystem: "pip"
+    directory: "/bin/python"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
