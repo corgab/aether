@@ -165,16 +165,25 @@ Python tests live in `tests/python/` and test gate validation, circuit translati
 
 ## Pull Request Guidelines
 
-### Branching & Commits
+### Fork, Branch & Commits
 
-1. Create a dedicated topic branch from `main`:
+Only maintainers can push to this repository, so contributions come from a fork:
+
+1. Fork the repository on GitHub and clone your fork:
    ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/issue-description
+   git clone git@github.com:<your-username>/aether.git
+   cd aether
+   git remote add upstream https://github.com/corgab/aether.git
    ```
-2. Keep pull requests focused on a single change or fix.
-3. Write clear, meaningful commit messages using [Conventional Commits](https://www.conventionalcommits.org/):
+2. Create a dedicated topic branch from the latest `main`:
+   ```bash
+   git fetch upstream
+   git checkout -b fix/issue-description upstream/main
+   # or feature/your-feature-name
+   ```
+3. Push the branch to your fork and open a pull request against `corgab/aether:main`. Leave "Allow edits by maintainers" enabled so small follow-ups can be pushed to your branch during review. The pull request template asks for a summary, the changes, the tests you ran and the issue it closes.
+4. Keep pull requests focused on a single change or fix.
+5. Write clear, meaningful commit messages using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add QFT gate support`
    - `fix: validate qubit indices in Python bridge`
    - `docs: update driver comparison table`
@@ -183,15 +192,19 @@ Python tests live in `tests/python/` and test gate validation, circuit translati
 
 ### Keeping Your Branch Up to Date
 
-If changes have landed on `main` while working on your feature, update your branch from `main` to ensure there are no conflicts:
+If changes have landed on `main` while working on your feature, update your branch from the upstream `main` to ensure there are no conflicts:
 
 ```bash
-git fetch origin
-git merge origin/main
-# or git rebase origin/main
+git fetch upstream
+git merge upstream/main
+# or git rebase upstream/main
 ```
 
 > **Note**: Maintainers manage the merge strategy (such as squash-and-merge) when integrating pull requests into `main`, so you do not need to manually squash your commits prior to review.
+
+### Review
+
+A maintainer is requested as reviewer automatically (see `.github/CODEOWNERS`). The first pull request from a new contributor needs a maintainer to approve the CI run before it starts; after that the checks run on every push. `main` is protected: a pull request is merged only when every check is green.
 
 ### Pre-Flight Checklist
 
@@ -203,5 +216,17 @@ Before opening your pull request, please verify that:
 - [ ] Code is formatted with Laravel Pint: `composer format`
 - [ ] New features or bug fixes include corresponding Pest and/or Python tests
 - [ ] Relevant documentation or docblocks have been added or updated
+
+## License
+
+Aether is released under the [MIT License](LICENSE). By contributing you agree that your contributions are licensed under the same terms.
+
+## Security
+
+Please do not report security problems in public issues or pull requests. Follow the private process described in [SECURITY.md](SECURITY.md).
+
+## Questions
+
+For usage questions and ideas that are not yet concrete enough for an issue, use [GitHub Discussions](https://github.com/corgab/aether/discussions).
 
 Thank you for helping make Aether better!

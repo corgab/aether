@@ -517,6 +517,10 @@ Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit 
 
 The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
 
+## Contributing
+
+Bug reports, feature ideas and pull requests are welcome. Start from [CONTRIBUTING.md](CONTRIBUTING.md) for the fork workflow, the coding standards and the checks to run before opening a pull request. Security problems go through the private process in [SECURITY.md](SECURITY.md), never through public issues.
+
 ## License
 
-MIT
+Aether is open-source software licensed under the [MIT License](LICENSE).
