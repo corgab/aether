@@ -198,7 +198,9 @@ class TestAwsRunBatch:
         requirements_text = requirements_path.read_text()
 
         match = re.search(
-            r"^amazon-braket-sdk>=(\d+)\.(\d+)\.(\d+)", requirements_text, re.MULTILINE
+            r"^amazon-braket-sdk\s*(?:>=|==|~=)\s*(\d+)\.(\d+)\.(\d+)",
+            requirements_text,
+            re.MULTILINE,
         )
         assert match is not None, "amazon-braket-sdk requirement not found in requirements.txt"
 
@@ -210,6 +212,23 @@ class TestAwsRunBatch:
             "onward; bin/python/requirements.txt must declare at least "
             "that floor or aws_provider.run_batch breaks on older SDKs."
         )
+
+    def test_run_batch_rejects_an_sdk_older_than_the_floor(self, monkeypatch):
+        monkeypatch.setattr(aws_provider, "_installed_sdk_version", lambda: (1, 124, 3))
+        device = _load_fake_provider().resolve_device({})
+
+        with pytest.raises(RuntimeError, match=r"amazon-braket-sdk >= 1\.125\.0.*1\.124\.3 is installed"):
+            aws_provider.run_batch(device, ["c1"], [100], {"bucket": "my-bucket"})
+
+        assert device.run_batch_calls == []
+
+    def test_run_batch_proceeds_when_the_sdk_version_is_unknown(self, monkeypatch):
+        monkeypatch.setattr(aws_provider, "_installed_sdk_version", lambda: None)
+        device = _load_fake_provider().resolve_device({})
+
+        aws_provider.run_batch(device, ["c1"], [100], {"bucket": "my-bucket"})
+
+        assert len(device.run_batch_calls) == 1
 
     @requires_braket
     def test_installed_sdk_accepts_a_sequence_of_shots(self):

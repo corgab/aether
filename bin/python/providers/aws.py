@@ -7,9 +7,47 @@ per-task shot counts via ``run_batch``, and ARN-based polling via
 ``check_task``.
 """
 
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 _DEFAULT_DEVICE_ARN = "arn:aws:braket:::device/quantum-simulator/amazon/sv1"
+
+# ``AwsDevice.run_batch`` accepts one shot count per task from this release on;
+# it is the floor declared in bin/python/requirements.txt.
+_MIN_SDK_FOR_PER_TASK_SHOTS = (1, 125, 0)
+
+
+def _installed_sdk_version() -> tuple[int, ...] | None:
+    """Return the installed ``amazon-braket-sdk`` version, or None if unknown."""
+    try:
+        raw = version("amazon-braket-sdk")
+    except PackageNotFoundError:
+        return None
+
+    parts = raw.split(".")[:3]
+    if not all(part.isdigit() for part in parts):
+        return None
+
+    return tuple(int(part) for part in parts)
+
+
+def _assert_per_task_shots_supported() -> None:
+    """Fail with an upgrade hint instead of an opaque SDK error on old SDKs.
+
+    An environment installed under an older requirements floor keeps passing
+    every other check and would otherwise fail deep inside boto3 parameter
+    validation when ``shots`` is a list.
+    """
+    installed = _installed_sdk_version()
+
+    if installed is not None and installed < _MIN_SDK_FOR_PER_TASK_SHOTS:
+        floor = ".".join(str(part) for part in _MIN_SDK_FOR_PER_TASK_SHOTS)
+        raise RuntimeError(
+            f"Batch execution on the 'aws' driver needs amazon-braket-sdk >= {floor} "
+            f"(per-task shot counts in AwsDevice.run_batch); "
+            f"{'.'.join(str(part) for part in installed)} is installed. "
+            f"Upgrade with: pip install -r bin/python/requirements.txt"
+        )
 
 
 def build_aws_session(config: dict[str, Any]) -> Any:
@@ -67,6 +105,8 @@ def run_batch(
     Per-task shot counts require ``amazon-braket-sdk`` >= 1.125.0, which is
     the floor declared in ``bin/python/requirements.txt``.
     """
+    _assert_per_task_shots_supported()
+
     batch = device.run_batch(circuits, shots=shots_list, **run_options(config))
     # Without fail_unsuccessful the SDK returns None for FAILED/CANCELLED
     # tasks; let it raise a clear RuntimeError instead.
