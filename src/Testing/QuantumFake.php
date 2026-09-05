@@ -93,6 +93,8 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
 
     private ?TaskStatus $stubbedTaskStatus = null;
 
+    private ?string $stubbedTaskError = null;
+
     /** @var CostEstimate|Closure(int, int): CostEstimate|null */
     private CostEstimate|Closure|null $costStub = null;
 
@@ -214,14 +216,15 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
      * so repeated polling of one task consumes a single ResultSequence entry
      * and always reports the same counts — like a real completed task. Use
      * respondWithTaskStatus() to simulate a non-terminal or failed status
-     * instead, for testing polling logic.
+     * instead (optionally with a backend failure reason), for testing
+     * polling logic.
      */
     public function checkTask(string $taskArn): TaskSnapshot
     {
         $status = $this->stubbedTaskStatus ?? TaskStatus::Completed;
 
         if (! $status->isSuccessful()) {
-            return new TaskSnapshot($status);
+            return new TaskSnapshot($status, null, $this->stubbedTaskError);
         }
 
         $circuit = $this->tasksByArn[$taskArn] ?? null;
@@ -326,10 +329,23 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
      * flight (e.g. Queued, Running) or that terminated unsuccessfully
      * (Failed, Cancelled), so polling loops and event handling can be
      * exercised in tests.
+     *
+     * @param  string|null  $error  The backend failure reason to report alongside an
+     *                              unsuccessful status, as a real provider would.
+     *
+     * @throws InvalidArgumentException When a reason is given for a status that is
+     *                                  not a failure, since checkTask() would never report it.
      */
-    public function respondWithTaskStatus(TaskStatus $status): static
+    public function respondWithTaskStatus(TaskStatus $status, ?string $error = null): static
     {
+        if ($error !== null && ! in_array($status, [TaskStatus::Failed, TaskStatus::Cancelled], true)) {
+            throw new InvalidArgumentException(
+                "A failure reason can only accompany a Failed or Cancelled task status, [{$status->value}] given."
+            );
+        }
+
         $this->stubbedTaskStatus = $status;
+        $this->stubbedTaskError = $error;
 
         return $this;
     }

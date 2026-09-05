@@ -170,6 +170,19 @@ it('records the backend failure state and message', function () {
         ->and($task->counts)->toBeNull();
 });
 
+it('persists the backend failure reason reported with the failed state', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Failed, null, 'Device is offline');
+    $job = ($this->submit)();
+
+    expect(fn () => ($this->poll)($job))->toThrow(TaskFailedException::class, 'Device is offline');
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Failed)
+        ->and($task->error)->toContain('Device is offline')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
 it('records a completed task that returned no counts as an error', function () {
     $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, null);
     $job = ($this->submit)();

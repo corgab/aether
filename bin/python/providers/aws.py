@@ -9,6 +9,8 @@ per-task shot counts via ``run_batch``, and ARN-based polling via
 
 from typing import Any
 
+from common import require_result
+
 _DEFAULT_DEVICE_ARN = "arn:aws:braket:::device/quantum-simulator/amazon/sv1"
 
 
@@ -64,11 +66,19 @@ def run_batch(
 
     ``AwsDevice.run_batch`` accepts one shot count per task natively, so the
     whole batch always goes through in one call regardless of mixed shots.
+
+    Raises:
+        RuntimeError: When a task in the batch ended without a result, naming
+            that task and the ``failureReason`` Braket reported for it. The
+            SDK's own ``fail_unsuccessful`` flag would only say how many tasks
+            failed, so the pairing is done here instead.
     """
     batch = device.run_batch(circuits, shots=shots_list, **run_options(config))
-    # Without fail_unsuccessful the SDK returns None for FAILED/CANCELLED
-    # tasks; let it raise a clear RuntimeError instead.
-    return batch.results(fail_unsuccessful=True)
+    # results() retries unsuccessful tasks and swaps them into batch.tasks,
+    # so the tasks are read only once the results are final.
+    results = batch.results()
+
+    return [require_result(task, result) for task, result in zip(batch.tasks, results)]
 
 
 def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
@@ -76,7 +86,9 @@ def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
 
     The ``status`` value is passed through verbatim from Braket (``CREATED``,
     ``QUEUED``, ``RUNNING``, ``COMPLETED``, ``FAILED``, ``CANCELLED``); a
-    ``counts`` histogram is added once the task has completed.
+    ``counts`` histogram is added once the task has completed, and an
+    ``error`` string when the task ended as ``FAILED`` or ``CANCELLED`` and
+    Braket reported a ``failureReason`` for it.
     """
     from braket.aws import AwsQuantumTask  # noqa: PLC0415
 
@@ -87,5 +99,12 @@ def check_task(task_id: str, config: dict[str, Any]) -> dict[str, Any]:
 
     if state == "COMPLETED":
         output["counts"] = dict(task.result().measurement_counts)
+
+    if state in ("FAILED", "CANCELLED"):
+        # state() has just fetched GetQuantumTask; reuse that response.
+        reason = task.metadata(use_cached_value=True).get("failureReason")
+
+        if reason:
+            output["error"] = str(reason)
 
     return output

@@ -11,10 +11,13 @@ final readonly class TaskSnapshot
 {
     /**
      * @param  array<string, int>|null  $counts  Measurement counts, present only once the task completed.
+     * @param  string|null  $error  Backend-supplied failure reason, present only when the task
+     *                              failed or was cancelled and the provider reported one.
      */
     public function __construct(
         public TaskStatus $status,
         public ?array $counts = null,
+        public ?string $error = null,
     ) {}
 
     /**
@@ -24,9 +27,12 @@ final readonly class TaskSnapshot
      */
     public static function fromResponse(array $response): self
     {
+        $error = $response['error'] ?? null;
+
         return new self(
             TaskStatus::from((string) ($response['status'] ?? '')),
             isset($response['counts']) && is_array($response['counts']) ? $response['counts'] : null,
+            is_string($error) && trim($error) !== '' ? trim($error) : null,
         );
     }
 }

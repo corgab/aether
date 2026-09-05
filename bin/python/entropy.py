@@ -35,7 +35,7 @@ import json
 import sys
 from typing import Any
 
-from common import resolve_run_target
+from common import require_result, resolve_run_target
 
 
 def _build_entropy_circuit(n_qubits: int) -> "Circuit":
@@ -73,6 +73,10 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     Returns:
         A dict with a single ``"bits"`` key whose value is the concatenated
         bitstring from all shots.
+
+    Raises:
+        RuntimeError: When the task finished without a result (``FAILED`` or
+            ``CANCELLED``), or returned no measurement data.
     """
     n_qubits: int = payload["qubits"]
     shots: int = payload["shots"]
@@ -83,7 +87,7 @@ def _run(payload: dict[str, Any]) -> dict[str, Any]:
     device, run_options = resolve_run_target(driver, driver_config)
 
     task = device.run(circuit, shots=shots, **run_options)
-    result = task.result()
+    result = require_result(task, task.result())
 
     measurements = result.measurements
     if measurements is None or len(measurements) == 0:

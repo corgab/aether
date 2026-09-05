@@ -177,7 +177,7 @@ AETHER_MAX_POLL_ATTEMPTS=720
 
 `PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
 
-A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. When Braket reports a `failureReason` for the task, it is appended to the `TaskFailedException` message (and readable on its own through `$exception->reason()`), and stored in the `error` column when task persistence is enabled — so you usually know *why* the task failed without opening the console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
 
@@ -192,7 +192,7 @@ php artisan migrate
 
 Set `AETHER_PERSIST_TASKS=true` in your `.env`.
 
-When enabled, Aether inserts a row into `quantum_tasks` containing the circuit, shots, and driver when a task is dispatched, and updates its `status` and `counts` as the polling job progresses. The `status` always mirrors the backend's real state. Polling problems (like exhaustion or malformed responses) are logged in `error` and `failed_at`.
+When enabled, Aether inserts a row into `quantum_tasks` containing the circuit, shots, and driver when a task is dispatched, and updates its `status` and `counts` as the polling job progresses. The `status` always mirrors the backend's real state. The `error` column records whatever ended the task, alongside `failed_at`: the backend's own failure reason when it reported one, or a polling problem of our own (exhaustion, malformed response).
 
 Since persistence is strictly best-effort, a database failure never affects queue behaviour or prevents the `CircuitCompleted` event from being emitted.
 
@@ -234,7 +234,7 @@ A provider module may define four module-level hooks; only the first is required
 | `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
 | `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
 | `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
-| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
+| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED` and, optionally, `"error"` with the backend's failure reason when `FAILED` or `CANCELLED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
 
 `config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
 
@@ -440,6 +440,7 @@ Calling `Quantum::fake()` with no arguments keeps the original deterministic beh
 
 ```php
 $fake->respondWithTaskStatus(TaskStatus::Running); // simulate a task still in flight
+$fake->respondWithTaskStatus(TaskStatus::Failed, 'Device offline'); // ...or one the backend failed, with its reason
 ```
 
 ### Running the Test Suite

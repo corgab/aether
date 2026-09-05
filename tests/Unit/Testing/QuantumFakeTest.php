@@ -482,6 +482,36 @@ it('respondWithTaskStatus can simulate a failed task', function () {
         ->and($snapshot->counts)->toBeNull();
 });
 
+it('respondWithTaskStatus can simulate a backend failure reason', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithTaskStatus(TaskStatus::Failed, 'boom');
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $snapshot = $fake->checkTask($fake->submitCircuit($circuit));
+
+    expect($snapshot->status)->toBe(TaskStatus::Failed)
+        ->and($snapshot->error)->toBe('boom');
+});
+
+it('respondWithTaskStatus rejects a failure reason for a status that is not a failure', function (TaskStatus $status) {
+    $fake = new QuantumFake;
+
+    expect(fn () => $fake->respondWithTaskStatus($status, 'boom'))
+        ->toThrow(InvalidArgumentException::class, "[{$status->value}] given");
+})->with([TaskStatus::Completed, TaskStatus::Running, TaskStatus::Queued, TaskStatus::Created]);
+
+it('respondWithTaskStatus clears a previously stubbed failure reason', function () {
+    $fake = new QuantumFake;
+    $fake->respondWithTaskStatus(TaskStatus::Failed, 'boom');
+    $fake->respondWithTaskStatus(TaskStatus::Cancelled);
+    $circuit = (new CircuitBuilder($fake))->qubits(1)->measure();
+
+    $snapshot = $fake->checkTask($fake->submitCircuit($circuit));
+
+    expect($snapshot->status)->toBe(TaskStatus::Cancelled)
+        ->and($snapshot->error)->toBeNull();
+});
+
 it('respondWithTaskStatus returns self for chaining', function () {
     $fake = new QuantumFake;
 

@@ -9,6 +9,7 @@ actual Braket device need the SDK and are skipped when it is not installed.
 import importlib.util
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -174,6 +175,112 @@ class TestDefaultRunBatch:
             {"circuit": "c2", "shots": 200},
         ]
         assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+
+
+class TestAwsCheckTask:
+    """check_task() against a fake braket.aws module injected into sys.modules.
+
+    ``providers.aws`` imports ``AwsQuantumTask`` inside the function, so the
+    import resolves through ``sys.modules`` at call time and needs entries for
+    both the ``braket`` package and its ``braket.aws`` submodule.
+    """
+
+    @pytest.fixture
+    def fake_task(self, monkeypatch):
+        state = {"value": "COMPLETED", "metadata": {}, "counts": {"00": 5, "11": 5}, "metadata_calls": []}
+
+        class FakeResult:
+            measurement_counts = state["counts"]
+
+        class FakeAwsQuantumTask:
+            def __init__(self, task_id, aws_session=None):
+                self.id = task_id
+
+            def state(self):
+                return state["value"]
+
+            def metadata(self, use_cached_value=False):
+                state["metadata_calls"].append(use_cached_value)
+                return state["metadata"]
+
+            def result(self):
+                return FakeResult()
+
+        braket_aws = ModuleType("braket.aws")
+        braket_aws.AwsQuantumTask = FakeAwsQuantumTask
+        braket_aws.AwsSession = object
+
+        braket_pkg = ModuleType("braket")
+        braket_pkg.aws = braket_aws
+
+        monkeypatch.setitem(sys.modules, "braket", braket_pkg)
+        monkeypatch.setitem(sys.modules, "braket.aws", braket_aws)
+        monkeypatch.setattr(aws_provider, "build_aws_session", lambda config: "session")
+
+        return state
+
+    def test_completed_task_returns_its_counts(self, fake_task):
+        output = aws_provider.check_task("arn:task/abc", {})
+
+        assert output == {"status": "COMPLETED", "counts": {"00": 5, "11": 5}}
+
+    def test_failed_task_forwards_the_braket_failure_reason(self, fake_task):
+        fake_task["value"] = "FAILED"
+        fake_task["metadata"] = {"failureReason": "Device is offline"}
+
+        assert aws_provider.check_task("arn:task/abc", {}) == {
+            "status": "FAILED",
+            "error": "Device is offline",
+        }
+
+    def test_cancelled_task_forwards_the_braket_failure_reason(self, fake_task):
+        fake_task["value"] = "CANCELLED"
+        fake_task["metadata"] = {"failureReason": "Cancelled by user"}
+
+        assert aws_provider.check_task("arn:task/abc", {})["error"] == "Cancelled by user"
+
+    def test_failed_task_without_a_reason_has_no_error_key(self, fake_task):
+        fake_task["value"] = "FAILED"
+        fake_task["metadata"] = {"failureReason": ""}
+
+        assert aws_provider.check_task("arn:task/abc", {}) == {"status": "FAILED"}
+
+    def test_in_flight_task_has_neither_counts_nor_error(self, fake_task):
+        fake_task["value"] = "RUNNING"
+
+        assert aws_provider.check_task("arn:task/abc", {}) == {"status": "RUNNING"}
+
+    def test_reads_the_failure_reason_from_the_response_state_already_fetched(self, fake_task):
+        fake_task["value"] = "FAILED"
+        fake_task["metadata"] = {"failureReason": "Device is offline"}
+
+        aws_provider.check_task("arn:task/abc", {})
+
+        assert fake_task["metadata_calls"] == [True]
+
+
+class TestAwsRunBatch:
+    """run_batch() pairs every batch result with its task before failing."""
+
+    def _device(self, **config):
+        return load_provider("custom", {"python_provider": FAKE_PROVIDER_PATH, **config}).resolve_device(config)
+
+    def test_returns_one_result_per_circuit(self):
+        device = self._device()
+
+        results = aws_provider.run_batch(device, ["c1", "c2"], [100, 200], {"bucket": "b"})
+
+        assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+        assert device.run_batch_calls[0]["shots"] == [100, 200]
+
+    def test_names_the_failed_task_and_its_reason(self):
+        device = self._device(failing_indices=[1], failure_reason="Device is offline")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Quantum task stub-task-2 ended in state FAILED: Device is offline$",
+        ):
+            aws_provider.run_batch(device, ["c1", "c2"], [100, 100], {"bucket": "b"})
 
 
 class TestResolveRunTarget:
