@@ -7,6 +7,8 @@ namespace Aether\Tasks;
 /**
  * Lifecycle states of an asynchronous quantum task, mirroring AWS Braket task states.
  *
+ * The cases must track the QuantumTaskStatus values of the Braket API
+ * verbatim: pollTask() rejects any status outside this list as malformed.
  * Cancelling is the transient state between a cancel request and the task
  * reaching Cancelled; it is not terminal.
  */

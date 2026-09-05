@@ -40,8 +40,10 @@ it('knows which state is successful', function () {
         ->and(TaskStatus::Running->isSuccessful())->toBeFalse();
 });
 
-it('covers every Braket task state', function () {
-    expect(array_column(TaskStatus::cases(), 'value'))->toBe([
+it('covers exactly the Braket task states', function () {
+    // Guards the set, not the declaration order: the enum must track the
+    // QuantumTaskStatus values of the Braket API verbatim.
+    expect(array_column(TaskStatus::cases(), 'value'))->toEqualCanonicalizing([
         'CREATED',
         'QUEUED',
         'RUNNING',

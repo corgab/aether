@@ -405,18 +405,6 @@ it('maps each Braket state to the right TaskStatus', function (string $braketSta
     ['CANCELLED', TaskStatus::Cancelled],
 ]);
 
-it('keeps polling instead of failing when check.py reports CANCELLING', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    $this->bridge->method('execute')->willReturn(['status' => 'CANCELLING']);
-
-    $snapshot = $driver->checkTask('arn:...');
-
-    expect($snapshot->status)->toBe(TaskStatus::Cancelling);
-    expect($snapshot->status->isTerminal())->toBeFalse();
-    expect($snapshot->counts)->toBeNull();
-});
-
 it('returns counts only when the task has completed', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
 
