@@ -150,6 +150,10 @@ class PollQuantumTask implements ShouldQueue
             if ($counts !== null) {
                 $task->counts = $counts;
                 $task->completed_at = now();
+                // A completed task is not failed, whatever an earlier polling
+                // hiccup (e.g. a scheduling failure recovered by hand) recorded.
+                $task->error = null;
+                $task->failed_at = null;
             }
 
             if ($error !== null) {
