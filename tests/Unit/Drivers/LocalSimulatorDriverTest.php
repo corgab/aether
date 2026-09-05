@@ -9,12 +9,12 @@ use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
-use Illuminate\Cache\ArrayStore;
-use Illuminate\Cache\Repository as CacheRepository;
+use Illuminate\Cache\CacheManager;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Container;
 use Illuminate\Support\Facades\Cache;
@@ -41,13 +41,33 @@ beforeEach(function () use ($config) {
     $this->driver = new LocalSimulatorDriver($this->bridge, $this->config);
 
     // submitCircuit()/checkTask() go through the Cache facade and the global
-    // config() helper. Neither requires a full Laravel app: an ArrayStore-backed
-    // cache repository is swapped into the facade, and a bare container carries
-    // a minimal config repository for the config() helper to resolve.
-    Cache::swap(new CacheRepository(new ArrayStore));
-    Container::setInstance(tap(new Container, function (Container $container) {
-        $container->instance('config', new ConfigRepository(['aether' => ['local_task_ttl' => 3600]]));
-    }));
+    // config() helper. Neither requires a full Laravel app: a real
+    // CacheManager (bound to a bare container carrying config for both
+    // "cache" and "queue") is swapped into the facade, so Cache::store(...)
+    // resolves distinct named stores exactly like it would in an application.
+    $container = tap(new Container, function (Container $container) {
+        $container->instance('config', new ConfigRepository([
+            'aether' => ['local_task_ttl' => 3600],
+            'cache' => [
+                'default' => 'array',
+                'stores' => [
+                    'array' => ['driver' => 'array'],
+                    // A second array store: what matters for the tests below
+                    // is that "shared" writes to a different repository than
+                    // the default, not that it is backed by anything real.
+                    'shared' => ['driver' => 'array'],
+                ],
+            ],
+            // Left unset (null) here so the array-store guard passes for
+            // every pre-existing test; individual tests below override it.
+            'queue' => [
+                'default' => null,
+            ],
+        ]));
+    });
+
+    Container::setInstance($container);
+    Cache::swap(new CacheManager($container));
 });
 
 afterEach(function () {
@@ -204,6 +224,109 @@ it('checkTask reports Failed for an unknown task key', function () {
 it('checkTask rejects a task arn that is not in local: form', function () {
     expect(fn () => $this->driver->checkTask('arn:aws:braket:us-east-1:123456789012:quantum-task/abc'))
         ->toThrow(QuantumExecutionException::class);
+});
+
+// -------------------------------------------------------------------------
+// cache_store: which cache store asynchronous results are kept in
+// -------------------------------------------------------------------------
+
+it('stores asynchronous results in the configured cache store', function () use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['cache_store' => 'shared']));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 75, '1' => 25]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+    $key = 'aether:local-task:'.$taskArn;
+
+    expect(Cache::store('shared')->get($key))->toBe(['0' => 75, '1' => 25]);
+    expect(Cache::store('array')->get($key))->toBeNull();
+
+    $snapshot = $driver->checkTask($taskArn);
+
+    expect($snapshot->status)->toBe(TaskStatus::Completed);
+    expect($snapshot->counts)->toBe(['0' => 75, '1' => 25]);
+});
+
+it('falls back to the default cache store when cache_store is not set', function (mixed $cacheStore) use ($config) {
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['cache_store' => $cacheStore]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+    $key = 'aether:local-task:'.$taskArn;
+
+    expect(Cache::store('array')->get($key))->toBe(['0' => 100]);
+})->with([
+    'null' => [null],
+    'blank string' => [''],
+]);
+
+it('refuses to submit on the array store when the queue connection is not synchronous', function () {
+    Container::getInstance()->make('config')->set('queue.default', 'redis');
+    Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    $exception = null;
+
+    try {
+        $this->driver->submitCircuit($this->createMock(CircuitBuilder::class));
+    } catch (InvalidDriverConfigException $caught) {
+        $exception = $caught;
+    }
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getMessage())
+        ->toContain('AETHER_LOCAL_CACHE_STORE')
+        ->toContain('redis');
+});
+
+it('allows the array store when the queue connection is synchronous', function () {
+    Container::getInstance()->make('config')->set('queue.default', 'sync');
+    Container::getInstance()->make('config')->set('queue.connections.sync.driver', 'sync');
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $this->driver->submitCircuit($circuit);
+
+    expect($taskArn)->toStartWith('local:');
+});
+
+it('allows the array store when the queue connection cannot be resolved', function () {
+    // No "queue.default" configured at all (the shared beforeEach leaves it null).
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $this->driver->submitCircuit($circuit);
+
+    expect($taskArn)->toStartWith('local:');
+});
+
+it('trusts an explicitly configured array store', function () use ($config) {
+    Container::getInstance()->make('config')->set('queue.default', 'redis');
+    Container::getInstance()->make('config')->set('queue.connections.redis.driver', 'redis');
+
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['cache_store' => 'array']));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect(Cache::store('array')->get('aether:local-task:'.$taskArn))->toBe(['0' => 100]);
 });
 
 // -------------------------------------------------------------------------

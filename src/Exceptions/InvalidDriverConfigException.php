@@ -22,4 +22,16 @@ class InvalidDriverConfigException extends AetherException
             "Driver [{$driver}] is missing required configuration: {$keys}. Set these in config/aether.php under drivers.{$driver}."
         );
     }
+
+    /**
+     * Create an exception for the "local" driver about to cache an
+     * asynchronous result on the process-local array store while the queue
+     * connection runs jobs across multiple processes.
+     */
+    public static function processLocalCacheStore(string $driver, string $queueDriver): self
+    {
+        return new self(
+            "Driver [{$driver}] keeps asynchronous results in the default cache store, which is the process-local \"array\" store, while the queue connection uses the \"{$queueDriver}\" driver — the polling job would run in a different process and never see the result. Set drivers.{$driver}.cache_store (AETHER_LOCAL_CACHE_STORE) to a store shared across processes (\"file\", \"database\", \"redis\", \"memcached\"), or to \"array\" explicitly to accept the single-process limitation."
+        );
+    }
 }

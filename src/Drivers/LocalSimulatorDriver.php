@@ -6,9 +6,12 @@ namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -28,6 +31,9 @@ use Illuminate\Support\Str;
  *  - checkTask() looks the identifier up in the cache and immediately
  *    reports it as Completed (or Failed if the key is missing/expired).
  *
+ * The cache store used to hold those results is configurable via
+ * drivers.local.cache_store (null uses the application's default store).
+ *
  * No process ever actually queues or polls anything; check.py explicitly
  * refuses to run for the "local" driver (see bin/python/check.py).
  */
@@ -44,11 +50,13 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
     public function submitCircuit(CircuitBuilder $circuit): string
     {
+        $this->assertCacheStoreIsShared();
+
         $result = $this->runCircuit($circuit);
 
         $taskArn = self::ARN_PREFIX.(string) Str::uuid();
 
-        Cache::put($this->cacheKey($taskArn), $result->counts(), $this->taskTtl());
+        $this->cache()->put($this->cacheKey($taskArn), $result->counts(), $this->taskTtl());
 
         return $taskArn;
     }
@@ -62,7 +70,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
             );
         }
 
-        $counts = Cache::get($this->cacheKey($taskArn));
+        $counts = $this->cache()->get($this->cacheKey($taskArn));
 
         if (! is_array($counts)) {
             return new TaskSnapshot(TaskStatus::Failed);
@@ -70,6 +78,61 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
         /** @var array<string, int> $counts */
         return new TaskSnapshot(TaskStatus::Completed, $counts);
+    }
+
+    /**
+     * Guard against caching an asynchronous result where the polling job
+     * would never be able to read it back.
+     *
+     * The default cache store resolves to the process-local ArrayStore, so
+     * when the queue connection actually crosses process boundaries (any
+     * driver other than "sync") the job that submits the circuit and the job
+     * that polls it can land in different worker processes and the poll
+     * would always miss. An explicitly configured cache_store — including
+     * "array" — is trusted as a deliberate opt-out and skips this check.
+     *
+     * @throws InvalidDriverConfigException
+     */
+    protected function assertCacheStoreIsShared(): void
+    {
+        if ($this->configuredCacheStoreName() !== null) {
+            return;
+        }
+
+        $repository = $this->cache();
+
+        if (! method_exists($repository, 'getStore') || ! $repository->getStore() instanceof ArrayStore) {
+            return;
+        }
+
+        $connection = config('queue.default');
+
+        if (! is_string($connection) || trim($connection) === '') {
+            return;
+        }
+
+        $queueDriver = config("queue.connections.{$connection}.driver");
+
+        if (! is_string($queueDriver) || trim($queueDriver) === '' || $queueDriver === 'sync') {
+            return;
+        }
+
+        throw InvalidDriverConfigException::processLocalCacheStore($this->driverName(), $queueDriver);
+    }
+
+    /**
+     * Resolve the cache repository asynchronous results are stored in.
+     */
+    protected function cache(): Repository
+    {
+        return Cache::store($this->configuredCacheStoreName());
+    }
+
+    private function configuredCacheStoreName(): ?string
+    {
+        $value = $this->config['cache_store'] ?? null;
+
+        return is_string($value) && trim($value) !== '' ? $value : null;
     }
 
     private function cacheKey(string $taskArn): string

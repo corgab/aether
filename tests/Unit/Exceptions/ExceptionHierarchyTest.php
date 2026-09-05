@@ -133,3 +133,14 @@ it('missing keys includes driver name and every missing key', function (): void 
         ->toContain('region')
         ->toContain('device_arn');
 });
+
+it('process local cache store includes driver name, queue driver and the env var', function (): void {
+    $exception = InvalidDriverConfigException::processLocalCacheStore('local', 'redis');
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception)->toBeInstanceOf(AetherException::class);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('redis')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
+});

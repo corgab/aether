@@ -173,13 +173,17 @@ Tune the polling in `config/aether.php`:
 AETHER_QUEUE=quantum
 AETHER_POLL_INTERVAL=5
 AETHER_MAX_POLL_ATTEMPTS=720
+AETHER_LOCAL_TASK_TTL=3600         # seconds a local simulator result stays cached for the polling job
+AETHER_LOCAL_CACHE_STORE=          # cache store for local simulator results; blank uses the app's default store
 ```
 
-`PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
+`PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error.
 
 A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
 
 The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
+
+**Cache store**: the local simulator has no real remote task, so the result of a `->dispatch()`'d circuit is kept in the cache until the polling job reads it back. That cache store must be shared by every process that runs the queue jobs — the submission job and the polling job can land in different worker processes, or in a worker and a web process. The `array` store is process-local, so it only works when the queue connection is `sync` or when a single long-running worker handles both jobs; otherwise the poll always misses and the task is reported as failed. To avoid this trap, the driver refuses to submit on the default `array` store when the queue connection is anything other than `sync`, pointing you at `drivers.local.cache_store` (`AETHER_LOCAL_CACHE_STORE`) — set it to a store shared across processes (`file`, `database`, `redis`, `memcached`), or set it to `array` explicitly to accept the single-process limitation.
 
 #### Task Persistence
 
