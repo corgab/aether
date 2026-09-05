@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **Python SDK floor:** amazon-braket-sdk >= 1.125.0 (declared in bin/python/requirements.txt); the aws provider relies on per-task shots in AwsDevice.run_batch, added in that release.
 
 ## Config
 
