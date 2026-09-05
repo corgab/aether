@@ -326,9 +326,11 @@ def describe_task_failure(task: Any) -> str:
     """Describe why *task* produced no result, as a human-readable message.
 
     Braket returns ``None`` from ``AwsQuantumTask.result()`` for every task in
-    a terminal state that carries no result (``FAILED``, ``CANCELLED``). The
-    reason why lives in the raw ``GetQuantumTask`` response, exposed as
-    ``task.metadata()["failureReason"]``.
+    a terminal state that carries no result (``FAILED``, ``CANCELLED``). Both
+    the state and the reason live in the raw ``GetQuantumTask`` response that
+    ``task.metadata()`` returns (``status`` and ``failureReason``), so that is
+    read once; ``task.state()`` is only consulted for task objects whose
+    metadata does not carry a status.
 
     Args:
         task: The provider's task object.
@@ -340,16 +342,18 @@ def describe_task_failure(task: Any) -> str:
         exposes no state.
     """
     task_id = getattr(task, "id", None) or "<unknown>"
-    state = _call_task_hook(task, "state")
+
+    metadata = _call_task_hook(task, "metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+
+    state = metadata.get("status") or _call_task_hook(task, "state")
+    reason = metadata.get("failureReason")
 
     message = (
         f"Quantum task {task_id} ended in state {state}"
         if state
         else f"Quantum task {task_id} ended without a result"
     )
-
-    metadata = _call_task_hook(task, "metadata")
-    reason = metadata.get("failureReason") if isinstance(metadata, dict) else None
 
     return f"{message}: {reason}" if reason else message
 
@@ -433,12 +437,15 @@ def default_run_batch(
         # batch objects this fallback exists for do not accept it, so the
         # None results it would have raised on are checked here instead.
         batch = device.run_batch(circuits, shots=shots_list[0], **options)
+        # results() may retry and replace tasks (AwsQuantumTaskBatch does), so
+        # the task list is only read once the results are final.
+        results = list(batch.results())
         tasks = getattr(batch, "tasks", None)
         tasks = tasks if isinstance(tasks, (list, tuple)) else ()
 
         return [
             _require_batch_result(index, tasks[index] if index < len(tasks) else None, result)
-            for index, result in enumerate(batch.results())
+            for index, result in enumerate(results)
         ]
 
     results: list[Any] = []

@@ -6,6 +6,7 @@ helpers that turn that ``None`` into a message carrying the backend's own
 failure reason, and the scripts that use them.
 """
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -18,6 +19,12 @@ from common import default_run_batch, describe_task_failure, load_provider, requ
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 FAKE_PROVIDER_PATH = str(FIXTURES / "fake_provider.py")
 CIRCUIT_SCRIPT = Path(__file__).resolve().parents[2] / "bin" / "python" / "circuit.py"
+
+# circuit.py builds a real braket Circuit before the fake provider runs it.
+requires_braket = pytest.mark.skipif(
+    importlib.util.find_spec("braket") is None,
+    reason="amazon-braket-sdk is not installed",
+)
 
 
 class _Task:
@@ -60,6 +67,20 @@ class TestRequireResult:
             match=r"^Quantum task arn:task/abc ended in state FAILED: Device offline$",
         ):
             require_result(task, None)
+
+    def test_reads_the_state_from_the_metadata_without_calling_state(self):
+        class MetadataOnlyTask:
+            id = "task-1"
+
+            def metadata(self):
+                return {"status": "FAILED", "failureReason": "Device is offline"}
+
+            def state(self):
+                raise AssertionError("state() must not be called when metadata carries the status")
+
+        assert describe_task_failure(MetadataOnlyTask()) == (
+            "Quantum task task-1 ended in state FAILED: Device is offline"
+        )
 
     def test_message_omits_the_reason_when_metadata_has_none(self):
         task = _Task(task_id="arn:task/abc", state="CANCELLED", metadata={})
@@ -121,6 +142,31 @@ class TestDefaultRunBatchFailures:
         ):
             default_run_batch(TasklessDevice(), ["c1", "c2"], [100, 100])
 
+    def test_reads_the_tasks_only_after_the_results_are_final(self):
+        class RetryingBatch:
+            """Mimics AwsQuantumTaskBatch: results() retries and swaps in a new task."""
+
+            def __init__(self):
+                self._tasks = [_Task("attempt-1", state="FAILED")]
+
+            def results(self):
+                self._tasks = [_Task("attempt-2", state="FAILED", metadata={"failureReason": "Still offline"})]
+                return [None]
+
+            @property
+            def tasks(self):
+                return list(self._tasks)
+
+        class RetryingDevice:
+            def run_batch(self, circuits, shots, **kwargs):
+                return RetryingBatch()
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Quantum task attempt-2 ended in state FAILED: Still offline$",
+        ):
+            default_run_batch(RetryingDevice(), ["c1"], [100])
+
     def test_successful_batch_still_returns_every_result(self):
         device = _device()
 
@@ -129,6 +175,7 @@ class TestDefaultRunBatchFailures:
         assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 100}]
 
 
+@requires_braket
 class TestCircuitScript:
     def test_reports_the_failure_reason_on_stderr_and_exits_1(self):
         payload = {

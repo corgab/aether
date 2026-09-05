@@ -72,10 +72,13 @@ class StubDevice:
 
         return self._task(index, shots)
 
-    def run_batch(self, circuits: list[Any], shots: int, **kwargs: Any) -> StubBatch:
+    def run_batch(self, circuits: list[Any], shots: int | list[int], **kwargs: Any) -> StubBatch:
         self.run_batch_calls.append({"circuits": circuits, "shots": shots, **kwargs})
 
-        tasks = [self._task(index, shots) for index in range(len(circuits))]
+        tasks = [
+            self._task(index, shots[index] if isinstance(shots, list) else shots)
+            for index in range(len(circuits))
+        ]
 
         return StubBatch([task.result() for task in tasks], tasks)
 

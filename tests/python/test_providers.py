@@ -187,7 +187,7 @@ class TestAwsCheckTask:
 
     @pytest.fixture
     def fake_task(self, monkeypatch):
-        state = {"value": "COMPLETED", "metadata": {}, "counts": {"00": 5, "11": 5}}
+        state = {"value": "COMPLETED", "metadata": {}, "counts": {"00": 5, "11": 5}, "metadata_calls": []}
 
         class FakeResult:
             measurement_counts = state["counts"]
@@ -199,7 +199,8 @@ class TestAwsCheckTask:
             def state(self):
                 return state["value"]
 
-            def metadata(self):
+            def metadata(self, use_cached_value=False):
+                state["metadata_calls"].append(use_cached_value)
                 return state["metadata"]
 
             def result(self):
@@ -248,6 +249,38 @@ class TestAwsCheckTask:
         fake_task["value"] = "RUNNING"
 
         assert aws_provider.check_task("arn:task/abc", {}) == {"status": "RUNNING"}
+
+    def test_reads_the_failure_reason_from_the_response_state_already_fetched(self, fake_task):
+        fake_task["value"] = "FAILED"
+        fake_task["metadata"] = {"failureReason": "Device is offline"}
+
+        aws_provider.check_task("arn:task/abc", {})
+
+        assert fake_task["metadata_calls"] == [True]
+
+
+class TestAwsRunBatch:
+    """run_batch() pairs every batch result with its task before failing."""
+
+    def _device(self, **config):
+        return load_provider("custom", {"python_provider": FAKE_PROVIDER_PATH, **config}).resolve_device(config)
+
+    def test_returns_one_result_per_circuit(self):
+        device = self._device()
+
+        results = aws_provider.run_batch(device, ["c1", "c2"], [100, 200], {"bucket": "b"})
+
+        assert [r.measurement_counts for r in results] == [{"0": 100}, {"0": 200}]
+        assert device.run_batch_calls[0]["shots"] == [100, 200]
+
+    def test_names_the_failed_task_and_its_reason(self):
+        device = self._device(failing_indices=[1], failure_reason="Device is offline")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Quantum task stub-task-2 ended in state FAILED: Device is offline$",
+        ):
+            aws_provider.run_batch(device, ["c1", "c2"], [100, 100], {"bucket": "b"})
 
 
 class TestResolveRunTarget:
