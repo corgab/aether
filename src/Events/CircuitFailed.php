@@ -18,14 +18,16 @@ final readonly class CircuitFailed
 {
     /**
      * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit
-     * @param  TaskStatus|null  $status  The last status the backend reported, when one was read.
+     * @param  TaskStatus  $status  The last status the backend reported: FAILED or CANCELLED,
+     *                              the non-terminal status seen when the polling budget ran out,
+     *                              or COMPLETED for a task that returned no counts.
      * @param  string  $reason  The message of the exception the polling job throws.
      */
     public function __construct(
         public string $driver,
         public array $circuit,
         public string $taskArn,
-        public ?TaskStatus $status,
+        public TaskStatus $status,
         public string $reason,
     ) {}
 }

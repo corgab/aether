@@ -53,7 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
-- **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before throwing on failure; `QuantumFake` mirrors both.
+- **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before throwing on failure. Both belong to the job: `QuantumFake` only reports statuses, so a job run against it dispatches each event once.
 
 ## Config
 

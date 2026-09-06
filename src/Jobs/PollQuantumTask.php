@@ -18,14 +18,17 @@ use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Polls an asynchronous quantum task until it reaches a terminal state.
  *
  * Uses Laravel's native job release mechanism to check the task status
  * repeatedly up to `aether.max_poll_attempts`. Once the task completes,
- * fires {@see CircuitCompleted}; a non-successful terminal state raises
- * {@see TaskFailedException}.
+ * fires {@see CircuitCompleted}. A task that ends without a result (a
+ * non-successful terminal state, an exhausted polling budget, or a completed
+ * task with no counts) fires {@see CircuitFailed} and then raises
+ * {@see TaskFailedException} or {@see QuantumExecutionException}.
  *
  * The high attempt allowance exists purely to budget the polling loop, so
  * genuine failures are capped separately by {@see $maxExceptions}.
@@ -137,19 +140,25 @@ class PollQuantumTask implements ShouldQueue
      * CircuitFailed is the counterpart of CircuitCompleted: it is dispatched
      * before the exception so application code can react to the failure
      * (notify, refund, retry elsewhere) without reading failed_jobs. The
-     * exception still propagates so the job is failed and recorded as usual.
+     * exception still propagates so the job is failed and recorded as usual;
+     * a listener that throws is reported and swallowed, so it can never
+     * replace the task failure as the reason the job failed.
      */
     private function abandonTask(Dispatcher $events, string $driverName, TaskStatus $status, AetherException $exception): never
     {
         $this->persist($status, null, $exception->getMessage());
 
-        $events->dispatch(new CircuitFailed(
-            $driverName,
-            $this->circuit,
-            $this->taskArn,
-            $status,
-            $exception->getMessage(),
-        ));
+        try {
+            $events->dispatch(new CircuitFailed(
+                $driverName,
+                $this->circuit,
+                $this->taskArn,
+                $status,
+                $exception->getMessage(),
+            ));
+        } catch (Throwable $listenerFailure) {
+            report($listenerFailure);
+        }
 
         throw $exception;
     }
@@ -192,7 +201,7 @@ class PollQuantumTask implements ShouldQueue
             }
 
             $task->save();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             report($e);
         }
     }

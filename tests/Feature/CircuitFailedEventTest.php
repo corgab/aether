@@ -3,20 +3,27 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Events\CircuitCompleted;
 use Aether\Events\CircuitFailed;
+use Aether\Exceptions\TaskFailedException;
 use Aether\Facades\Quantum;
+use Aether\Jobs\PollQuantumTask;
+use Aether\QuantumManager;
 use Aether\Tasks\TaskStatus;
+use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Event;
 
-it('makes the fake dispatch CircuitFailed once when a stubbed task ends as failed or cancelled', function (TaskStatus $status) {
+it('dispatches CircuitFailed exactly once when the polling job runs against a stubbed failure', function (TaskStatus $status) {
     Event::fake();
 
     $fake = Quantum::fake()->respondWithTaskStatus($status);
     $circuit = (new CircuitBuilder($fake, 'aws'))->qubits(1)->h(0)->measure();
-
     $arn = $fake->submitCircuit($circuit);
-    $fake->checkTask($arn);
-    $fake->checkTask($arn);
+
+    $job = new PollQuantumTask($arn, $circuit->toArray(), 'aws');
+
+    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class)))
+        ->toThrow(TaskFailedException::class);
 
     Event::assertDispatchedTimes(CircuitFailed::class, 1);
     Event::assertDispatched(
@@ -24,15 +31,15 @@ it('makes the fake dispatch CircuitFailed once when a stubbed task ends as faile
         fn (CircuitFailed $event): bool => $event->driver === 'aws'
             && $event->taskArn === $arn
             && $event->status === $status
-            && $event->circuit === $circuit->toArray()
-            && str_contains($event->reason, $status->value),
+            && $event->circuit === $circuit->toArray(),
     );
+    Event::assertNotDispatched(CircuitCompleted::class);
 })->with([TaskStatus::Failed, TaskStatus::Cancelled]);
 
-it('does not make the fake dispatch CircuitFailed for a task that is still in flight', function () {
+it('does not make the fake itself dispatch CircuitFailed when polled', function () {
     Event::fake();
 
-    $fake = Quantum::fake()->respondWithTaskStatus(TaskStatus::Running);
+    $fake = Quantum::fake()->respondWithTaskStatus(TaskStatus::Failed);
     $arn = $fake->submitCircuit((new CircuitBuilder($fake))->qubits(1)->measure());
 
     $fake->checkTask($arn);
@@ -40,13 +47,17 @@ it('does not make the fake dispatch CircuitFailed for a task that is still in fl
     Event::assertNotDispatched(CircuitFailed::class);
 });
 
-it('does not make the fake dispatch CircuitFailed for a completed task', function () {
-    Event::fake();
+it('still fails the job with the task exception when a CircuitFailed listener throws', function () {
+    $fake = Quantum::fake()->respondWithTaskStatus(TaskStatus::Failed);
+    $circuit = (new CircuitBuilder($fake, 'aws'))->qubits(1)->h(0)->measure();
+    $arn = $fake->submitCircuit($circuit);
 
-    $fake = Quantum::fake();
-    $arn = $fake->submitCircuit((new CircuitBuilder($fake))->qubits(1)->measure());
+    Event::listen(CircuitFailed::class, function (): void {
+        throw new RuntimeException('notification provider is down');
+    });
 
-    $fake->checkTask($arn);
+    $job = new PollQuantumTask($arn, $circuit->toArray(), 'aws');
 
-    Event::assertNotDispatched(CircuitFailed::class);
+    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class)))
+        ->toThrow(TaskFailedException::class, $arn);
 });
