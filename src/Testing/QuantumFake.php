@@ -11,6 +11,7 @@ use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitExecuted;
+use Aether\Events\CircuitFailed;
 use Aether\Events\EntropyGenerated;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
@@ -92,6 +93,9 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
     private array|CircuitResult|Closure|ResultSequence|null $circuitStub = null;
 
     private ?TaskStatus $stubbedTaskStatus = null;
+
+    /** @var array<string, true> Task ARNs whose failure has already been announced. */
+    private array $failedTaskArns = [];
 
     /** @var CostEstimate|Closure(int, int): CostEstimate|null */
     private CostEstimate|Closure|null $costStub = null;
@@ -221,6 +225,10 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
         $status = $this->stubbedTaskStatus ?? TaskStatus::Completed;
 
         if (! $status->isSuccessful()) {
+            if ($status->isTerminal()) {
+                $this->announceFailure($taskArn, $status);
+            }
+
             return new TaskSnapshot($status);
         }
 
@@ -233,6 +241,29 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
         $this->taskResults[$taskArn] ??= $this->resolveResult($circuit);
 
         return new TaskSnapshot($status, $this->taskResults[$taskArn]->counts());
+    }
+
+    /**
+     * Dispatch CircuitFailed once per task, mirroring the polling job, which
+     * announces a failed or cancelled task exactly once before it throws.
+     */
+    private function announceFailure(string $taskArn, TaskStatus $status): void
+    {
+        $circuit = $this->tasksByArn[$taskArn] ?? null;
+
+        if ($circuit === null || isset($this->failedTaskArns[$taskArn])) {
+            return;
+        }
+
+        $this->failedTaskArns[$taskArn] = true;
+
+        $this->dispatchEvent(new CircuitFailed(
+            $this->driverNameFor($circuit),
+            $circuit->toArray(),
+            $taskArn,
+            $status,
+            "Quantum task [{$taskArn}] terminated with status [{$status->value}].",
+        ));
     }
 
     /**
@@ -326,6 +357,9 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
      * flight (e.g. Queued, Running) or that terminated unsuccessfully
      * (Failed, Cancelled), so polling loops and event handling can be
      * exercised in tests.
+     *
+     * A Failed or Cancelled status also dispatches CircuitFailed the first
+     * time the task is polled, like the real polling job does.
      */
     public function respondWithTaskStatus(TaskStatus $status): static
     {
