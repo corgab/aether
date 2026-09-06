@@ -109,6 +109,8 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+`generate($bits)` returns `ceil($bits / 8)` bytes. A bit count that is not a multiple of 8 is rounded up before the device is asked, so the last byte is measured in full rather than zero-padded: `generate(12)` measures 16 bits and returns 2 fully random bytes.
+
 ### Batch Execution
 
 Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.

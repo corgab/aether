@@ -135,15 +135,25 @@ class PythonBridge implements PythonExecutor
 
     /**
      * Convert a binary digit string (e.g. "10110011") into raw bytes.
+     *
+     * The string must hold a whole number of bytes: bindec() would silently
+     * left-pad a shorter final chunk with zeros, producing a byte whose high
+     * bits are deterministic rather than measured.
+     *
+     * @throws \InvalidArgumentException When the string is not a multiple of 8 binary digits.
      */
     public function bitstringToBytes(string $bitstring): string
     {
+        if ($bitstring === '' || preg_match('/^[01]+$/', $bitstring) !== 1 || strlen($bitstring) % 8 !== 0) {
+            throw new \InvalidArgumentException(
+                'Bit string must be a non-empty sequence of 0/1 digits whose length is a multiple of 8, got '.strlen($bitstring).' character(s).'
+            );
+        }
+
         $bytes = '';
 
         foreach (str_split($bitstring, 8) as $chunk) {
-            // & 0xFF keeps the value in chr()'s 0-255 range (each chunk is at
-            // most 8 bits, so this is a no-op for valid input).
-            $bytes .= chr(((int) bindec($chunk)) & 0xFF);
+            $bytes .= chr((int) bindec($chunk));
         }
 
         return $bytes;
