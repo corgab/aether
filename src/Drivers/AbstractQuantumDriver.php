@@ -73,11 +73,18 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * @param  list<CircuitBuilder>  $circuits
      *
      * @throws InvalidCircuitException
+     * @throws InvalidDriverConfigException When a ceiling option has an invalid value.
      */
     protected function validateCircuits(array $circuits): void
     {
+        $ceiling = $this->positiveIntegerConfig('max_qubits');
+
+        if ($ceiling === null) {
+            return;
+        }
+
         foreach ($circuits as $circuit) {
-            $this->assertWithinQubitCeiling($circuit);
+            $this->assertWithinQubitCeiling($circuit, $ceiling);
         }
     }
 
@@ -129,26 +136,12 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Guard against a circuit that requests more qubits than the driver's
-     * configured `max_qubits` ceiling allows.
-     *
-     * Statevector simulation memory doubles with every additional qubit, so
-     * an unbounded circuit can exhaust host memory well before it would ever
-     * reach a remote device's own limits. A blank `max_qubits` (absent, null,
-     * or an empty string — what env() yields for `AETHER_MAX_QUBITS=`) means
-     * unlimited, the default for every driver, so existing configs keep
-     * working unchanged.
+     * Reject a circuit that asks for more qubits than the configured ceiling.
      *
      * @throws InvalidCircuitException
      */
-    private function assertWithinQubitCeiling(CircuitBuilder $circuit): void
+    private function assertWithinQubitCeiling(CircuitBuilder $circuit, int $ceiling): void
     {
-        $ceiling = $this->positiveIntegerConfig('max_qubits');
-
-        if ($ceiling === null) {
-            return;
-        }
-
         $requested = $circuit->qubitCount();
 
         if ($requested > $ceiling) {
@@ -159,28 +152,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     /**
      * Read an optional positive-integer option, or null when it is unset or blank.
      *
-     * env() hands config a raw string, and (int) "abc" is 0 in PHP, so a typo
-     * would otherwise become a ceiling of zero that rejects every circuit.
-     *
      * @throws InvalidDriverConfigException When the value is neither blank nor a positive integer.
      */
     protected function positiveIntegerConfig(string $key): ?int
     {
-        $value = $this->config[$key] ?? null;
+        $value = $this->filteredConfig($key, FILTER_VALIDATE_INT, ['min_range' => 1], 'a positive integer or null');
 
-        if (blank($value)) {
-            return null;
-        }
-
-        $integer = is_scalar($value) && ! is_bool($value)
-            ? filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
-            : false;
-
-        if ($integer === false) {
-            throw InvalidDriverConfigException::invalidValue($this->driverName(), $key, $value, 'a positive integer or null');
-        }
-
-        return $integer;
+        return $value === null ? null : (int) $value;
     }
 
     /**
@@ -190,19 +168,39 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     protected function nonNegativeNumberConfig(string $key): ?float
     {
+        $value = $this->filteredConfig($key, FILTER_VALIDATE_FLOAT, ['min_range' => 0], 'a non-negative number or null');
+
+        return $value === null ? null : (float) $value;
+    }
+
+    /**
+     * Run a numeric config option through filter_var, treating blank as unset.
+     *
+     * env() hands config a raw string, and (int) "abc" is 0 in PHP, so a typo
+     * would otherwise become a ceiling of zero that rejects every circuit.
+     * Booleans are refused explicitly because filter_var accepts true as 1.
+     *
+     * @param  array<string, int|float>  $options
+     *
+     * @throws InvalidDriverConfigException When the value is neither blank nor accepted by the filter.
+     */
+    private function filteredConfig(string $key, int $filter, array $options, string $expected): int|float|null
+    {
         $value = $this->config[$key] ?? null;
 
         if (blank($value)) {
             return null;
         }
 
-        $number = is_scalar($value) && ! is_bool($value) ? filter_var($value, FILTER_VALIDATE_FLOAT) : false;
+        $filtered = is_scalar($value) && ! is_bool($value)
+            ? filter_var($value, $filter, ['options' => $options])
+            : false;
 
-        if ($number === false || $number < 0) {
-            throw InvalidDriverConfigException::invalidValue($this->driverName(), $key, $value, 'a non-negative number or null');
+        if ($filtered === false) {
+            throw InvalidDriverConfigException::invalidValue($this->driverName(), $key, $value, $expected);
         }
 
-        return $number;
+        return $filtered;
     }
 
     /**
