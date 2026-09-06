@@ -189,6 +189,7 @@ it('rejects a bit string that does not hold whole bytes', function (string $bits
     'short final chunk' => ['110011001010'],
     'empty' => [''],
     'non-binary digit' => ['0000000a'],
+    'trailing newline' => ["1111111\n"],
 ]);
 
 it('converts a binary digit string into raw bytes', function () {

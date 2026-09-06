@@ -144,16 +144,18 @@ class PythonBridge implements PythonExecutor
      */
     public function bitstringToBytes(string $bitstring): string
     {
-        if ($bitstring === '' || preg_match('/^[01]+$/', $bitstring) !== 1 || strlen($bitstring) % 8 !== 0) {
+        if (preg_match('/^[01]+$/D', $bitstring) !== 1 || strlen($bitstring) % 8 !== 0) {
             throw new \InvalidArgumentException(
-                'Bit string must be a non-empty sequence of 0/1 digits whose length is a multiple of 8, got '.strlen($bitstring).' character(s).'
+                'Bit string must be a sequence of 0/1 digits whose length is a multiple of 8, got '.strlen($bitstring).' character(s): '.var_export($bitstring, true)
             );
         }
 
         $bytes = '';
 
         foreach (str_split($bitstring, 8) as $chunk) {
-            $bytes .= chr((int) bindec($chunk));
+            // The guard above makes every chunk exactly 8 binary digits; the
+            // mask only narrows the type to chr()'s 0-255 range.
+            $bytes .= chr(((int) bindec($chunk)) & 0xFF);
         }
 
         return $bytes;

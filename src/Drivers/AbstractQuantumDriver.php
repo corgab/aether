@@ -380,6 +380,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             );
         }
 
+        if (preg_match('/^[01]*$/D', $response['bits']) !== 1) {
+            throw QuantumExecutionException::malformedResponse(
+                'entropy.py',
+                'expected the "bits" value to contain only 0 and 1 digits.'
+            );
+        }
+
         if (strlen($response['bits']) < $bitsToFetch) {
             throw QuantumExecutionException::malformedResponse(
                 'entropy.py',

@@ -260,6 +260,13 @@ it('rounds a bit count up to whole bytes before asking the device', function (in
     '16 bits on 16 qubits' => [16, 16, 1, 16],
 ]);
 
+it('rejects entropy.py output that is not made of binary digits', function () {
+    $this->bridge->method('execute')->willReturn(['bits' => 'abcdefgh']);
+
+    expect(fn () => $this->driver->generateEntropy(8))
+        ->toThrow(QuantumExecutionException::class, 'only 0 and 1 digits');
+});
+
 it('requires the device to return the rounded-up bit count', function () {
     // 12 requested bits need 16 measured bits; 12 is no longer enough.
     $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 12)]);

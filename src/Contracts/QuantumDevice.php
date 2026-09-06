@@ -18,7 +18,10 @@ interface QuantumDevice
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult;
 
     /**
-     * Generate a cryptographically strong random bit-string of the requested length.
+     * Generate cryptographically strong random bytes covering the requested bit count.
+     *
+     * Returns ceil($bits / 8) raw bytes; a bit count that is not a multiple of
+     * 8 is rounded up so every byte is fully random rather than zero-padded.
      */
     public function generateEntropy(int $bits): string;
 }

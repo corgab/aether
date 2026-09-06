@@ -109,7 +109,7 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
-`generate($bits)` returns `ceil($bits / 8)` bytes. A bit count that is not a multiple of 8 is rounded up before the device is asked, so the last byte is measured in full rather than zero-padded: `generate(12)` measures 16 bits and returns 2 fully random bytes.
+`generate($bits)` returns `ceil($bits / 8)` bytes. A bit count that is not a multiple of 8 is rounded up before the device is asked, so the last byte is measured in full rather than zero-padded: `generate(12)` fetches at least 16 bits (exactly 16 with the default `entropy_qubits` of 16) and returns 2 fully random bytes.
 
 ### Batch Execution
 
