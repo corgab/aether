@@ -583,6 +583,36 @@ it('treats an empty-string max_cost_per_run (a blank env var) as no ceiling', fu
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
+it('rejects a max_cost_per_run value that is not a non-negative number', function (mixed $value) {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['max_cost_per_run' => $value]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(10);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 10]);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidDriverConfigException::class, '[max_cost_per_run]');
+})->with([
+    'typo' => ['abc'],
+    'negative' => ['-1'],
+    'boolean' => [true],
+]);
+
+it('accepts a numeric string max_cost_per_run as the ceiling', function () {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, [
+        'pricing' => ['per_task' => 1.0, 'per_shot' => 0.0],
+        'max_cost_per_run' => '0.50',
+    ]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('shotCount')->willReturn(10);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 10]);
+
+    expect(fn () => $driver->executeCircuit($circuit))->toThrow(InvalidCircuitException::class);
+});
+
 it('throws InvalidCircuitException on executeCircuit when the estimated cost exceeds max_cost_per_run', function () {
     $config = array_merge($this->config, ['max_cost_per_run' => 0.5]);
     $driver = new AwsBraketDriver($this->bridge, $config);

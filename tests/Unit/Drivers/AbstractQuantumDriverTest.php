@@ -464,6 +464,48 @@ it('treats an empty-string max_qubits (a blank env var) as no ceiling', function
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
+it('rejects a max_qubits value that is not a positive integer', function (mixed $value) {
+    $driver = new class($this->bridge, ['max_qubits' => $value]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 10]);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidDriverConfigException::class, '[max_qubits]');
+})->with([
+    'typo' => ['abc'],
+    'decimal' => ['2.5'],
+    'zero' => ['0'],
+    'negative' => [-3],
+    'boolean' => [true],
+]);
+
+it('accepts a numeric string max_qubits as the ceiling', function () {
+    $driver = new class($this->bridge, ['max_qubits' => '4']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(5);
+    $circuit->method('toArray')->willReturn(['qubits' => 5, 'gates' => [], 'shots' => 10]);
+
+    expect(fn () => $driver->executeCircuit($circuit))
+        ->toThrow(InvalidCircuitException::class, 'ceiling of 4');
+});
+
 it('throws InvalidCircuitException on executeBatch when any circuit exceeds max_qubits', function () {
     $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
     {

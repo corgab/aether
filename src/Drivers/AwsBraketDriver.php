@@ -112,9 +112,9 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     private function assertWithinCostCeiling(array $circuits): void
     {
-        $ceiling = $this->config['max_cost_per_run'] ?? null;
+        $ceiling = $this->nonNegativeNumberConfig('max_cost_per_run');
 
-        if (blank($ceiling)) {
+        if ($ceiling === null) {
             return;
         }
 
@@ -135,8 +135,8 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
 
         $estimate = $this->estimateCost($shots, count($circuits));
 
-        if ($estimate->amount > (float) $ceiling) {
-            throw InvalidCircuitException::costCeilingExceeded($estimate, (float) $ceiling);
+        if ($estimate->amount > $ceiling) {
+            throw InvalidCircuitException::costCeilingExceeded($estimate, $ceiling);
         }
     }
 }

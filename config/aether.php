@@ -124,6 +124,7 @@ return [
             // caps that at 2^25 x 16 bytes ~= 512 MB. Raise it only once
             // you've confirmed the host has memory to spare, or set it to
             // null to remove the ceiling entirely.
+            // A positive integer, or null/blank for no ceiling; anything else throws InvalidDriverConfigException.
             'max_qubits' => env('AETHER_MAX_QUBITS', 25),
         ],
 
@@ -156,6 +157,7 @@ return [
             // total of all its circuits — before any AWS call is made. null
             // (default) means unlimited. Requires the pricing rates above:
             // a ceiling with no rates fails fast instead of never tripping.
+            // A non-negative number, or null/blank for no ceiling; anything else throws InvalidDriverConfigException.
             'max_cost_per_run' => env('AETHER_AWS_MAX_COST'),
         ],
 

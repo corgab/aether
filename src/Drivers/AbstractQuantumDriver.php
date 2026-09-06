@@ -143,17 +143,66 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     private function assertWithinQubitCeiling(CircuitBuilder $circuit): void
     {
-        $ceiling = $this->config['max_qubits'] ?? null;
+        $ceiling = $this->positiveIntegerConfig('max_qubits');
 
-        if (blank($ceiling)) {
+        if ($ceiling === null) {
             return;
         }
 
         $requested = $circuit->qubitCount();
 
-        if ($requested > (int) $ceiling) {
-            throw InvalidCircuitException::qubitCeilingExceeded($requested, (int) $ceiling, $this->driverName());
+        if ($requested > $ceiling) {
+            throw InvalidCircuitException::qubitCeilingExceeded($requested, $ceiling, $this->driverName());
         }
+    }
+
+    /**
+     * Read an optional positive-integer option, or null when it is unset or blank.
+     *
+     * env() hands config a raw string, and (int) "abc" is 0 in PHP, so a typo
+     * would otherwise become a ceiling of zero that rejects every circuit.
+     *
+     * @throws InvalidDriverConfigException When the value is neither blank nor a positive integer.
+     */
+    protected function positiveIntegerConfig(string $key): ?int
+    {
+        $value = $this->config[$key] ?? null;
+
+        if (blank($value)) {
+            return null;
+        }
+
+        $integer = is_scalar($value) && ! is_bool($value)
+            ? filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+
+        if ($integer === false) {
+            throw InvalidDriverConfigException::invalidValue($this->driverName(), $key, $value, 'a positive integer or null');
+        }
+
+        return $integer;
+    }
+
+    /**
+     * Read an optional non-negative number option, or null when it is unset or blank.
+     *
+     * @throws InvalidDriverConfigException When the value is neither blank nor a non-negative number.
+     */
+    protected function nonNegativeNumberConfig(string $key): ?float
+    {
+        $value = $this->config[$key] ?? null;
+
+        if (blank($value)) {
+            return null;
+        }
+
+        $number = is_scalar($value) && ! is_bool($value) ? filter_var($value, FILTER_VALIDATE_FLOAT) : false;
+
+        if ($number === false || $number < 0) {
+            throw InvalidDriverConfigException::invalidValue($this->driverName(), $key, $value, 'a non-negative number or null');
+        }
+
+        return $number;
     }
 
     /**
