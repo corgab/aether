@@ -5,10 +5,11 @@ Reads a request as JSON from stdin, builds a Hadamard circuit with *N* qubits,
 runs it with configurable shot count, and writes the resulting random bitstring
 to stdout.
 
-The randomness is quantum in origin: each qubit is placed in an equal
-superposition by a Hadamard gate and then measured, producing truly random bits
-per qubit on real hardware, or pseudorandom bits on any simulator (the local
-one as well as the managed Braket simulators such as SV1).
+Each qubit is placed in an equal superposition by a Hadamard gate and then
+measured. On real hardware the randomness is quantum in origin and the bits
+are truly random; on any simulator (the local one as well as the managed
+Braket simulators such as SV1) the circuit is simulated classically and the
+bits are pseudorandom.
 Multi-shot support allows generating longer bitstrings efficiently by running
 the circuit multiple times and concatenating all measurement results.
 

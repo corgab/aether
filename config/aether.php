@@ -100,7 +100,7 @@ return [
     |
     | Here you may configure each quantum computing driver. The "local"
     | driver uses the Braket local simulator (no AWS costs). The "aws"
-    | driver connects to AWS Braket for real quantum hardware.
+    | driver connects to AWS Braket for QPUs and managed simulators (the default device_arn is the SV1 simulator).
     |
     | Any driver may declare an optional "python_provider" key pointing at a
     | Python provider module — either a filesystem path to a ".py" file or
