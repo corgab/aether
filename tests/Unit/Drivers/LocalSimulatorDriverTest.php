@@ -85,7 +85,7 @@ it('delegates executeCircuit to bridge with correct payload', function () {
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('circuit.py', $expectedPayload, $this->config)
+        ->with('circuit.py', $expectedPayload)
         ->willReturn(['counts' => ['00' => 512, '11' => 512]]);
 
     $result = $this->driver->executeCircuit($circuit);
@@ -114,8 +114,7 @@ it('delegates generateEntropy to bridge with correct payload', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            ['qubits' => 16, 'shots' => 1, 'driver' => 'local', 'driver_config' => $this->config],
-            $this->config
+            ['qubits' => 16, 'shots' => 1, 'driver' => 'local', 'driver_config' => $this->config]
         )
         ->willReturn(['bits' => '1011001110100101']);
 
@@ -187,7 +186,7 @@ it('submitCircuit still runs the circuit synchronously through the bridge', func
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('circuit.py', $this->anything(), $this->config)
+        ->with('circuit.py', $this->anything())
         ->willReturn(['counts' => ['0' => 100]]);
 
     $this->driver->submitCircuit($circuit);

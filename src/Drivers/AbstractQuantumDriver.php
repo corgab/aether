@@ -187,7 +187,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
         ]);
 
-        $response = $this->bridge->execute('batch.py', $payload, $this->config);
+        $response = $this->bridge->execute('batch.py', $payload);
 
         if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
             throw QuantumExecutionException::malformedResponse(
@@ -273,7 +273,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     private function runDefinition(array $definition): CircuitResult
     {
-        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
+        $response = $this->bridge->execute('circuit.py', $this->payload($definition));
 
         if (! array_key_exists('counts', $response) || ! is_array($response['counts'])) {
             throw QuantumExecutionException::malformedResponse(
@@ -303,7 +303,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->assertConfigured();
         $this->validateCircuits([$circuit]);
 
-        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config);
+        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()));
 
         $taskArn = $response['task_arn'] ?? null;
 
@@ -330,7 +330,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $this->assertConfigured();
 
-        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
+        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]));
 
         $status = $response['status'] ?? null;
 
@@ -364,7 +364,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'shots' => $shots,
         ]);
 
-        $response = $this->bridge->execute('entropy.py', $payload, $this->config);
+        $response = $this->bridge->execute('entropy.py', $payload);
 
         if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
             throw QuantumExecutionException::malformedResponse(

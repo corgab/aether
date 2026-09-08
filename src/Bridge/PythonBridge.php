@@ -32,21 +32,23 @@ class PythonBridge implements PythonExecutor
     /**
      * Execute a Python script with the given payload.
      *
+     * The child process inherits the parent environment untouched: nothing is
+     * added or removed, so boto3's credential chain (IAM roles, profiles,
+     * AWS_* variables) behaves exactly as it does for the PHP process. Driver
+     * settings travel inside the JSON payload under `driver_config`, which is
+     * the only channel the bin/python scripts read.
+     *
      * @param  array<mixed>  $payload
-     * @param  array<string, mixed>  $driverConfig
      * @return array<mixed>
      *
      * @throws PythonEnvironmentException
      * @throws QuantumExecutionException
      */
-    public function execute(string $script, array $payload, array $driverConfig = []): array
+    public function execute(string $script, array $payload): array
     {
         $scriptPath = $this->scriptsPath.DIRECTORY_SEPARATOR.$script;
 
-        $process = new Process(
-            command: [$this->pythonPath, $scriptPath],
-            env: $this->buildEnvironment($driverConfig),
-        );
+        $process = new Process([$this->pythonPath, $scriptPath]);
 
         $process->setInput(json_encode($payload, JSON_THROW_ON_ERROR));
         $process->setTimeout($this->timeout);
@@ -147,32 +149,5 @@ class PythonBridge implements PythonExecutor
         }
 
         return $bytes;
-    }
-
-    /**
-     * Build the environment variable array for the child process.
-     *
-     * Only non-null values are included to preserve boto3's credential chain.
-     *
-     * @param  array<string, mixed>  $driverConfig
-     * @return array<string, string>
-     */
-    public function buildEnvironment(array $driverConfig): array
-    {
-        $map = [
-            'region' => 'AWS_DEFAULT_REGION',
-            'bucket' => 'AETHER_S3_BUCKET',
-            'device_arn' => 'AETHER_DEVICE_ARN',
-        ];
-
-        $env = [];
-
-        foreach ($map as $configKey => $envKey) {
-            if (isset($driverConfig[$configKey])) {
-                $env[$envKey] = (string) $driverConfig[$configKey];
-            }
-        }
-
-        return $env;
     }
 }

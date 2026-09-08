@@ -79,7 +79,7 @@ it('passes aws driver key in executeCircuit payload', function () {
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('circuit.py', $expectedPayload, $this->config)
+        ->with('circuit.py', $expectedPayload)
         ->willReturn(['counts' => ['00' => 512, '11' => 512]]);
 
     $result = $driver->executeCircuit($circuit);
@@ -132,8 +132,7 @@ it('delegates generateEntropy to bridge with aws driver', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            ['qubits' => 16, 'shots' => 1, 'driver' => 'aws', 'driver_config' => $this->config],
-            $this->config
+            ['qubits' => 16, 'shots' => 1, 'driver' => 'aws', 'driver_config' => $this->config]
         )
         ->willReturn(['bits' => '1011001110100101']);
 
@@ -265,7 +264,7 @@ it('submits the circuit and returns the task arn', function () {
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('submit.py', $expectedPayload, $this->config)
+        ->with('submit.py', $expectedPayload)
         ->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/abc']);
 
     $taskArn = $driver->submitCircuit($circuit);
@@ -282,7 +281,7 @@ it('submitCircuit succeeds even when synchronous_safe is false', function () {
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('submit.py', $this->anything(), $config)
+        ->with('submit.py', $this->anything())
         ->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/async']);
 
     $taskArn = $driver->submitCircuit($circuit);
@@ -356,8 +355,7 @@ it('sends the correct payload and script name to checkTask', function () {
         ->method('execute')
         ->with(
             'check.py',
-            ['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/abc', 'driver' => 'aws', 'driver_config' => $this->config],
-            $this->config
+            ['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/abc', 'driver' => 'aws', 'driver_config' => $this->config]
         )
         ->willReturn(['status' => 'RUNNING']);
 

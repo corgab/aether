@@ -42,8 +42,7 @@ it('passes driver name and config in circuit payload', function () {
         ->method('execute')
         ->with(
             'circuit.py',
-            $this->callback(fn (array $p) => $p['driver'] === 'test' && $p['driver_config'] === ['key' => 'value']),
-            ['key' => 'value']
+            $this->callback(fn (array $p) => $p['driver'] === 'test' && $p['driver_config'] === ['key' => 'value'])
         )
         ->willReturn(['counts' => ['0' => 500, '1' => 500]]);
 
@@ -74,8 +73,7 @@ it('passes qubits and shots in entropy payload', function () {
                     && $p['qubits'] === 16
                     && $p['shots'] === 1
                     && ! array_key_exists('bits', $p);
-            }),
-            ['key' => 'value', 'entropy_qubits' => 16]
+            })
         )
         ->willReturn(['bits' => str_repeat('1', 16)]);
 
@@ -96,8 +94,7 @@ it('computes shots dynamically based on requested bits', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 16),
-            ['key' => 'value', 'entropy_qubits' => 16]
+            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 16)
         )
         ->willReturn(['bits' => str_repeat('10', 128)]);
 
@@ -110,8 +107,7 @@ it('defaults to 16 qubits when entropy_qubits not in config', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 1),
-            ['key' => 'value']
+            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 1)
         )
         ->willReturn(['bits' => str_repeat('1', 16)]);
 
@@ -250,8 +246,7 @@ it('clamps entropy_qubits to 16 when configured as zero', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 1),
-            ['entropy_qubits' => 0]
+            $this->callback(fn (array $p) => $p['qubits'] === 16 && $p['shots'] === 1)
         )
         ->willReturn(['bits' => str_repeat('1', 16)]);
 
@@ -272,8 +267,7 @@ it('clamps entropy_qubits to 16 when configured as negative', function () {
         ->method('execute')
         ->with(
             'entropy.py',
-            $this->callback(fn (array $p) => $p['qubits'] === 16),
-            ['entropy_qubits' => -4]
+            $this->callback(fn (array $p) => $p['qubits'] === 16)
         )
         ->willReturn(['bits' => str_repeat('1', 16)]);
 
@@ -294,8 +288,7 @@ it('sends every circuit to batch.py and maps the results back in order', functio
                 && $p['circuits'] === [
                     ['qubits' => 1, 'gates' => [], 'shots' => 1000],
                     ['qubits' => 2, 'gates' => [], 'shots' => 10],
-                ]),
-            ['key' => 'value']
+                ])
         )
         ->willReturn(['results' => [
             ['counts' => ['0' => 500, '1' => 500]],

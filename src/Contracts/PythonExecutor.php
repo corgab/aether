@@ -12,11 +12,13 @@ interface PythonExecutor
     /**
      * Execute a Python script with the given payload.
      *
+     * Driver settings are part of the payload (`driver_config`); implementations
+     * must not need a second channel for them.
+     *
      * @param  array<mixed>  $payload
-     * @param  array<string, mixed>  $driverConfig
      * @return array<mixed>
      */
-    public function execute(string $script, array $payload, array $driverConfig = []): array;
+    public function execute(string $script, array $payload): array;
 
     /**
      * Convert a binary digit string into raw bytes.
