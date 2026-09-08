@@ -62,13 +62,6 @@ it('python not found includes path', function (): void {
     expect($exception->getMessage())->toContain('/usr/bin/python3');
 });
 
-it('missing dependencies includes details', function (): void {
-    $exception = PythonEnvironmentException::missingDependencies('qiskit>=1.0');
-
-    expect($exception)->toBeInstanceOf(PythonEnvironmentException::class);
-    expect($exception->getMessage())->toContain('qiskit>=1.0');
-});
-
 // -------------------------------------------------------------------------
 // DriverNotFoundException
 // -------------------------------------------------------------------------

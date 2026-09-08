@@ -16,12 +16,4 @@ class PythonEnvironmentException extends AetherException
     {
         return new self("Python binary not found at [{$path}]. Check the 'python_path' configuration.");
     }
-
-    /**
-     * Create an exception for missing Python package dependencies.
-     */
-    public static function missingDependencies(string $details): self
-    {
-        return new self("Required Python dependencies are missing: {$details}");
-    }
 }
