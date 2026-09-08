@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Tasks\TaskSnapshot;
@@ -79,6 +80,6 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
 
     private function taskTtl(): int
     {
-        return (int) config('aether.local_task_ttl', 3600);
+        return app(AetherConfig::class)->localTaskTtl();
     }
 }

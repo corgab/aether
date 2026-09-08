@@ -29,6 +29,7 @@ it('returns the documented defaults when nothing is configured', function () {
         ->and($config->pollInterval())->toBe(5)
         ->and($config->maxPollAttempts())->toBe(720)
         ->and($config->persistTasks())->toBeFalse()
+        ->and($config->localTaskTtl())->toBe(3600)
         ->and($config->driver('local'))->toBe([]);
 });
 
@@ -37,7 +38,8 @@ it('exposes each default as a constant so the literal lives in one place', funct
         ->and(AetherConfig::DEFAULT_PYTHON_PATH)->toBe('python3')
         ->and(AetherConfig::DEFAULT_PROCESS_TIMEOUT)->toBe(300)
         ->and(AetherConfig::DEFAULT_POLL_INTERVAL)->toBe(5)
-        ->and(AetherConfig::DEFAULT_MAX_POLL_ATTEMPTS)->toBe(720);
+        ->and(AetherConfig::DEFAULT_MAX_POLL_ATTEMPTS)->toBe(720)
+        ->and(AetherConfig::DEFAULT_LOCAL_TASK_TTL)->toBe(3600);
 });
 
 // -------------------------------------------------------------------------
@@ -67,11 +69,20 @@ it('returns the configured values with their documented types', function () {
 });
 
 it('casts the numeric strings env() hands over', function () {
-    $config = aetherConfig(['process_timeout' => '45', 'poll_interval' => '3', 'max_poll_attempts' => '12']);
+    $config = aetherConfig(['process_timeout' => '45', 'poll_interval' => '3', 'max_poll_attempts' => '12', 'local_task_ttl' => '60']);
 
     expect($config->processTimeout())->toBe(45)
         ->and($config->pollInterval())->toBe(3)
-        ->and($config->maxPollAttempts())->toBe(12);
+        ->and($config->maxPollAttempts())->toBe(12)
+        ->and($config->localTaskTtl())->toBe(60);
+});
+
+it('trims the driver name, python path and queue it returns', function () {
+    $config = aetherConfig(['default' => ' aws ', 'python_path' => ' /usr/bin/python3', 'queue' => 'quantum ']);
+
+    expect($config->defaultDriver())->toBe('aws')
+        ->and($config->pythonPath())->toBe('/usr/bin/python3')
+        ->and($config->queue())->toBe('quantum');
 });
 
 it('falls back to the default for a blank or non-numeric integer option', function (mixed $raw) {

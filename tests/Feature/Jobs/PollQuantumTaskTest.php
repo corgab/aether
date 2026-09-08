@@ -12,6 +12,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Aether\Tests\Feature\Jobs\FakeSynchronousOnlyDevice;
+use Illuminate\Config\Repository;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Event;
@@ -28,6 +29,28 @@ it('budgets its attempts from the configured max_poll_attempts', function () {
     $job = new PollQuantumTask('arn:fake', ['qubits' => 1, 'gates' => [], 'shots' => 1]);
 
     expect($job->tries())->toBe(42);
+});
+
+it('budgets the attempts inside handle() from the injected settings, not the container', function () {
+    config(['aether.max_poll_attempts' => 720]);
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $mockJob = Mockery::mock(Job::class);
+    $mockJob->shouldReceive('attempts')->andReturn(2);
+    $mockJob->shouldNotReceive('release');
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($mockJob);
+
+    $settings = new AetherConfig(new Repository(['aether' => ['max_poll_attempts' => 2]]));
+
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), $settings))
+        ->toThrow(QuantumExecutionException::class);
 });
 
 it('releases itself back to the queue with the configured delay when the task is not terminal', function () {

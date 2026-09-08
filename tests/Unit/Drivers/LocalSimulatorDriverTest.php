@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
@@ -46,7 +47,9 @@ beforeEach(function () use ($config) {
     // a minimal config repository for the config() helper to resolve.
     Cache::swap(new CacheRepository(new ArrayStore));
     Container::setInstance(tap(new Container, function (Container $container) {
-        $container->instance('config', new ConfigRepository(['aether' => ['local_task_ttl' => 3600]]));
+        $config = new ConfigRepository(['aether' => ['local_task_ttl' => 3600]]);
+        $container->instance('config', $config);
+        $container->instance(AetherConfig::class, new AetherConfig($config));
     }));
 });
 

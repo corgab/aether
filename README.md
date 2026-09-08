@@ -264,7 +264,7 @@ use Aether\Facades\Quantum;
 
 Quantum::extend('ionq', fn () => new IonqDriver(
     Quantum::bridge(),
-    config('aether.drivers.ionq'),
+    app(\Aether\Config\AetherConfig::class)->driver('ionq'),
 ));
 ```
 

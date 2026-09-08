@@ -6,9 +6,12 @@ use Aether\AetherServiceProvider;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Config\AetherConfig;
 use Aether\Contracts\QuantumDevice;
+use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
 use Aether\QuantumManager;
+use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
 use Illuminate\Support\Facades\Artisan;
 
 // -------------------------------------------------------------------------
@@ -21,6 +24,16 @@ it('registers AetherConfig as a singleton in the container', function () {
 
     expect($first)->toBeInstanceOf(AetherConfig::class)
         ->and($first)->toBe($second);
+});
+
+it('builds drivers on a bare container that only binds config', function () {
+    $container = new Container;
+    $container->instance('config', new Repository(['aether' => ['python_path' => 'python3', 'drivers' => ['local' => []]]]));
+
+    $manager = new QuantumManager($container);
+
+    expect($manager->getDefaultDriver())->toBe('local')
+        ->and($manager->driver('local'))->toBeInstanceOf(LocalSimulatorDriver::class);
 });
 
 it('resolves the default driver through AetherConfig', function () {

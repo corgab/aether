@@ -30,6 +30,8 @@ final class AetherConfig
 
     public const DEFAULT_MAX_POLL_ATTEMPTS = 720;
 
+    public const DEFAULT_LOCAL_TASK_TTL = 3600;
+
     public function __construct(
         private readonly Repository $config,
     ) {}
@@ -42,9 +44,7 @@ final class AetherConfig
      */
     public function defaultDriver(): string
     {
-        $driver = $this->config->get('aether.default');
-
-        return is_string($driver) && trim($driver) !== '' ? $driver : self::DEFAULT_DRIVER;
+        return $this->string('aether.default') ?? self::DEFAULT_DRIVER;
     }
 
     /**
@@ -52,9 +52,7 @@ final class AetherConfig
      */
     public function pythonPath(): string
     {
-        $path = $this->config->get('aether.python_path');
-
-        return is_string($path) && trim($path) !== '' ? $path : self::DEFAULT_PYTHON_PATH;
+        return $this->string('aether.python_path') ?? self::DEFAULT_PYTHON_PATH;
     }
 
     /**
@@ -70,9 +68,7 @@ final class AetherConfig
      */
     public function queue(): ?string
     {
-        $queue = $this->config->get('aether.queue');
-
-        return is_string($queue) && trim($queue) !== '' ? $queue : null;
+        return $this->string('aether.queue');
     }
 
     /**
@@ -106,6 +102,15 @@ final class AetherConfig
     }
 
     /**
+     * Seconds the local simulator keeps a dispatched result available to the
+     * polling job (`aether.local_task_ttl`).
+     */
+    public function localTaskTtl(): int
+    {
+        return $this->integer('aether.local_task_ttl', self::DEFAULT_LOCAL_TASK_TTL);
+    }
+
+    /**
      * Raw options for one driver (`aether.drivers.<name>`), for the driver to type.
      *
      * @return array<string, mixed>
@@ -115,6 +120,22 @@ final class AetherConfig
         $options = $this->config->get("aether.drivers.{$name}", []);
 
         return is_array($options) ? $options : [];
+    }
+
+    /**
+     * Read a string option, trimmed, or null when blank or not a string.
+     */
+    private function string(string $key): ?string
+    {
+        $value = $this->config->get($key);
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**

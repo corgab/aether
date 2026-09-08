@@ -127,7 +127,7 @@ class QuantumManager extends Manager
      *
      *     Quantum::extend('ionq', fn () => new IonqDriver(
      *         Quantum::bridge(),
-     *         config('aether.drivers.ionq'),
+     *         app(AetherConfig::class)->driver('ionq'),
      *     ));
      */
     public function bridge(): PythonBridge
@@ -180,18 +180,29 @@ class QuantumManager extends Manager
      */
     private function createBridge(): PythonBridge
     {
+        $settings = $this->settings();
+
         return new PythonBridge(
-            $this->settings()->pythonPath(),
-            $this->settings()->processTimeout(),
+            $settings->pythonPath(),
+            $settings->processTimeout(),
         );
     }
 
     /**
-     * The typed package settings, resolved from the container on each call so
-     * a config value changed after the manager was built is still honoured.
+     * The typed package settings.
+     *
+     * Taken from the container when the service provider has bound it (so a
+     * swapped instance is honoured), otherwise built over the same config
+     * repository Manager already holds, so a bare container with only
+     * `config` bound still works. Resolved per call: the reader is stateless
+     * and a config value changed after the manager was built must still win.
      */
     private function settings(): AetherConfig
     {
-        return $this->container->make(AetherConfig::class);
+        if ($this->container->bound(AetherConfig::class)) {
+            return $this->container->make(AetherConfig::class);
+        }
+
+        return new AetherConfig($this->config);
     }
 }

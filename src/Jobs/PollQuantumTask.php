@@ -87,7 +87,7 @@ class PollQuantumTask implements ShouldQueue
         $snapshot = $device->checkTask($this->taskArn);
 
         if (! $snapshot->status->isTerminal()) {
-            $maxAttempts = $this->tries();
+            $maxAttempts = $config->maxPollAttempts();
 
             if ($this->attempts() >= $maxAttempts) {
                 $e = QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts());
