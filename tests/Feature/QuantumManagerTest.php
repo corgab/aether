@@ -37,6 +37,30 @@ it('blames the driver name, not the default setting, when an explicit driver is 
     }
 });
 
+it('names the extended drivers in the message for an unknown explicit driver', function () {
+    $manager = app(QuantumManager::class);
+    $manager->extend('ionq', fn () => Mockery::mock(QuantumDevice::class));
+
+    try {
+        $manager->driver('ionk');
+        $this->fail('Expected DriverNotFoundException.');
+    } catch (DriverNotFoundException $e) {
+        expect($e->getMessage())->toContain("'ionq'");
+    }
+});
+
+it('falls back to the local driver when aether.default is null or blank', function (mixed $default) {
+    config(['aether.default' => $default]);
+
+    expect(app(QuantumManager::class)->driver())->toBeInstanceOf(LocalSimulatorDriver::class);
+})->with(['null' => [null], 'blank' => ['']]);
+
+it('still throws DriverNotFoundException for an unknown driver when aether.default is null', function () {
+    config(['aether.default' => null]);
+
+    expect(fn () => app(QuantumManager::class)->driver('ionq'))->toThrow(DriverNotFoundException::class);
+});
+
 it('blames the aether.default setting when the configured default driver is unknown', function () {
     config(['aether.default' => 'ionq']);
 

@@ -87,6 +87,12 @@ it('for driver includes driver name and points at registration, not at the defau
         ->not->toContain('aether.default');
 });
 
+it('for driver lists the registered drivers when given', function (): void {
+    $exception = DriverNotFoundException::forDriver('ionk', ['local', 'aws', 'ionq']);
+
+    expect($exception->getMessage())->toContain("Registered drivers: 'local', 'aws', 'ionq'.");
+});
+
 it('for default driver points at the aether.default setting', function (): void {
     $exception = DriverNotFoundException::forDefaultDriver('braket');
 
