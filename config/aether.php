@@ -116,7 +116,7 @@ return [
 
         'local' => [
             'synchronous_safe' => true,
-            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+            'entropy_qubits' => env('AETHER_ENTROPY_QUBITS', 16),
 
             // The local simulator keeps a full statevector in memory: a dense
             // vector of 2^n complex128 amplitudes, 16 bytes each, so memory
@@ -134,7 +134,7 @@ return [
             'bucket' => env('AETHER_S3_BUCKET'),
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
             'synchronous_safe' => true,
-            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+            'entropy_qubits' => env('AETHER_ENTROPY_QUBITS', 16),
 
             // No ceiling here: Braket enforces its own per-device qubit
             // limits, so this package does not duplicate or guess at those.
@@ -146,10 +146,12 @@ return [
             // (e.g. SV1) bill per-minute instead, but the task+shot model
             // is what estimateCost() covers; treat simulator estimates as
             // a rough proxy, not an exact figure. Override via env/config
-            // without a package release.
+            // without a package release. The rates are validated (not cast)
+            // when the driver is resolved: a non-numeric or negative value
+            // throws InvalidDriverConfigException instead of pricing at 0.
             'pricing' => [
-                'per_task' => (float) env('AETHER_AWS_PRICE_PER_TASK', 0.30),
-                'per_shot' => (float) env('AETHER_AWS_PRICE_PER_SHOT', 0.00035),
+                'per_task' => env('AETHER_AWS_PRICE_PER_TASK', 0.30),
+                'per_shot' => env('AETHER_AWS_PRICE_PER_SHOT', 0.00035),
                 'currency' => env('AETHER_AWS_PRICE_CURRENCY', 'USD'),
             ],
 

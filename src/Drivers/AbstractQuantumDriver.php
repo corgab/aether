@@ -50,6 +50,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
     /**
      * Return the driver identifier passed to Python scripts.
+     *
+     * Called from the base constructor (through makeConfig()) before the
+     * subclass constructor body runs, so it must not depend on state a
+     * subclass sets after parent::__construct(): return a literal or a
+     * promoted constructor parameter.
      */
     abstract protected function driverName(): string;
 
@@ -60,6 +65,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * return a DriverConfig subclass; the base class types the shared options
      * (`max_qubits`, `entropy_qubits`, `synchronous_safe`) and keeps every
      * other key reachable through DriverConfig::get() and the JSON payload.
+     *
+     * Runs inside the base constructor, before the subclass constructor body,
+     * so it (and the driverName() it calls) can only rely on promoted
+     * constructor parameters, not on properties assigned afterwards.
      *
      * @param  array<string, mixed>  $values
      * @return TConfig
