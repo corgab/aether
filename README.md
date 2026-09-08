@@ -323,7 +323,7 @@ $result = Quantum::circuit()
 
 Appending a fragment that requires more qubits than the circuit has throws an `InvalidCircuitException`.
 
-Measurement is final, as on Braket: listing a qubit twice in one `measure()` call, measuring a qubit a second time, or applying any gate to a qubit after it was measured throws an `InvalidCircuitException` while the circuit is being built, before any Python process is spawned. Put `measure()` last, or measure only the qubits you are done with.
+Measurement is final, as on Braket: listing a qubit twice in one `measure()` call, measuring a qubit a second time, or applying any gate to a qubit after it was measured throws an `InvalidCircuitException` while the circuit is being built, before any Python process is spawned. Put `measure()` last, or measure only the qubits you are done with. A fragment's own measurements do not count, since `append()` drops them: only the parent's measurements constrain what follows.
 
 ### Adding a Gate
 

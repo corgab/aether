@@ -386,6 +386,26 @@ it('rejects an appended fragment that touches a measured qubit', function () use
     expect(fn () => $builder->append($fragment))->toThrow(InvalidCircuitException::class, 'already been measured');
 });
 
+it('ignores the measurements of an appended fragment, which append() drops', function () use (&$builder, &$device): void {
+    $bell = (new CircuitBuilder($device))->qubits(2)->h(0)->cnot(0, 1)->measure();
+
+    $builder->qubits(2)->append($bell)->x(0)->measure();
+
+    expect($builder->toArray()['gates'])->toHaveCount(4);
+});
+
+it('treats qubits added after a measure-all as measured too', function () use (&$builder): void {
+    $builder->qubits(2)->h(0)->measure()->qubits(3);
+
+    expect(fn () => $builder->h(2))->toThrow(InvalidCircuitException::class, 'already been measured');
+});
+
+it('rejects a second measurement after a measure-all', function () use (&$builder): void {
+    $builder->qubits(2)->measure();
+
+    expect(fn () => $builder->measure(1))->toThrow(InvalidCircuitException::class, 'already been measured');
+});
+
 it('fromArray rejects a definition that acts on a measured qubit', function () use (&$device): void {
     $definition = [
         'qubits' => 1,

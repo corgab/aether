@@ -43,6 +43,9 @@ class CircuitBuilder
     /** @var array<int, true> Qubits already measured; Braket rejects any later instruction on them. */
     private array $measuredQubits = [];
 
+    /** A measure-all was pushed: every qubit, including ones added later, counts as measured. */
+    private bool $measuredAll = false;
+
     private int $shots = 1000;
 
     final public function __construct(
@@ -410,7 +413,11 @@ class CircuitBuilder
         // can be shared directly without a toArray()/Gate::fromArray() round
         // trip that would re-serialize and re-validate every gate.
         foreach ($fragment->gates as $gate) {
-            $this->assertMeasurementOrder($gate);
+            // The fragment's measurements are dropped below, so only its gates
+            // are checked against what the parent has already measured.
+            if (! $gate->isMeasurement()) {
+                $this->assertMeasurementOrder($gate, strtoupper($gate->type), $gate->qubitIndices());
+            }
             if (! $gate->isMeasurement()) {
                 $this->gates[] = $gate;
             }
@@ -639,8 +646,11 @@ class CircuitBuilder
      */
     private function push(Gate $gate): static
     {
-        $this->validateTargets(strtoupper($gate->type), ...$gate->qubitIndices());
-        $this->assertMeasurementOrder($gate);
+        $name = strtoupper($gate->type);
+        $indices = $gate->qubitIndices();
+
+        $this->validateTargets($name, ...$indices);
+        $this->assertMeasurementOrder($gate, $name, $indices);
 
         $this->gates[] = $gate;
 
@@ -669,18 +679,19 @@ class CircuitBuilder
      * Enforce Braket's measurement ordering before the circuit reaches Python:
      * a qubit can be measured once, and nothing may act on it afterwards.
      *
-     * Records the qubits a measurement covers (every qubit for a measure-all)
-     * so later gates and measurements can be checked against them.
+     * Explicit measurements record their targets; a measure-all marks the
+     * whole circuit, including qubits added by a later qubits() call, since
+     * the Python side expands it against the final qubit count.
+     *
+     * @param  list<int>  $indices  The gate's qubit indices, already range-checked.
      *
      * @throws InvalidCircuitException
      */
-    private function assertMeasurementOrder(Gate $gate): void
+    private function assertMeasurementOrder(Gate $gate, string $name, array $indices): void
     {
-        $name = strtoupper($gate->type);
-
         if (! $gate->isMeasurement()) {
-            foreach ($gate->qubitIndices() as $qubit) {
-                if (isset($this->measuredQubits[$qubit])) {
+            foreach ($indices as $qubit) {
+                if ($this->isMeasured($qubit)) {
                     throw InvalidCircuitException::qubitAlreadyMeasured($name, $qubit);
                 }
             }
@@ -688,28 +699,35 @@ class CircuitBuilder
             return;
         }
 
-        $targets = $gate->qubitIndices();
+        if ($indices === []) {
+            if ($this->measuredAll || $this->measuredQubits !== []) {
+                throw InvalidCircuitException::qubitAlreadyMeasured($name, array_key_first($this->measuredQubits) ?? 0);
+            }
 
-        if ($targets === [] && $this->qubitCount > 0) {
-            $targets = range(0, $this->qubitCount - 1);
+            $this->measuredAll = true;
+
+            return;
         }
 
         $seen = [];
 
-        foreach ($targets as $qubit) {
+        foreach ($indices as $qubit) {
             if (isset($seen[$qubit])) {
                 throw InvalidCircuitException::repeatedMeasurementTarget($qubit);
             }
 
-            if (isset($this->measuredQubits[$qubit])) {
+            if ($this->isMeasured($qubit)) {
                 throw InvalidCircuitException::qubitAlreadyMeasured($name, $qubit);
             }
 
             $seen[$qubit] = true;
         }
 
-        foreach ($targets as $qubit) {
-            $this->measuredQubits[$qubit] = true;
-        }
+        $this->measuredQubits += $seen;
+    }
+
+    private function isMeasured(int $qubit): bool
+    {
+        return $this->measuredAll || isset($this->measuredQubits[$qubit]);
     }
 }
