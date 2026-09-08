@@ -128,7 +128,8 @@ class PollQuantumTask implements ShouldQueue
      * own polling problems (exhausted budget, malformed response) only ever
      * populate error and failed_at. A status-only update, the common case
      * while a task is queued or running, is a single conditional query that
-     * touches no row when the status has not changed. Persistence is
+     * touches no row when the status has not changed and does not fire the
+     * QuantumTask model events; the terminal transitions do. Persistence is
      * best-effort: a database failure is reported and swallowed so it can
      * never fail the job or suppress the CircuitCompleted event.
      *
@@ -145,11 +146,12 @@ class PollQuantumTask implements ShouldQueue
                 // An intermediate poll only mirrors the status: one conditional
                 // UPDATE instead of a SELECT per poll, and no row is written
                 // (nor updated_at bumped) while the backend reports the same
-                // status as before.
+                // status as before. This bypasses the model's events; the
+                // terminal transitions below still go through save().
                 QuantumTask::query()
                     ->where('task_arn', $this->taskArn)
                     ->where('status', '!=', $status->value)
-                    ->update(['status' => $status->value, 'updated_at' => now()]);
+                    ->update(['status' => $status->value]);
 
                 return;
             }

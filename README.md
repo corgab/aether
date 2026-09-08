@@ -192,7 +192,7 @@ php artisan migrate
 
 Set `AETHER_PERSIST_TASKS=true` in your `.env`.
 
-When enabled, Aether inserts a row into `quantum_tasks` containing the circuit, shots, and driver when a task is dispatched, and updates its `status` and `counts` as the polling job progresses. The `status` always mirrors the backend's real state. Polling problems (like exhaustion or malformed responses) are logged in `error` and `failed_at`. While a task is queued or running, each poll issues a single conditional update that writes nothing when the status is unchanged, so an hour of polling a queued QPU task costs one query per poll and no row churn.
+When enabled, Aether inserts a row into `quantum_tasks` containing the circuit, shots, and driver when a task is dispatched, and updates its `status` and `counts` as the polling job progresses. The `status` always mirrors the backend's real state. Polling problems (like exhaustion or malformed responses) are logged in `error` and `failed_at`. While a task is queued or running, each poll issues a single conditional update that writes nothing when the status is unchanged, so an hour of polling a queued QPU task costs one query per poll and no row churn. Those intermediate updates go straight to the query builder, so `QuantumTask` model observers only see the terminal transition (completed, failed, cancelled, or a polling error); listen to `CircuitCompleted` or query the table for anything earlier.
 
 Since persistence is strictly best-effort, a database failure never affects queue behaviour or prevents the `CircuitCompleted` event from being emitted.
 
