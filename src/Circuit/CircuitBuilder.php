@@ -38,8 +38,6 @@ class CircuitBuilder
     /** @var Gate[] */
     private array $gates = [];
 
-    private bool $hasMeasurement = false;
-
     private int $shots = 1000;
 
     final public function __construct(
@@ -619,7 +617,7 @@ class CircuitBuilder
             throw InvalidCircuitException::noQubits();
         }
 
-        if (! $this->hasMeasurement) {
+        if (! $this->hasMeasurement()) {
             throw InvalidCircuitException::noMeasurement();
         }
 
@@ -627,9 +625,26 @@ class CircuitBuilder
     }
 
     /**
-     * Validate a gate against the circuit's qubit range, append it, and
-     * track measurement state. The single append primitive behind every
-     * fluent gate method and fromArray().
+     * Whether any gate in the circuit is a measurement.
+     *
+     * Derived from $gates on demand, like gateCount() and depth(), rather
+     * than tracked in a flag push() would have to keep in step; circuits are
+     * tens of gates at most, so the scan costs nothing measurable.
+     */
+    public function hasMeasurement(): bool
+    {
+        foreach ($this->gates as $gate) {
+            if ($gate->isMeasurement()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate a gate against the circuit's qubit range and append it. The
+     * single append primitive behind every fluent gate method and fromArray().
      *
      * @throws InvalidCircuitException
      */
@@ -638,10 +653,6 @@ class CircuitBuilder
         $this->validateTargets(strtoupper($gate->type), ...$gate->qubitIndices());
 
         $this->gates[] = $gate;
-
-        if ($gate->isMeasurement()) {
-            $this->hasMeasurement = true;
-        }
 
         return $this;
     }

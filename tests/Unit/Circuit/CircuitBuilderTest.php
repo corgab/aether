@@ -249,6 +249,25 @@ it('run throws when no qubits defined', function () use (&$builder): void {
 // run() — validation: no measurement
 // -------------------------------------------------------------------------
 
+it('reports whether the circuit measures anything, derived from its gates', function () use (&$builder): void {
+    $builder->qubits(2)->h(0)->cnot(0, 1);
+
+    expect($builder->hasMeasurement())->toBeFalse();
+
+    $builder->measure(1);
+
+    expect($builder->hasMeasurement())->toBeTrue();
+});
+
+it('does not count a measurement dropped from an appended fragment', function () use (&$device, &$builder): void {
+    $fragment = (new CircuitBuilder($device))->qubits(1)->x(0)->measure();
+
+    $builder->qubits(1)->append($fragment);
+
+    expect($builder->hasMeasurement())->toBeFalse()
+        ->and(fn () => $builder->run())->toThrow(InvalidCircuitException::class);
+});
+
 it('run throws when no measurement', function () use (&$builder): void {
     expect(fn () => $builder->qubits(1)->h(0)->run())
         ->toThrow(InvalidCircuitException::class);

@@ -95,8 +95,9 @@ $result->outcomes();        // ['00', '11'] — bitstrings sorted by count, desc
 ```php
 $builder = Quantum::circuit()->qubits(2)->h(0)->cnot(0, 1)->measure();
 
-$builder->gateCount(); // 2 — number of gates, excluding measurement
-$builder->depth();     // 2 — number of sequential layers, excluding measurement
+$builder->gateCount();      // 2 — number of gates, excluding measurement
+$builder->depth();          // 2 — number of sequential layers, excluding measurement
+$builder->hasMeasurement(); // true — whether any gate is a measurement
 ```
 
 ### Entropy Generation
