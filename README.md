@@ -323,6 +323,8 @@ $result = Quantum::circuit()
 
 Appending a fragment that requires more qubits than the circuit has throws an `InvalidCircuitException`.
 
+`measure()` accepts `null` (every qubit), an `int`, or a non-empty array of integer qubit indices; anything else in the array, such as a string or a float, throws an `InvalidCircuitException` instead of a `TypeError`, and a queued definition carrying such a value is rejected when it is rebuilt rather than silently measuring qubit 0.
+
 ### Adding a Gate
 
 Gate knowledge lives in a single metadata layer on each side of the bridge: the `GateType` / `GateShape` enums in `src/Circuit/` (PHP) and the `GATE_PARAMS` table in `bin/python/common.py` (Python). Adding a gate touches exactly five places:

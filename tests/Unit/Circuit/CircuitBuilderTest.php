@@ -340,6 +340,11 @@ it('allows measure with null targets', function () {
     expect($builder->qubitCount())->toBe(2);
 });
 
+it('measure with a non-integer target throws InvalidCircuitException, not a TypeError', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->measure(['a']))
+        ->toThrow(InvalidCircuitException::class, 'integer qubit indices');
+});
+
 it('measure with an empty array throws', function () use (&$builder): void {
     expect(fn () => $builder->qubits(2)->measure([]))
         ->toThrow(InvalidCircuitException::class);

@@ -317,10 +317,34 @@ final readonly class Gate
         $resolved = match (true) {
             $targets === null => null,
             is_int($targets) => [$targets],
-            default => $targets,
+            default => self::integerTargets($targets),
         };
 
         return new self('measure', ['targets' => $resolved]);
+    }
+
+    /**
+     * Require every measurement target to be an integer qubit index.
+     *
+     * PHP cannot type the elements of an array, so a stray string or float
+     * would otherwise reach the int-typed range check as a TypeError, or be
+     * cast to qubit 0 when a queued definition is rebuilt.
+     *
+     * @param  array<mixed>  $targets
+     * @return list<int>
+     *
+     * @throws InvalidCircuitException
+     */
+    private static function integerTargets(array $targets): array
+    {
+        foreach ($targets as $target) {
+            if (! is_int($target)) {
+                throw InvalidCircuitException::invalidMeasurementTarget($target);
+            }
+        }
+
+        /** @var list<int> */
+        return array_values($targets);
     }
 
     /**
@@ -428,7 +452,11 @@ final readonly class Gate
             return null;
         }
 
-        return array_map(static fn (mixed $target): int => (int) $target, $targets);
+        if ($targets === []) {
+            throw InvalidCircuitException::emptyMeasurementTargets();
+        }
+
+        return self::integerTargets($targets);
     }
 
     /**
