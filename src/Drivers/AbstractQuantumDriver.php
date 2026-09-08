@@ -6,6 +6,7 @@ namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
 use Aether\Concerns\DispatchesLifecycleEvents;
+use Aether\Config\DriverConfig;
 use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
@@ -21,23 +22,55 @@ use Aether\Tasks\TaskStatus;
 
 /**
  * Base driver with shared circuit execution and entropy generation logic.
+ *
+ * @template TConfig of DriverConfig
  */
 abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
     use DispatchesLifecycleEvents;
 
     /**
-     * @param  array<string, mixed>  $config
+     * Typed driver options, built once from the raw array by makeConfig().
+     *
+     * @var TConfig
+     */
+    protected readonly DriverConfig $config;
+
+    /**
+     * @param  array<string, mixed>  $config  The raw `aether.drivers.<name>` array.
+     *
+     * @throws InvalidDriverConfigException When an option has a value of the wrong shape.
      */
     public function __construct(
         protected readonly PythonExecutor $bridge,
-        protected readonly array $config,
-    ) {}
+        array $config,
+    ) {
+        $this->config = $this->makeConfig($config);
+    }
 
     /**
      * Return the driver identifier passed to Python scripts.
      */
     abstract protected function driverName(): string;
+
+    /**
+     * Build the typed config object for this driver.
+     *
+     * Override in drivers with options of their own (see AwsBraketDriver) to
+     * return a DriverConfig subclass; the base class types the shared options
+     * (`max_qubits`, `entropy_qubits`, `synchronous_safe`) and keeps every
+     * other key reachable through DriverConfig::get() and the JSON payload.
+     *
+     * @param  array<string, mixed>  $values
+     * @return TConfig
+     *
+     * @throws InvalidDriverConfigException
+     */
+    protected function makeConfig(array $values): DriverConfig
+    {
+        /** @var TConfig */
+        return new DriverConfig($this->driverName(), $values);
+    }
 
     /**
      * Config keys that must be present and non-empty before the driver runs.
@@ -76,8 +109,14 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     protected function validateCircuits(array $circuits): void
     {
+        $ceiling = $this->config->maxQubits;
+
+        if ($ceiling === null) {
+            return;
+        }
+
         foreach ($circuits as $circuit) {
-            $this->assertWithinQubitCeiling($circuit);
+            $this->assertWithinQubitCeiling($circuit, $ceiling);
         }
     }
 
@@ -113,15 +152,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     protected function assertConfigured(): void
     {
-        $missing = [];
-
-        foreach ($this->requiredConfig() as $key) {
-            $value = $this->config[$key] ?? null;
-
-            if ($value === null || (is_string($value) && trim($value) === '')) {
-                $missing[] = $key;
-            }
-        }
+        $missing = $this->config->blankKeys($this->requiredConfig());
 
         if ($missing !== []) {
             throw InvalidDriverConfigException::missingKeys($this->driverName(), $missing);
@@ -134,25 +165,18 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * Statevector simulation memory doubles with every additional qubit, so
      * an unbounded circuit can exhaust host memory well before it would ever
-     * reach a remote device's own limits. A blank `max_qubits` (absent, null,
-     * or an empty string — what env() yields for `AETHER_MAX_QUBITS=`) means
-     * unlimited, the default for every driver, so existing configs keep
-     * working unchanged.
+     * reach a remote device's own limits. A blank `max_qubits` means
+     * unlimited (DriverConfig::$maxQubits is null and validateCircuits()
+     * never gets here), the default for every driver.
      *
      * @throws InvalidCircuitException
      */
-    private function assertWithinQubitCeiling(CircuitBuilder $circuit): void
+    private function assertWithinQubitCeiling(CircuitBuilder $circuit, int $ceiling): void
     {
-        $ceiling = $this->config['max_qubits'] ?? null;
-
-        if (blank($ceiling)) {
-            return;
-        }
-
         $requested = $circuit->qubitCount();
 
-        if ($requested > (int) $ceiling) {
-            throw InvalidCircuitException::qubitCeilingExceeded($requested, (int) $ceiling, $this->driverName());
+        if ($requested > $ceiling) {
+            throw InvalidCircuitException::qubitCeilingExceeded($requested, $ceiling, $this->driverName());
         }
     }
 
@@ -167,7 +191,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         return array_merge($data, [
             'driver' => $this->driverName(),
-            'driver_config' => $this->config,
+            'driver_config' => $this->config->toArray(),
         ]);
     }
 
@@ -187,7 +211,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
         ]);
 
-        $response = $this->bridge->execute('batch.py', $payload, $this->config);
+        $response = $this->bridge->execute('batch.py', $payload, $this->config->toArray());
 
         if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
             throw QuantumExecutionException::malformedResponse(
@@ -273,7 +297,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     private function runDefinition(array $definition): CircuitResult
     {
-        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
+        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config->toArray());
 
         if (! array_key_exists('counts', $response) || ! is_array($response['counts'])) {
             throw QuantumExecutionException::malformedResponse(
@@ -303,7 +327,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->assertConfigured();
         $this->validateCircuits([$circuit]);
 
-        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config);
+        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config->toArray());
 
         $taskArn = $response['task_arn'] ?? null;
 
@@ -330,7 +354,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $this->assertConfigured();
 
-        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
+        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
 
         $status = $response['status'] ?? null;
 
@@ -348,15 +372,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $this->preflight();
 
-        $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
-
-        // A non-positive qubit count would otherwise cause a DivisionByZeroError
-        // below. Config-level misconfiguration here is non-critical, so we fall
-        // back to the safe default instead of failing the whole request.
-        if ($qubits <= 0) {
-            $qubits = 16;
-        }
-
+        $qubits = $this->config->entropyQubits;
         $shots = (int) ceil($bits / $qubits);
 
         $payload = $this->payload([
@@ -364,7 +380,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'shots' => $shots,
         ]);
 
-        $response = $this->bridge->execute('entropy.py', $payload, $this->config);
+        $response = $this->bridge->execute('entropy.py', $payload, $this->config->toArray());
 
         if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
             throw QuantumExecutionException::malformedResponse(

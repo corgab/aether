@@ -50,6 +50,7 @@ Quantum (Facade)
 - **Tests use Pest PHP**, not raw PHPUnit classes. Use `it()` / `test()` with `expect()`.
 - **Python scripts** live in `bin/python/`, not `resources/`. Each script is self-contained (reads JSON stdin, writes JSON stdout).
 - **Exceptions** all extend `AetherException` with static factory methods (`::fromPythonError()`, `::forDriver()`, etc.)
+- **Driver config is typed:** `AbstractQuantumDriver` builds a `Config\DriverConfig` (`AwsDriverConfig` for aws) once in its constructor; invalid values throw `InvalidDriverConfigException` there, blank means default. Read options via `$this->config->maxQubits` / `->get('key')`, never `$this->config['key']`. The raw array still goes to Python as `driver_config`.
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.

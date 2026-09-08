@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\DriverConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Tasks\TaskSnapshot;
@@ -30,6 +31,8 @@ use Illuminate\Support\Str;
  *
  * No process ever actually queues or polls anything; check.py explicitly
  * refuses to run for the "local" driver (see bin/python/check.py).
+ *
+ * @extends AbstractQuantumDriver<DriverConfig>
  */
 class LocalSimulatorDriver extends AbstractQuantumDriver implements AsynchronousDevice
 {

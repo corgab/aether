@@ -343,6 +343,45 @@ it('throws when batch.py results count does not match circuits count', function 
 })->throws(QuantumExecutionException::class, 'exactly 2 results, got 1');
 
 // -------------------------------------------------------------------------
+// Typed config
+// -------------------------------------------------------------------------
+
+it('rejects a non-integer max_qubits when the driver is constructed', function () {
+    expect(fn () => new class($this->bridge, ['max_qubits' => 'abc']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    })->toThrow(InvalidDriverConfigException::class, 'Driver [test] has an invalid value for [max_qubits]');
+});
+
+it('still sends the raw config array to Python, untyped keys included', function () {
+    $driver = new class($this->bridge, ['max_qubits' => '10', 'python_provider' => 'providers.custom']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'circuit.py',
+            $this->callback(fn (array $p) => $p['driver_config'] === ['max_qubits' => '10', 'python_provider' => 'providers.custom']),
+            ['max_qubits' => '10', 'python_provider' => 'providers.custom']
+        )
+        ->willReturn(['counts' => ['0' => 1000]]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    $driver->executeCircuit($circuit);
+});
+
+// -------------------------------------------------------------------------
 // max_qubits ceiling
 // -------------------------------------------------------------------------
 

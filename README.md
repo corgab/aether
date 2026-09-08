@@ -474,7 +474,7 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()` and `Quantum::batch()` alike.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The value must be a positive integer: anything else (`AETHER_MAX_QUBITS=abc`) throws an `InvalidDriverConfigException` as soon as the driver is resolved, rather than silently becoming a ceiling of zero. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()` and `Quantum::batch()` alike.
 
 ## Cost Estimation
 
@@ -515,7 +515,9 @@ Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit 
 ],
 ```
 
-The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
+The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping, and so does a ceiling or rate that is not a non-negative number.
+
+Every option the PHP layer reads (`max_qubits`, `entropy_qubits`, `synchronous_safe`, and for `aws` the `pricing` rates and `max_cost_per_run`) is validated once, when the driver is resolved, through a typed `Aether\Config\DriverConfig` value object (`AwsDriverConfig` for the `aws` driver). Custom drivers extending `AbstractQuantumDriver` read the shared options from `$this->config->maxQubits` and friends, and any key of their own through `$this->config->get('key')`; the raw array still reaches the Python provider untouched as `driver_config`.
 
 ## License
 
