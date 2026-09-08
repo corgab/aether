@@ -113,18 +113,18 @@ it('names the driver on circuits it builds so dispatched jobs target the same ba
 });
 
 it('pins the resolved default driver name when no driver is requested', function () {
-    config()->set('aether.default', 'local');
+    config()->set('aether.default', 'aws');
 
     $manager = app(QuantumManager::class);
 
-    expect($manager->circuit()->driverName())->toBe('local');
+    expect($manager->circuit()->driverName())->toBe('aws');
 });
 
 it('pins the resolved default driver name on batches when no driver is requested', function () {
-    config()->set('aether.default', 'local');
+    config()->set('aether.default', 'aws');
 
     $manager = app(QuantumManager::class);
     $batch = $manager->batch([$manager->circuit()->qubits(1)->h(0)->measure()]);
 
-    expect((new ReflectionProperty($batch, 'driverName'))->getValue($batch))->toBe('local');
+    expect((new ReflectionProperty($batch, 'driverName'))->getValue($batch))->toBe('aws');
 });

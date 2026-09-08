@@ -50,9 +50,10 @@ class QuantumManager extends Manager
 
     /**
      * The string alias for a driver argument, which Manager also accepts as an
-     * enum. The one place that knows how an absent name resolves to the
-     * default: the fake reports it on the events it dispatches, and circuit()
-     * and batch() pin it onto the builders they create.
+     * enum. The one place in the manager that knows how an absent name
+     * resolves to the default: the fake reports it on the events it
+     * dispatches, and circuit() and batch() pin it onto the builders they
+     * create. The queue jobs ask getDefaultDriver() for the same answer.
      */
     private function driverAlias(string|UnitEnum|null $driver): string
     {
@@ -73,10 +74,9 @@ class QuantumManager extends Manager
      */
     public function circuit(?string $driver = null): CircuitBuilder
     {
-        return new CircuitBuilder(
-            $this->driver($driver),
-            $this->driverAlias($driver),
-        );
+        $name = $this->driverAlias($driver);
+
+        return new CircuitBuilder($this->driver($name), $name);
     }
 
     /**
@@ -86,11 +86,9 @@ class QuantumManager extends Manager
      */
     public function batch(array $circuits, ?string $driver = null): BatchBuilder
     {
-        return new BatchBuilder(
-            $this->driver($driver),
-            array_values($circuits),
-            $this->driverAlias($driver),
-        );
+        $name = $this->driverAlias($driver);
+
+        return new BatchBuilder($this->driver($name), array_values($circuits), $name);
     }
 
     /**

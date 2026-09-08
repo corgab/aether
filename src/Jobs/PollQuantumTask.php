@@ -71,7 +71,7 @@ class PollQuantumTask implements ShouldQueue
      */
     public function handle(QuantumManager $manager, Dispatcher $events): void
     {
-        $driverName = $this->driver ?? config('aether.default', 'local');
+        $driverName = $this->driver ?? $manager->getDefaultDriver();
         $device = $manager->driver($this->driver);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
