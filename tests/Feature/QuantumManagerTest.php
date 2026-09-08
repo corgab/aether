@@ -119,3 +119,12 @@ it('pins the resolved default driver name when no driver is requested', function
 
     expect($manager->circuit()->driverName())->toBe('local');
 });
+
+it('pins the resolved default driver name on batches when no driver is requested', function () {
+    config()->set('aether.default', 'local');
+
+    $manager = app(QuantumManager::class);
+    $batch = $manager->batch([$manager->circuit()->qubits(1)->h(0)->measure()]);
+
+    expect((new ReflectionProperty($batch, 'driverName'))->getValue($batch))->toBe('local');
+});
