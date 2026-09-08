@@ -97,6 +97,16 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for a batch that contains no circuits.
+     */
+    public static function emptyBatch(): self
+    {
+        return new self(
+            'Quantum::batch() needs at least one circuit. An empty batch has nothing to run and would only start a Python process to return no results.'
+        );
+    }
+
+    /**
      * Create an exception when a circuit in a batch has a driver pinned that does not match the batch driver.
      */
     public static function batchDriverMismatch(string $expected, string $actual): self
