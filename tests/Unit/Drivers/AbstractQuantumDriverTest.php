@@ -323,6 +323,32 @@ it('throws when batch.py omits the results key', function () {
     $this->driver->executeBatch([$circuit]);
 })->throws(QuantumExecutionException::class, '"results" key');
 
+it('names the script, the key and the expected shape in a malformed-response message', function () {
+    $this->bridge->method('execute')->willReturn(['counts' => 'not-an-array']);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    expect(fn () => $this->driver->executeCircuit($circuit))->toThrow(
+        QuantumExecutionException::class,
+        'Python script [circuit.py] returned a malformed response: expected the response to have a "counts" key holding an array.'
+    );
+});
+
+it('reports a missing key the same way as a key of the wrong type', function (array $response, string $key) {
+    $this->bridge->method('execute')->willReturn($response);
+
+    expect(fn () => $this->driver->generateEntropy(8))->toThrow(
+        QuantumExecutionException::class,
+        "expected the response to have a \"{$key}\" key holding a string."
+    );
+})->with([
+    'absent' => [[], 'bits'],
+    'null' => [['bits' => null], 'bits'],
+    'integer' => [['bits' => 12345], 'bits'],
+]);
+
 it('throws when a batch.py result lacks a counts array', function () {
     $this->bridge->method('execute')->willReturn(['results' => [['status' => 'ok']]]);
 
@@ -330,7 +356,7 @@ it('throws when a batch.py result lacks a counts array', function () {
     $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
 
     $this->driver->executeBatch([$circuit]);
-})->throws(QuantumExecutionException::class, '"counts" array');
+})->throws(QuantumExecutionException::class, 'expected each result to have a "counts" key holding an array');
 
 it('throws when batch.py results count does not match circuits count', function () {
     $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 500]]]]);

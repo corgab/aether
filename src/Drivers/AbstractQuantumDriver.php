@@ -157,6 +157,39 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
+     * Return $response[$key] once it is present and $isValid accepts it, or
+     * throw the malformed-response exception every script shares.
+     *
+     * The single funnel for "key present and of the right shape" checks on
+     * decoded Python output, so each call site states only what differs: the
+     * script, the key, the predicate and how to describe the expected value.
+     * $subject names what the key belongs to when it is not the response
+     * itself (e.g. "each result" for the items of a batch).
+     *
+     * @param  array<mixed>  $response
+     * @param  \Closure(mixed): bool  $isValid
+     *
+     * @throws QuantumExecutionException
+     */
+    private function expectKey(
+        array $response,
+        string $script,
+        string $key,
+        \Closure $isValid,
+        string $expected,
+        string $subject = 'the response'
+    ): mixed {
+        if (! array_key_exists($key, $response) || ! $isValid($response[$key])) {
+            throw QuantumExecutionException::malformedResponse(
+                $script,
+                "expected {$subject} to have a \"{$key}\" key holding {$expected}."
+            );
+        }
+
+        return $response[$key];
+    }
+
+    /**
      * Wrap script input in the envelope every bin/python script expects: the
      * data itself plus the driver name and config the provider layer reads.
      *
@@ -189,30 +222,29 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('batch.py', $payload, $this->config);
 
-        if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'batch.py',
-                'expected the "results" key to be present and hold an array.'
-            );
-        }
+        /** @var array<mixed> $results */
+        $results = $this->expectKey($response, 'batch.py', 'results', is_array(...), 'an array');
 
-        if (count($response['results']) !== count($circuits)) {
+        if (count($results) !== count($circuits)) {
             throw QuantumExecutionException::malformedResponse(
                 'batch.py',
-                'expected exactly '.count($circuits).' results, got '.count($response['results']).'.'
+                'expected exactly '.count($circuits).' results, got '.count($results).'.'
             );
         }
 
         $circuitResults = [];
-        foreach ($response['results'] as $result) {
-            if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
-                throw QuantumExecutionException::malformedResponse(
-                    'batch.py',
-                    'expected each result to have a "counts" array.'
-                );
-            }
+        foreach ($results as $result) {
+            /** @var array<string, int> $counts */
+            $counts = $this->expectKey(
+                is_array($result) ? $result : [],
+                'batch.py',
+                'counts',
+                is_array(...),
+                'an array',
+                'each result'
+            );
 
-            $circuitResults[] = new CircuitResult($result['counts']);
+            $circuitResults[] = new CircuitResult($counts);
         }
 
         // Announced only once the whole response has been validated, so a
@@ -275,14 +307,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
 
-        if (! array_key_exists('counts', $response) || ! is_array($response['counts'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'circuit.py',
-                'expected the "counts" key to be present and hold an array.'
-            );
-        }
+        /** @var array<string, int> $counts */
+        $counts = $this->expectKey($response, 'circuit.py', 'counts', is_array(...), 'an array');
 
-        return new CircuitResult($response['counts']);
+        return new CircuitResult($counts);
     }
 
     /**
@@ -305,14 +333,14 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config);
 
-        $taskArn = $response['task_arn'] ?? null;
-
-        if (! is_string($taskArn) || trim($taskArn) === '') {
-            throw QuantumExecutionException::malformedResponse(
-                'submit.py',
-                'expected the "task_arn" key to be present and hold a non-empty string.'
-            );
-        }
+        /** @var string $taskArn */
+        $taskArn = $this->expectKey(
+            $response,
+            'submit.py',
+            'task_arn',
+            static fn (mixed $value): bool => is_string($value) && trim($value) !== '',
+            'a non-empty string'
+        );
 
         return $taskArn;
     }
@@ -332,14 +360,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
 
-        $status = $response['status'] ?? null;
-
-        if (! is_string($status) || TaskStatus::tryFrom($status) === null) {
-            throw QuantumExecutionException::malformedResponse(
-                'check.py',
-                'expected the "status" key to be present and hold a valid task status value.'
-            );
-        }
+        $this->expectKey(
+            $response,
+            'check.py',
+            'status',
+            static fn (mixed $value): bool => is_string($value) && TaskStatus::tryFrom($value) !== null,
+            'a valid task status value'
+        );
 
         return TaskSnapshot::fromResponse($response);
     }
@@ -366,21 +393,17 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config);
 
-        if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
+        /** @var string $bitstring */
+        $bitstring = $this->expectKey($response, 'entropy.py', 'bits', is_string(...), 'a string');
+
+        if (strlen($bitstring) < $bits) {
             throw QuantumExecutionException::malformedResponse(
                 'entropy.py',
-                'expected the "bits" key to be present and hold a string.'
+                "expected at least {$bits} bits in the response, got ".strlen($bitstring).'.'
             );
         }
 
-        if (strlen($response['bits']) < $bits) {
-            throw QuantumExecutionException::malformedResponse(
-                'entropy.py',
-                "expected at least {$bits} bits in the response, got ".strlen($response['bits']).'.'
-            );
-        }
-
-        $bitstring = substr($response['bits'], 0, $bits);
+        $bitstring = substr($bitstring, 0, $bits);
 
         $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
 
