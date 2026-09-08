@@ -162,10 +162,10 @@ it('integer throws when entropy is exhausted without an in-range value', functio
 })->throws(QuantumExecutionException::class, 'entropy');
 
 // -------------------------------------------------------------------------
-// Validation: min > max
+// Wide ranges
 // -------------------------------------------------------------------------
 
-it('integer covers the full positive 64-bit range without a corrupted mask', function () use (&$device, &$generator): void {
+it('integer covers the full positive 64-bit range', function () use (&$device, &$generator): void {
     // The first 63-bit chunk of all-ones is PHP_INT_MAX itself, so it is accepted as-is.
     $device->method('generateEntropy')->with(256)->willReturn(str_repeat("\xff", 32));
 
@@ -186,6 +186,10 @@ it('integer rejects a span wider than a signed 64-bit integer', function () use 
     expect(fn () => $generator->integer(PHP_INT_MIN, PHP_INT_MAX))
         ->toThrow(InvalidArgumentException::class, 'exceeds PHP_INT_MAX');
 });
+
+// -------------------------------------------------------------------------
+// Validation: min > max
+// -------------------------------------------------------------------------
 
 it('throws when min exceeds max', function () {
     $device = $this->createMock(QuantumDevice::class);

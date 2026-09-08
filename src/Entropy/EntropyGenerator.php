@@ -64,15 +64,17 @@ class EntropyGenerator
             );
         }
 
-        $range = $max - $min;
-
-        // PHP promotes an overflowing subtraction to float: such a span needs
-        // more than 63 bits, which bindec() cannot return as an integer.
-        if (! is_int($range)) {
+        // A span wider than PHP_INT_MAX would overflow the subtraction and
+        // need a 64-bit chunk, which bindec() can only return as a float.
+        // With a non-negative $min the span cannot overflow; otherwise
+        // PHP_INT_MAX + $min is the largest $max that still fits.
+        if ($min < 0 && $max > PHP_INT_MAX + $min) {
             throw new \InvalidArgumentException(
                 "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in a signed 64-bit integer."
             );
         }
+
+        $range = $max - $min;
 
         // Edge case: single possible value.
         if ($range === 0) {
@@ -82,9 +84,6 @@ class EntropyGenerator
         // decbin() gives the exact bit length; ceil(log(range + 1, 2)) loses
         // precision above 2^53 and under-counts for ranges such as 2^62.
         $bitsNeeded = strlen(decbin($range));
-
-        // 1 << 63 overflows to a negative float, so the widest mask is spelled out.
-        $mask = $bitsNeeded >= 63 ? PHP_INT_MAX : (1 << $bitsNeeded) - 1;
 
         // A correct entropy source accepts on the first batch with overwhelming
         // probability; the cap is a safety net against a degenerate source that
@@ -98,7 +97,8 @@ class EntropyGenerator
                 $chunk = substr($bitstring, $offset, $bitsNeeded);
                 $offset += $bitsNeeded;
 
-                $value = (int) bindec($chunk) & $mask;
+                // The chunk is exactly $bitsNeeded digits, so no mask is needed.
+                $value = (int) bindec($chunk);
 
                 if ($value <= $range) {
                     return $min + $value;
