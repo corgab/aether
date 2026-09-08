@@ -32,11 +32,11 @@ class PythonBridge implements PythonExecutor
     /**
      * Execute a Python script with the given payload.
      *
-     * The child process inherits the parent environment untouched: nothing is
-     * added or removed, so boto3's credential chain (IAM roles, profiles,
-     * AWS_* variables) behaves exactly as it does for the PHP process. Driver
-     * settings travel inside the JSON payload under `driver_config`, which is
-     * the only channel the bin/python scripts read.
+     * The bridge adds no environment variables of its own: the child receives
+     * Symfony Process's default inherited environment, so boto3's credential
+     * chain (IAM roles, profiles, AWS_* variables) behaves exactly as it does
+     * for the PHP process. Driver settings travel inside the JSON payload under
+     * `driver_config`, which is the only channel the bin/python scripts read.
      *
      * @param  array<mixed>  $payload
      * @return array<mixed>

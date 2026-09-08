@@ -191,10 +191,11 @@ it('converts a binary digit string into raw bytes', function () {
 // execute() — environment
 // -------------------------------------------------------------------------
 
-it('lets the child process inherit the parent environment untouched', function () {
-    // boto3 resolves credentials from the environment (AWS_PROFILE, AWS_*,
-    // container/IAM metadata hints), so the bridge must forward the parent
-    // environment as-is rather than curating its own variable set.
+it('lets the child process see the parent environment', function () {
+    // Pins the guarantee execute()'s docblock makes: a variable set in the PHP
+    // process (AWS_PROFILE, AWS_*, IAM metadata hints boto3 relies on) reaches
+    // the interpreter. It asserts the observable behaviour, not how the
+    // Process is built.
     $_ENV['AETHER_TEST_MARKER'] = 'inherited';
 
     try {

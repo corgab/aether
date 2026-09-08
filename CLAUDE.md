@@ -50,7 +50,7 @@ Quantum (Facade)
 - **Tests use Pest PHP**, not raw PHPUnit classes. Use `it()` / `test()` with `expect()`.
 - **Python scripts** live in `bin/python/`, not `resources/`. Each script is self-contained (reads JSON stdin, writes JSON stdout).
 - **Exceptions** all extend `AetherException` with static factory methods (`::fromPythonError()`, `::forDriver()`, etc.)
-- **PythonBridge** adds no env vars of its own: the child inherits the parent environment untouched (boto3 credential chain, IAM Roles included, works as-is). Driver settings reach the scripts only through `driver_config` in the JSON payload.
+- **PythonBridge** adds no env vars of its own: the child gets Symfony Process's default inherited environment (boto3 credential chain, IAM Roles included, works as-is). Driver settings reach the scripts only through `driver_config` in the JSON payload.
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
 
