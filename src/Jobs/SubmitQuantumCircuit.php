@@ -8,9 +8,8 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\QuantumExecutionException;
-use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
-use Aether\Tasks\TaskStatus;
+use Aether\Tasks\QuantumTaskRecorder;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -63,37 +62,12 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $taskArn = $device->submitCircuit($builder);
 
-        $this->persistSubmission($taskArn, $driverName);
+        // Best-effort by design: the remote task already exists at this point,
+        // so the recorder reports and swallows a database failure rather than
+        // letting the job retry and submit a second billable task.
+        app(QuantumTaskRecorder::class)->recordSubmission($taskArn, $driverName, $this->circuit);
 
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
             ->delay((int) config('aether.poll_interval', 5));
-    }
-
-    /**
-     * Record the submitted task in the quantum_tasks table, when persistence
-     * is enabled.
-     *
-     * Best-effort by design: the remote task already exists at this point, so
-     * a database failure is reported and swallowed rather than allowed to
-     * retry the job and submit a second billable task.
-     */
-    private function persistSubmission(string $taskArn, string $driverName): void
-    {
-        if (! config('aether.persist_tasks', false)) {
-            return;
-        }
-
-        try {
-            QuantumTask::query()->create([
-                'task_arn' => $taskArn,
-                'driver' => $driverName,
-                'status' => TaskStatus::Created,
-                'circuit' => $this->circuit,
-                'shots' => $this->circuit['shots'],
-                'submitted_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            report($e);
-        }
     }
 }
