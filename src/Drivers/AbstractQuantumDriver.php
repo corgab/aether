@@ -157,6 +157,23 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
+     * Run one bin/python script with $data wrapped in the standard envelope
+     * and return its decoded response.
+     *
+     * The single place a script name meets the bridge: callers hold the name
+     * in a local once, pass it here, and reuse the same variable for the
+     * expectKey() / malformedResponse() calls that follow, so the name in an
+     * error message can never drift from the script that actually ran.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<mixed>
+     */
+    private function callScript(string $script, array $data): array
+    {
+        return $this->bridge->execute($script, $this->payload($data), $this->config);
+    }
+
+    /**
      * Return $response[$key] once it is present and $isValid accepts it, or
      * throw the malformed-response exception every script shares.
      *
@@ -216,18 +233,17 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->preflight();
         $this->validateCircuits(array_values($circuits));
 
-        $payload = $this->payload([
+        $script = 'batch.py';
+        $response = $this->callScript($script, [
             'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
         ]);
 
-        $response = $this->bridge->execute('batch.py', $payload, $this->config);
-
         /** @var array<mixed> $results */
-        $results = $this->expectKey($response, 'batch.py', 'results', is_array(...), 'an array');
+        $results = $this->expectKey($response, $script, 'results', is_array(...), 'an array');
 
         if (count($results) !== count($circuits)) {
             throw QuantumExecutionException::malformedResponse(
-                'batch.py',
+                $script,
                 'expected exactly '.count($circuits).' results, got '.count($results).'.'
             );
         }
@@ -236,13 +252,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         foreach (array_values($results) as $index => $result) {
             if (! is_array($result)) {
                 throw QuantumExecutionException::malformedResponse(
-                    'batch.py',
+                    $script,
                     "expected result #{$index} to be an object, got ".get_debug_type($result).'.'
                 );
             }
 
             /** @var array<mixed> $counts */
-            $counts = $this->expectKey($result, 'batch.py', 'counts', is_array(...), 'an array', "result #{$index}");
+            $counts = $this->expectKey($result, $script, 'counts', is_array(...), 'an array', "result #{$index}");
 
             $circuitResults[] = new CircuitResult($counts);
         }
@@ -305,10 +321,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     private function runDefinition(array $definition): CircuitResult
     {
-        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
+        $script = 'circuit.py';
+        $response = $this->callScript($script, $definition);
 
         /** @var array<mixed> $counts */
-        $counts = $this->expectKey($response, 'circuit.py', 'counts', is_array(...), 'an array');
+        $counts = $this->expectKey($response, $script, 'counts', is_array(...), 'an array');
 
         return new CircuitResult($counts);
     }
@@ -331,12 +348,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->assertConfigured();
         $this->validateCircuits([$circuit]);
 
-        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config);
+        $script = 'submit.py';
+        $response = $this->callScript($script, $circuit->toArray());
 
         /** @var string $taskArn */
         $taskArn = $this->expectKey(
             $response,
-            'submit.py',
+            $script,
             'task_arn',
             static fn (mixed $value): bool => is_string($value) && trim($value) !== '',
             'a non-empty string'
@@ -358,12 +376,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $this->assertConfigured();
 
-        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
+        $script = 'check.py';
+        $response = $this->callScript($script, ['task_arn' => $taskArn]);
 
         /** @var string $status */
         $status = $this->expectKey(
             $response,
-            'check.py',
+            $script,
             'status',
             static fn (mixed $value): bool => is_string($value) && TaskStatus::tryFrom($value) !== null,
             'a valid task status value'
@@ -387,19 +406,18 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $shots = (int) ceil($bits / $qubits);
 
-        $payload = $this->payload([
+        $script = 'entropy.py';
+        $response = $this->callScript($script, [
             'qubits' => $qubits,
             'shots' => $shots,
         ]);
 
-        $response = $this->bridge->execute('entropy.py', $payload, $this->config);
-
         /** @var string $bitstring */
-        $bitstring = $this->expectKey($response, 'entropy.py', 'bits', is_string(...), 'a string');
+        $bitstring = $this->expectKey($response, $script, 'bits', is_string(...), 'a string');
 
         if (strlen($bitstring) < $bits) {
             throw QuantumExecutionException::malformedResponse(
-                'entropy.py',
+                $script,
                 "expected at least {$bits} bits in the response, got ".strlen($bitstring).'.'
             );
         }
