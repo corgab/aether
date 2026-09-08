@@ -317,42 +317,49 @@ final readonly class Gate
         $resolved = match (true) {
             $targets === null => null,
             is_int($targets) => [$targets],
-            default => self::integerTargets($targets),
+            default => self::integerIndices('measure', $targets),
         };
 
         return new self('measure', ['targets' => $resolved]);
     }
 
     /**
-     * Require every measurement target to be an integer qubit index.
+     * Require a qubit index to be an integer.
      *
-     * PHP cannot type the elements of an array, so a stray string or float
-     * would otherwise reach the int-typed range check as a TypeError, or be
-     * cast to qubit 0 when a queued definition is rebuilt.
+     * PHP cannot type array elements or a serialized definition's values, so
+     * a stray string or float would otherwise reach the int-typed range check
+     * as a TypeError, or be cast to qubit 0 when a queued definition is rebuilt.
      *
-     * @param  array<mixed>  $targets
+     * @throws InvalidCircuitException
+     */
+    private static function integerIndex(string $gate, mixed $value): int
+    {
+        if (! is_int($value)) {
+            throw InvalidCircuitException::invalidQubitIndex(strtoupper($gate), $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Require every value to be an integer qubit index and return them as a list.
+     *
+     * @param  array<mixed>  $values
      * @return list<int>
      *
      * @throws InvalidCircuitException
      */
-    private static function integerTargets(array $targets): array
+    private static function integerIndices(string $gate, array $values): array
     {
-        foreach ($targets as $target) {
-            if (! is_int($target)) {
-                throw InvalidCircuitException::invalidMeasurementTarget($target);
-            }
-        }
-
-        /** @var list<int> */
-        return array_values($targets);
+        return array_values(array_map(static fn (mixed $value): int => self::integerIndex($gate, $value), $values));
     }
 
     /**
      * Rebuild a Gate from the flat array shape produced by toArray().
      *
      * Dispatches generically on GateType/GateShape metadata instead of a
-     * per-type match arm: qubit-index keys are cast to int, angle keys are
-     * cast to float and normalised via radians(), in wire order.
+     * per-type match arm: qubit-index keys must already be integers, angle
+     * keys are cast to float and normalised via radians(), in wire order.
      *
      * @param  array<string, mixed>  $definition
      *
@@ -384,7 +391,7 @@ final readonly class Gate
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $params[$key] = (int) $definition[$key];
+            $params[$key] = self::integerIndex($type, $definition[$key]);
         }
 
         foreach ($shape->angleKeys() as $key) {
@@ -448,15 +455,15 @@ final readonly class Gate
     {
         $targets = $definition['targets'] ?? null;
 
-        if (! is_array($targets)) {
+        if ($targets === null) {
             return null;
         }
 
-        if ($targets === []) {
-            throw InvalidCircuitException::emptyMeasurementTargets();
+        if (! is_array($targets)) {
+            throw InvalidCircuitException::invalidQubitIndex('MEASURE', $targets);
         }
 
-        return self::integerTargets($targets);
+        return self::integerIndices('measure', $targets);
     }
 
     /**

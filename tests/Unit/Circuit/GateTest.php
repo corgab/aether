@@ -313,10 +313,17 @@ it('round trips every gate type through fromArray/toArray', function (GateType $
     expect(Gate::fromArray($definition)->toArray())->toBe($definition);
 })->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
 
-it('fromArray rejects measure targets that are not integers instead of casting them to qubit 0', function (): void {
-    expect(fn () => Gate::fromArray(['type' => 'measure', 'targets' => ['a']]))
-        ->toThrow(InvalidCircuitException::class, "got 'a'");
-});
+it('fromArray rejects qubit indices that are not integers instead of casting them', function (array $definition, string $given): void {
+    expect(fn () => Gate::fromArray($definition))
+        ->toThrow(InvalidCircuitException::class, "got {$given}");
+})->with([
+    'measure target string' => [['type' => 'measure', 'targets' => ['a']], "'a'"],
+    'measure targets scalar' => [['type' => 'measure', 'targets' => 'a'], "'a'"],
+    'measure targets int' => [['type' => 'measure', 'targets' => 3], '3'],
+    'single-qubit gate string' => [['type' => 'h', 'target' => 'a'], "'a'"],
+    'single-qubit gate numeric string' => [['type' => 'h', 'target' => '1'], "'1'"],
+    'two-qubit gate float control' => [['type' => 'cnot', 'control' => 1.9, 'target' => 0], '1.9'],
+]);
 
 it('round trips a measure gate with explicit targets through fromArray/toArray', function (): void {
     $definition = ['type' => 'measure', 'targets' => [0, 2]];

@@ -76,14 +76,14 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
-     * Create an exception for a measurement target that is not an integer qubit index.
+     * Create an exception for a gate parameter that is not an integer qubit index.
      */
-    public static function invalidMeasurementTarget(mixed $target): self
+    public static function invalidQubitIndex(string $gate, mixed $value): self
     {
-        $given = is_scalar($target) ? var_export($target, true) : get_debug_type($target);
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
 
         return new self(
-            "Measurement targets must be integer qubit indices, got {$given}."
+            "Gate {$gate} expects integer qubit indices, got {$given}."
         );
     }
 
