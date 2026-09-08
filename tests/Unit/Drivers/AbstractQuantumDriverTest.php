@@ -349,6 +349,19 @@ it('reports a missing key the same way as a key of the wrong type', function (ar
     'integer' => [['bits' => 12345], 'bits'],
 ]);
 
+it('names the offending batch item when it is not an object', function () {
+    $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 1]], 'ok']]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    expect(fn () => $this->driver->executeBatch([$circuit, $circuit]))->toThrow(
+        QuantumExecutionException::class,
+        'expected result #1 to be an object, got string.'
+    );
+});
+
 it('throws when a batch.py result lacks a counts array', function () {
     $this->bridge->method('execute')->willReturn(['results' => [['status' => 'ok']]]);
 
@@ -356,7 +369,7 @@ it('throws when a batch.py result lacks a counts array', function () {
     $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
 
     $this->driver->executeBatch([$circuit]);
-})->throws(QuantumExecutionException::class, 'expected each result to have a "counts" key holding an array');
+})->throws(QuantumExecutionException::class, 'expected result #0 to have a "counts" key holding an array');
 
 it('throws when batch.py results count does not match circuits count', function () {
     $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 500]]]]);

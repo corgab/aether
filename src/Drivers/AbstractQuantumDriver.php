@@ -233,16 +233,16 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         }
 
         $circuitResults = [];
-        foreach ($results as $result) {
-            /** @var array<string, int> $counts */
-            $counts = $this->expectKey(
-                is_array($result) ? $result : [],
-                'batch.py',
-                'counts',
-                is_array(...),
-                'an array',
-                'each result'
-            );
+        foreach (array_values($results) as $index => $result) {
+            if (! is_array($result)) {
+                throw QuantumExecutionException::malformedResponse(
+                    'batch.py',
+                    "expected result #{$index} to be an object, got ".get_debug_type($result).'.'
+                );
+            }
+
+            /** @var array<mixed> $counts */
+            $counts = $this->expectKey($result, 'batch.py', 'counts', is_array(...), 'an array', "result #{$index}");
 
             $circuitResults[] = new CircuitResult($counts);
         }
@@ -307,7 +307,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     {
         $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config);
 
-        /** @var array<string, int> $counts */
+        /** @var array<mixed> $counts */
         $counts = $this->expectKey($response, 'circuit.py', 'counts', is_array(...), 'an array');
 
         return new CircuitResult($counts);
@@ -360,7 +360,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config);
 
-        $this->expectKey(
+        /** @var string $status */
+        $status = $this->expectKey(
             $response,
             'check.py',
             'status',
@@ -368,7 +369,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'a valid task status value'
         );
 
-        return TaskSnapshot::fromResponse($response);
+        return TaskSnapshot::fromResponse($response, TaskStatus::from($status));
     }
 
     public function generateEntropy(int $bits): string

@@ -20,13 +20,23 @@ final readonly class TaskSnapshot
     /**
      * Build a snapshot from a decoded check-script response.
      *
+     * Pass $status when the caller has already validated the response's
+     * `status` key (AbstractQuantumDriver::pollTask() does), so the value the
+     * guard checked is the one the snapshot carries; otherwise the key is
+     * parsed here.
+     *
      * @param  array<mixed>  $response
      */
-    public static function fromResponse(array $response): self
+    public static function fromResponse(array $response, ?TaskStatus $status = null): self
     {
+        $counts = $response['counts'] ?? null;
+
+        /** @var array<string, int>|null $counts */
+        $counts = is_array($counts) ? $counts : null;
+
         return new self(
-            TaskStatus::from((string) ($response['status'] ?? '')),
-            isset($response['counts']) && is_array($response['counts']) ? $response['counts'] : null,
+            $status ?? TaskStatus::from((string) ($response['status'] ?? '')),
+            $counts,
         );
     }
 }

@@ -31,3 +31,10 @@ it('builds an in-flight snapshot from a response without counts', function () {
     expect($snapshot->status)->toBe(TaskStatus::Queued)
         ->and($snapshot->counts)->toBeNull();
 });
+
+it('carries a pre-validated status instead of re-parsing the response', function () {
+    $snapshot = TaskSnapshot::fromResponse(['status' => 'bogus', 'counts' => ['0' => 10]], TaskStatus::Completed);
+
+    expect($snapshot->status)->toBe(TaskStatus::Completed)
+        ->and($snapshot->counts)->toBe(['0' => 10]);
+});
