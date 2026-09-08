@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **Entropy strength is the device's:** only a QPU yields genuinely random bits; the local and managed simulators are pseudorandom. Docblocks and README must never call simulator entropy cryptographically strong.
 
 ## Config
 

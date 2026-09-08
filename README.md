@@ -2,7 +2,7 @@
 
 Laravel package for quantum computing via AWS Braket and local simulators.
 
-Build quantum circuits, generate hardware-grade entropy, and swap backends with a single config change — all with a fluent, Laravel-native API.
+Build quantum circuits, generate hardware-grade entropy from real QPUs, and swap backends with a single config change — all with a fluent, Laravel-native API.
 
 ## Requirements
 
@@ -108,6 +108,8 @@ $bytes = $entropy->generate(256);    // 32 raw bytes
 $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
+
+> **Where the randomness comes from.** The bits are the measurement outcomes of qubits placed in superposition, so their quality is the device's. On a real QPU (`aws` driver with a QPU ARN) they are genuinely random. On the `local` simulator, and on the managed simulators such as SV1, the circuit is simulated classically and the outcomes come from a pseudorandom number generator: fine for development and for statistical use, not for keys, tokens or nonces. Point `Quantum::entropy('aws')` at a QPU before relying on it for anything security-sensitive.
 
 ### Batch Execution
 

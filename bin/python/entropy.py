@@ -7,7 +7,8 @@ to stdout.
 
 The randomness is quantum in origin: each qubit is placed in an equal
 superposition by a Hadamard gate and then measured, producing truly random bits
-per qubit (on real hardware) or pseudorandom bits (on the local simulator).
+per qubit on real hardware, or pseudorandom bits on any simulator (the local
+one as well as the managed Braket simulators such as SV1).
 Multi-shot support allows generating longer bitstrings efficiently by running
 the circuit multiple times and concatenating all measurement results.
 
