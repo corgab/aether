@@ -49,7 +49,7 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager): void
+    public function handle(QuantumManager $manager, QuantumTaskRecorder $recorder): void
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
@@ -65,7 +65,7 @@ class SubmitQuantumCircuit implements ShouldQueue
         // Best-effort by design: the remote task already exists at this point,
         // so the recorder reports and swallows a database failure rather than
         // letting the job retry and submit a second billable task.
-        app(QuantumTaskRecorder::class)->recordSubmission($taskArn, $driverName, $this->circuit);
+        $recorder->recordSubmission($taskArn, $driverName, $this->circuit);
 
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
             ->delay((int) config('aether.poll_interval', 5));

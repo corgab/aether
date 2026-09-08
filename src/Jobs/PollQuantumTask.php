@@ -68,7 +68,7 @@ class PollQuantumTask implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, Dispatcher $events): void
+    public function handle(QuantumManager $manager, Dispatcher $events, QuantumTaskRecorder $recorder): void
     {
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
@@ -82,8 +82,6 @@ class PollQuantumTask implements ShouldQueue
         // The recorder mirrors the backend status onto the quantum_tasks row
         // (when persistence is on) and swallows database failures, so it can
         // never fail the job or suppress the CircuitCompleted event below.
-        $recorder = app(QuantumTaskRecorder::class);
-
         if (! $snapshot->status->isTerminal()) {
             $maxAttempts = $this->tries();
 
