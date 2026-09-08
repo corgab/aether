@@ -221,8 +221,27 @@ it('lists every missing required key in the exception message', function () {
     } catch (InvalidDriverConfigException $e) {
         expect($e->getMessage())->toContain('region');
         expect($e->getMessage())->toContain('device_arn');
-        expect($e->getMessage())->toContain('bucket');
+        expect($e->getMessage())->not->toContain('bucket');
     }
+});
+
+it('runs without a bucket and leaves the S3 destination to the SDK default', function () {
+    $driver = new AwsBraketDriver($this->bridge, [
+        'region' => 'us-east-1',
+        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+    ]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1);
+    $circuit->method('shotCount')->willReturn(10);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 10]);
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with('circuit.py', $this->anything(), $this->callback(fn (array $config): bool => ! array_key_exists('bucket', $config)))
+        ->willReturn(['counts' => ['0' => 10]]);
+
+    expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
 });
 
 it('validates config on generateEntropy as well as executeCircuit', function () {

@@ -129,6 +129,8 @@ return [
 
         'aws' => [
             'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            // Optional. Results go to s3://<bucket>/results when set; when unset the
+            // Braket SDK uses its default bucket (amazon-braket-<region>-<account>).
             'bucket' => env('AETHER_S3_BUCKET'),
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
             'synchronous_safe' => true,

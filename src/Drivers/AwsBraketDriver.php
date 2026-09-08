@@ -24,11 +24,14 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     }
 
     /**
+     * The S3 bucket is optional: without one the Braket SDK writes results to
+     * its default bucket, amazon-braket-<region>-<account>, created on demand.
+     *
      * @return list<string>
      */
     protected function requiredConfig(): array
     {
-        return ['region', 'device_arn', 'bucket'];
+        return ['region', 'device_arn'];
     }
 
     protected function beforeExecution(): void
