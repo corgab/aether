@@ -76,6 +76,26 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for a measure() call that lists the same qubit twice.
+     */
+    public static function repeatedMeasurementTarget(int $qubit): self
+    {
+        return new self(
+            "Qubit {$qubit} is listed more than once in the same measure() call; each qubit can be measured once."
+        );
+    }
+
+    /**
+     * Create an exception for an instruction applied to a qubit that was already measured.
+     */
+    public static function qubitAlreadyMeasured(string $gate, int $qubit): self
+    {
+        return new self(
+            "Cannot apply {$gate} to qubit {$qubit}: it has already been measured. Braket rejects any gate or measurement on a measured qubit, so move the measurement to the end of the circuit."
+        );
+    }
+
+    /**
      * Create an exception for a measurement operation with an empty target list.
      */
     public static function emptyMeasurementTargets(): self

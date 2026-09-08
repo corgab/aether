@@ -340,6 +340,66 @@ it('allows measure with null targets', function () {
     expect($builder->qubitCount())->toBe(2);
 });
 
+it('rejects a measure() call that lists the same qubit twice', function () use (&$builder): void {
+    expect(fn () => $builder->qubits(2)->h(0)->measure([0, 0]))
+        ->toThrow(InvalidCircuitException::class, 'listed more than once');
+});
+
+it('rejects measuring a qubit a second time', function (callable $second) use (&$builder): void {
+    $builder->qubits(2)->h(0)->measure(0);
+
+    expect(fn () => $second($builder))
+        ->toThrow(InvalidCircuitException::class, 'already been measured');
+})->with([
+    'explicit target again' => [fn (CircuitBuilder $b) => $b->measure(0)],
+    'inside a wider measurement' => [fn (CircuitBuilder $b) => $b->measure([1, 0])],
+    'measure all afterwards' => [fn (CircuitBuilder $b) => $b->measure()],
+]);
+
+it('rejects a gate applied to a qubit after it was measured', function (callable $gate, string $name) use (&$builder): void {
+    $builder->qubits(2)->h(0)->measure(0);
+
+    expect(fn () => $gate($builder))
+        ->toThrow(InvalidCircuitException::class, "Cannot apply {$name} to qubit 0");
+})->with([
+    'single-qubit gate' => [fn (CircuitBuilder $b) => $b->h(0), 'H'],
+    'two-qubit gate through its control' => [fn (CircuitBuilder $b) => $b->cnot(0, 1), 'CNOT'],
+    'two-qubit gate through its target' => [fn (CircuitBuilder $b) => $b->cnot(1, 0), 'CNOT'],
+]);
+
+it('rejects any gate after a measure-all', function () use (&$builder): void {
+    $builder->qubits(2)->h(0)->measure();
+
+    expect(fn () => $builder->x(1))->toThrow(InvalidCircuitException::class, 'already been measured');
+});
+
+it('still allows gates on qubits that were not measured', function () use (&$builder): void {
+    $builder->qubits(3)->h(0)->measure(0)->h(1)->cnot(1, 2)->measure([1, 2]);
+
+    expect($builder->toArray()['gates'])->toHaveCount(5);
+});
+
+it('rejects an appended fragment that touches a measured qubit', function () use (&$builder, &$device): void {
+    $builder->qubits(2)->h(0)->measure(0);
+    $fragment = (new CircuitBuilder($device))->qubits(2)->x(0);
+
+    expect(fn () => $builder->append($fragment))->toThrow(InvalidCircuitException::class, 'already been measured');
+});
+
+it('fromArray rejects a definition that acts on a measured qubit', function () use (&$device): void {
+    $definition = [
+        'qubits' => 1,
+        'gates' => [
+            ['type' => 'measure', 'targets' => [0]],
+            ['type' => 'h', 'target' => 0],
+        ],
+        'shots' => 10,
+    ];
+
+    expect(fn () => CircuitBuilder::fromArray($definition, $device))
+        ->toThrow(InvalidCircuitException::class, 'already been measured');
+});
+
 it('measure with an empty array throws', function () use (&$builder): void {
     expect(fn () => $builder->qubits(2)->measure([]))
         ->toThrow(InvalidCircuitException::class);

@@ -40,6 +40,9 @@ class CircuitBuilder
 
     private bool $hasMeasurement = false;
 
+    /** @var array<int, true> Qubits already measured; Braket rejects any later instruction on them. */
+    private array $measuredQubits = [];
+
     private int $shots = 1000;
 
     final public function __construct(
@@ -407,6 +410,7 @@ class CircuitBuilder
         // can be shared directly without a toArray()/Gate::fromArray() round
         // trip that would re-serialize and re-validate every gate.
         foreach ($fragment->gates as $gate) {
+            $this->assertMeasurementOrder($gate);
             if (! $gate->isMeasurement()) {
                 $this->gates[] = $gate;
             }
@@ -636,6 +640,7 @@ class CircuitBuilder
     private function push(Gate $gate): static
     {
         $this->validateTargets(strtoupper($gate->type), ...$gate->qubitIndices());
+        $this->assertMeasurementOrder($gate);
 
         $this->gates[] = $gate;
 
@@ -657,6 +662,54 @@ class CircuitBuilder
             if ($qubit < 0 || $qubit >= $this->qubitCount) {
                 throw InvalidCircuitException::gateTargetOutOfRange($gate, $qubit, $this->qubitCount);
             }
+        }
+    }
+
+    /**
+     * Enforce Braket's measurement ordering before the circuit reaches Python:
+     * a qubit can be measured once, and nothing may act on it afterwards.
+     *
+     * Records the qubits a measurement covers (every qubit for a measure-all)
+     * so later gates and measurements can be checked against them.
+     *
+     * @throws InvalidCircuitException
+     */
+    private function assertMeasurementOrder(Gate $gate): void
+    {
+        $name = strtoupper($gate->type);
+
+        if (! $gate->isMeasurement()) {
+            foreach ($gate->qubitIndices() as $qubit) {
+                if (isset($this->measuredQubits[$qubit])) {
+                    throw InvalidCircuitException::qubitAlreadyMeasured($name, $qubit);
+                }
+            }
+
+            return;
+        }
+
+        $targets = $gate->qubitIndices();
+
+        if ($targets === [] && $this->qubitCount > 0) {
+            $targets = range(0, $this->qubitCount - 1);
+        }
+
+        $seen = [];
+
+        foreach ($targets as $qubit) {
+            if (isset($seen[$qubit])) {
+                throw InvalidCircuitException::repeatedMeasurementTarget($qubit);
+            }
+
+            if (isset($this->measuredQubits[$qubit])) {
+                throw InvalidCircuitException::qubitAlreadyMeasured($name, $qubit);
+            }
+
+            $seen[$qubit] = true;
+        }
+
+        foreach ($targets as $qubit) {
+            $this->measuredQubits[$qubit] = true;
         }
     }
 }
