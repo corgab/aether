@@ -109,6 +109,8 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+`integer($min, $max)` accepts any bounds whose span fits in a signed 64-bit integer, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
+
 ### Batch Execution
 
 Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.

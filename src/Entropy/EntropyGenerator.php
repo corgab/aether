@@ -51,6 +51,10 @@ class EntropyGenerator
 
     /**
      * Generate an unbiased random integer in [$min, $max] using rejection sampling.
+     *
+     * Any bounds are accepted as long as $max - $min fits in a signed 64-bit
+     * integer, so integer(0, PHP_INT_MAX) works while
+     * integer(PHP_INT_MIN, PHP_INT_MAX) is rejected.
      */
     public function integer(int $min, int $max): int
     {
@@ -62,13 +66,25 @@ class EntropyGenerator
 
         $range = $max - $min;
 
+        // PHP promotes an overflowing subtraction to float: such a span needs
+        // more than 63 bits, which bindec() cannot return as an integer.
+        if (! is_int($range)) {
+            throw new \InvalidArgumentException(
+                "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in a signed 64-bit integer."
+            );
+        }
+
         // Edge case: single possible value.
         if ($range === 0) {
             return $min;
         }
 
-        $bitsNeeded = (int) ceil(log($range + 1, 2));
-        $mask = (1 << $bitsNeeded) - 1;
+        // decbin() gives the exact bit length; ceil(log(range + 1, 2)) loses
+        // precision above 2^53 and under-counts for ranges such as 2^62.
+        $bitsNeeded = strlen(decbin($range));
+
+        // 1 << 63 overflows to a negative float, so the widest mask is spelled out.
+        $mask = $bitsNeeded >= 63 ? PHP_INT_MAX : (1 << $bitsNeeded) - 1;
 
         // A correct entropy source accepts on the first batch with overwhelming
         // probability; the cap is a safety net against a degenerate source that
