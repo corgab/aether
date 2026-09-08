@@ -7,6 +7,7 @@ namespace Aether;
 use Aether\Bridge\PythonBridge;
 use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
@@ -32,7 +33,7 @@ class QuantumManager extends Manager
      */
     public function getDefaultDriver(): string
     {
-        return $this->config->get('aether.default', 'local');
+        return $this->settings()->defaultDriver();
     }
 
     /**
@@ -159,7 +160,7 @@ class QuantumManager extends Manager
     {
         return new LocalSimulatorDriver(
             $this->createBridge(),
-            $this->config->get('aether.drivers.local', []),
+            $this->settings()->driver('local'),
         );
     }
 
@@ -170,7 +171,7 @@ class QuantumManager extends Manager
     {
         return new AwsBraketDriver(
             $this->createBridge(),
-            $this->config->get('aether.drivers.aws', []),
+            $this->settings()->driver('aws'),
         );
     }
 
@@ -180,8 +181,17 @@ class QuantumManager extends Manager
     private function createBridge(): PythonBridge
     {
         return new PythonBridge(
-            $this->config->get('aether.python_path', 'python3'),
-            (int) $this->config->get('aether.process_timeout', 300),
+            $this->settings()->pythonPath(),
+            $this->settings()->processTimeout(),
         );
+    }
+
+    /**
+     * The typed package settings, resolved from the container on each call so
+     * a config value changed after the manager was built is still honoured.
+     */
+    private function settings(): AetherConfig
+    {
+        return $this->container->make(AetherConfig::class);
     }
 }

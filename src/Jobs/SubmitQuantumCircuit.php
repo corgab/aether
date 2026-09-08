@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether\Jobs;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\QuantumExecutionException;
@@ -44,15 +45,17 @@ class SubmitQuantumCircuit implements ShouldQueue
         public readonly array $circuit,
         public readonly ?string $driver = null,
     ) {
-        $this->onQueue(config('aether.queue'));
+        // Constructors get no method injection, so the queue name is the one
+        // setting resolved from the container by hand.
+        $this->onQueue(app(AetherConfig::class)->queue());
     }
 
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager): void
+    public function handle(QuantumManager $manager, AetherConfig $config): void
     {
-        $driverName = $this->driver ?? config('aether.default', 'local');
+        $driverName = $this->driver ?? $config->defaultDriver();
         $device = $manager->driver($this->driver);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
@@ -63,10 +66,10 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $taskArn = $device->submitCircuit($builder);
 
-        $this->persistSubmission($taskArn, $driverName);
+        $this->persistSubmission($config, $taskArn, $driverName);
 
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
-            ->delay((int) config('aether.poll_interval', 5));
+            ->delay($config->pollInterval());
     }
 
     /**
@@ -77,9 +80,9 @@ class SubmitQuantumCircuit implements ShouldQueue
      * a database failure is reported and swallowed rather than allowed to
      * retry the job and submit a second billable task.
      */
-    private function persistSubmission(string $taskArn, string $driverName): void
+    private function persistSubmission(AetherConfig $config, string $taskArn, string $driverName): void
     {
-        if (! config('aether.persist_tasks', false)) {
+        if (! $config->persistTasks()) {
             return;
         }
 

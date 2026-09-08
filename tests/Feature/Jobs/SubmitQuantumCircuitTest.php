@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
@@ -21,7 +22,7 @@ it('submits the circuit and queues a poll job with the configured delay', functi
     $manager->extend('fake-async', fn () => $device);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
-    $job->handle($manager);
+    $job->handle($manager, app(AetherConfig::class));
 
     expect($device->submittedCircuits)->toHaveCount(1)
         ->and($device->submittedCircuits[0])->toBeInstanceOf(CircuitBuilder::class);
@@ -40,7 +41,7 @@ it('throws asynchronousUnsupported when the resolved driver does not support asy
     $manager->extend('fake-sync', fn () => $device);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
-    $job->handle($manager);
+    $job->handle($manager, app(AetherConfig::class));
 })->throws(QuantumExecutionException::class);
 
 it('mentions the unsupported driver name in the exception message', function () {
@@ -51,7 +52,7 @@ it('mentions the unsupported driver name in the exception message', function () 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
 
     try {
-        $job->handle($manager);
+        $job->handle($manager, app(AetherConfig::class));
         $this->fail('Expected QuantumExecutionException to be thrown.');
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain('fake-sync');

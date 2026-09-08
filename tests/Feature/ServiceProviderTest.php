@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aether\AetherServiceProvider;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
@@ -13,6 +14,24 @@ use Illuminate\Support\Facades\Artisan;
 // -------------------------------------------------------------------------
 // Service container registration
 // -------------------------------------------------------------------------
+
+it('registers AetherConfig as a singleton in the container', function () {
+    $first = $this->app->make(AetherConfig::class);
+    $second = $this->app->make(AetherConfig::class);
+
+    expect($first)->toBeInstanceOf(AetherConfig::class)
+        ->and($first)->toBe($second);
+});
+
+it('resolves the default driver through AetherConfig', function () {
+    config()->set('aether.default', '');
+
+    expect(app(QuantumManager::class)->getDefaultDriver())->toBe('local');
+
+    config()->set('aether.default', 'aws');
+
+    expect(app(QuantumManager::class)->getDefaultDriver())->toBe('aws');
+});
 
 it('registers QuantumManager as a singleton in the container', function () {
     $first = $this->app->make(QuantumManager::class);

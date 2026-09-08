@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Events\CircuitCompleted;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
@@ -39,7 +40,7 @@ beforeEach(function () {
     // Submit through the real job, then hand back the poll job it queued so
     // each test can drive the polling state machine directly.
     $this->submit = function (): PollQuantumTask {
-        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager);
+        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager, app(AetherConfig::class));
 
         $pollJob = null;
         Queue::assertPushed(PollQuantumTask::class, function (PollQuantumTask $job) use (&$pollJob) {
@@ -51,7 +52,7 @@ beforeEach(function () {
         return $pollJob;
     };
 
-    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class));
+    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class), app(AetherConfig::class));
 });
 
 // -------------------------------------------------------------------------

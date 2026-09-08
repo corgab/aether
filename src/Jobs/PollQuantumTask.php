@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Jobs;
 
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
@@ -55,23 +56,28 @@ class PollQuantumTask implements ShouldQueue
         public readonly array $circuit,
         public readonly ?string $driver = null,
     ) {
-        $this->onQueue(config('aether.queue'));
+        // Constructors get no method injection, so the queue name is resolved
+        // from the container by hand; tries() below is in the same position.
+        $this->onQueue(app(AetherConfig::class)->queue());
     }
 
     /**
      * Determine the number of times the job may be attempted.
+     *
+     * Called by the queue worker with no arguments, so the setting is read
+     * from the container rather than injected.
      */
     public function tries(): int
     {
-        return (int) config('aether.max_poll_attempts', 720);
+        return app(AetherConfig::class)->maxPollAttempts();
     }
 
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, Dispatcher $events): void
+    public function handle(QuantumManager $manager, Dispatcher $events, AetherConfig $config): void
     {
-        $driverName = $this->driver ?? config('aether.default', 'local');
+        $driverName = $this->driver ?? $config->defaultDriver();
         $device = $manager->driver($this->driver);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
@@ -85,19 +91,19 @@ class PollQuantumTask implements ShouldQueue
 
             if ($this->attempts() >= $maxAttempts) {
                 $e = QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts());
-                $this->persist($snapshot->status, null, $e->getMessage());
+                $this->persist($config, $snapshot->status, null, $e->getMessage());
                 throw $e;
             }
 
-            $this->persist($snapshot->status);
-            $this->release((int) config('aether.poll_interval', 5));
+            $this->persist($config, $snapshot->status);
+            $this->release($config->pollInterval());
 
             return;
         }
 
         if (! $snapshot->status->isSuccessful()) {
             $e = TaskFailedException::forTask($this->taskArn, $snapshot->status);
-            $this->persist($snapshot->status, null, $e->getMessage());
+            $this->persist($config, $snapshot->status, null, $e->getMessage());
             throw $e;
         }
 
@@ -106,11 +112,11 @@ class PollQuantumTask implements ShouldQueue
                 'checkTask',
                 "task [{$this->taskArn}] completed but returned no measurement counts."
             );
-            $this->persist($snapshot->status, null, $e->getMessage());
+            $this->persist($config, $snapshot->status, null, $e->getMessage());
             throw $e;
         }
 
-        $this->persist($snapshot->status, $snapshot->counts);
+        $this->persist($config, $snapshot->status, $snapshot->counts);
 
         $events->dispatch(new CircuitCompleted(
             $driverName,
@@ -132,9 +138,9 @@ class PollQuantumTask implements ShouldQueue
      *
      * @param  array<string, int>|null  $counts
      */
-    private function persist(TaskStatus $status, ?array $counts = null, ?string $error = null): void
+    private function persist(AetherConfig $config, TaskStatus $status, ?array $counts = null, ?string $error = null): void
     {
-        if (! config('aether.persist_tasks', false)) {
+        if (! $config->persistTasks()) {
             return;
         }
 

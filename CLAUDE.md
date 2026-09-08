@@ -58,6 +58,8 @@ Quantum (Facade)
 
 Published to `config/aether.php`. Key settings: `default` (driver name), `python_path` (Python executable), `drivers` (per-driver config with `synchronous_safe` flag).
 
+Package-level settings are read through `Config\AetherConfig` (a container singleton), never via `config('aether.*')` directly: it owns every default (`DEFAULT_DRIVER = 'local'`, poll interval, attempts...) and returns typed values. Jobs get it by method injection in `handle()`; constructors and `tries()` resolve it with `app(AetherConfig::class)`.
+
 ## Testing
 
 `Quantum::fake()` replaces the manager with `QuantumFake` — same pattern as `Http::fake()`. Provides `assertCircuitRan()` and `assertEntropyGenerated()`.
