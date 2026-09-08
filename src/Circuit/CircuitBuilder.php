@@ -683,7 +683,7 @@ class CircuitBuilder
      * whole circuit, including qubits added by a later qubits() call, since
      * the Python side expands it against the final qubit count.
      *
-     * @param  list<int>  $indices  The gate's qubit indices, already range-checked.
+     * @param  array<int>  $indices  The gate's qubit indices, already range-checked.
      *
      * @throws InvalidCircuitException
      */
