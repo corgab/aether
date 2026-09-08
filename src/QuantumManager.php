@@ -158,9 +158,20 @@ class QuantumManager extends Manager
      */
     protected function createLocalDriver(): LocalSimulatorDriver
     {
+        $config = $this->config->get('aether.drivers.local', []);
+        $config = is_array($config) ? $config : [];
+
+        // The retention used to be the top-level `aether.local_task_ttl`. A
+        // config file published before it moved under drivers.local still
+        // carries that key and nothing else, so honour it until the app
+        // republishes; an explicit `task_ttl` always wins.
+        if (! array_key_exists('task_ttl', $config) && $this->config->has('aether.local_task_ttl')) {
+            $config['task_ttl'] = $this->config->get('aether.local_task_ttl');
+        }
+
         return new LocalSimulatorDriver(
             $this->createBridge(),
-            $this->config->get('aether.drivers.local', []),
+            $config,
             $this->container->make(CacheRepository::class),
         );
     }

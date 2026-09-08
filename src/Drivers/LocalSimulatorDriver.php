@@ -50,6 +50,11 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      * cache store the dispatched results live in is passed in here, so the
      * driver needs neither a facade root nor the global config() helper.
      *
+     * The store is fixed for the driver's lifetime (QuantumManager resolves
+     * the application's default store when it builds the driver), so a
+     * default-store switch made afterwards is picked up only once the driver
+     * is rebuilt, e.g. after Quantum::forgetDrivers().
+     *
      * @param  array<string, mixed>  $config
      */
     public function __construct(
