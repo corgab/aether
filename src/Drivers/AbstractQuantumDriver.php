@@ -164,11 +164,13 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * in a local once, pass it here, and reuse the same variable for the
      * expectKey() / malformedResponse() calls that follow, so the name in an
      * error message can never drift from the script that actually ran.
+     * Protected so a custom driver with a script of its own gets the same
+     * envelope and config passing without re-implementing this line.
      *
      * @param  array<string, mixed>  $data
      * @return array<mixed>
      */
-    private function callScript(string $script, array $data): array
+    protected function callScript(string $script, array $data): array
     {
         return $this->bridge->execute($script, $this->payload($data), $this->config);
     }
@@ -181,7 +183,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * decoded Python output, so each call site states only what differs: the
      * script, the key, the predicate and how to describe the expected value.
      * $subject names what the key belongs to when it is not the response
-     * itself (e.g. "each result" for the items of a batch).
+     * itself (e.g. "result #3" for an item of a batch).
      *
      * @param  array<mixed>  $response
      * @param  \Closure(mixed): bool  $isValid
@@ -235,7 +237,9 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $script = 'batch.py';
         $response = $this->callScript($script, [
-            'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
+            // A list, whatever keys the caller used: an associative array would
+            // JSON-encode as an object that batch.py cannot iterate.
+            'circuits' => array_values(array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits)),
         ]);
 
         /** @var array<mixed> $results */

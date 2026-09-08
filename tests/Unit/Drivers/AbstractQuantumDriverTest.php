@@ -349,6 +349,23 @@ it('reports a missing key the same way as a key of the wrong type', function (ar
     'integer' => [['bits' => 12345], 'bits'],
 ]);
 
+it('sends the batch circuits to Python as a list whatever keys the caller used', function () {
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'batch.py',
+            $this->callback(fn (array $p) => array_is_list($p['circuits']) && count($p['circuits']) === 2),
+            ['key' => 'value']
+        )
+        ->willReturn(['results' => [['counts' => ['0' => 1]], ['counts' => ['0' => 1]]]]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    $this->driver->executeBatch(['first' => $circuit, 'second' => $circuit]);
+});
+
 it('names the offending batch item when it is not an object', function () {
     $this->bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 1]], 'ok']]);
 
