@@ -149,7 +149,12 @@ class QuantumManager extends Manager
             return $this->$method();
         }
 
-        throw DriverNotFoundException::forDriver($driver);
+        // Manager resolves a null argument to the default before calling us, so
+        // an unknown name that equals the default points at configuration; any
+        // other unknown name was asked for explicitly by the caller.
+        throw $driver === $this->getDefaultDriver()
+            ? DriverNotFoundException::forDefaultDriver($driver)
+            : DriverNotFoundException::forDriver($driver);
     }
 
     /**
