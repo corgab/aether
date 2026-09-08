@@ -53,6 +53,7 @@ Quantum (Facade)
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
 - **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
+- **Task persistence goes through `Tasks\QuantumTaskRecorder`:** both jobs call `recordSubmission()` / `recordProgress()`; the recorder alone checks `aether.persist_tasks` and reports-and-swallows database failures, so a job never repeats that guard or try/catch.
 
 ## Config
 
