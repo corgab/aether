@@ -49,7 +49,7 @@ def run_options(config: dict[str, Any]) -> dict[str, Any]:
     bucket (``amazon-braket-<region>-<account>``, created on demand) and its
     ``tasks`` folder, exactly as ``AwsDevice.run()`` does on its own.
     """
-    bucket = config.get("bucket")
+    bucket = str(config.get("bucket") or "").strip()
     if not bucket:
         return {}
 

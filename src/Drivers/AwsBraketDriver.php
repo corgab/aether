@@ -25,7 +25,8 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
 
     /**
      * The S3 bucket is optional: without one the Braket SDK writes results to
-     * its default bucket, amazon-braket-<region>-<account>, created on demand.
+     * its default bucket, amazon-braket-<region>-<account>, which it creates on
+     * first use (so the credentials need s3:CreateBucket).
      *
      * @return list<string>
      */

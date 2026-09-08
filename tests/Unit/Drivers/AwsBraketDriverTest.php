@@ -225,10 +225,12 @@ it('lists every missing required key in the exception message', function () {
     }
 });
 
-it('runs without a bucket and leaves the S3 destination to the SDK default', function () {
+it('runs without a bucket and leaves the S3 destination to the SDK default', function (array $bucket) {
+    // config/aether.php yields null when AETHER_S3_BUCKET is unset and '' when the line is blank.
     $driver = new AwsBraketDriver($this->bridge, [
         'region' => 'us-east-1',
         'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+        ...$bucket,
     ]);
 
     $circuit = $this->createMock(CircuitBuilder::class);
@@ -238,11 +240,15 @@ it('runs without a bucket and leaves the S3 destination to the SDK default', fun
 
     $this->bridge->expects($this->once())
         ->method('execute')
-        ->with('circuit.py', $this->anything(), $this->callback(fn (array $config): bool => ! array_key_exists('bucket', $config)))
+        ->with('circuit.py', $this->anything(), $this->anything())
         ->willReturn(['counts' => ['0' => 10]]);
 
     expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
-});
+})->with([
+    'key absent' => [[]],
+    'null from an unset env var' => [['bucket' => null]],
+    'empty string from a blank env line' => [['bucket' => '']],
+]);
 
 it('validates config on generateEntropy as well as executeCircuit', function () {
     $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1', 'bucket' => 'test-bucket']);
