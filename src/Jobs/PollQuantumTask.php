@@ -126,9 +126,11 @@ class PollQuantumTask implements ShouldQueue
      *
      * The status column always reflects what the backend last reported; our
      * own polling problems (exhausted budget, malformed response) only ever
-     * populate error and failed_at. Persistence is best-effort: a database
-     * failure is reported and swallowed so it can never fail the job or
-     * suppress the CircuitCompleted event.
+     * populate error and failed_at. A status-only update, the common case
+     * while a task is queued or running, is a single conditional query that
+     * touches no row when the status has not changed. Persistence is
+     * best-effort: a database failure is reported and swallowed so it can
+     * never fail the job or suppress the CircuitCompleted event.
      *
      * @param  array<string, int>|null  $counts
      */
@@ -139,6 +141,19 @@ class PollQuantumTask implements ShouldQueue
         }
 
         try {
+            if ($counts === null && $error === null) {
+                // An intermediate poll only mirrors the status: one conditional
+                // UPDATE instead of a SELECT per poll, and no row is written
+                // (nor updated_at bumped) while the backend reports the same
+                // status as before.
+                QuantumTask::query()
+                    ->where('task_arn', $this->taskArn)
+                    ->where('status', '!=', $status->value)
+                    ->update(['status' => $status->value, 'updated_at' => now()]);
+
+                return;
+            }
+
             $task = QuantumTask::query()->where('task_arn', $this->taskArn)->first();
 
             if ($task === null) {

@@ -135,6 +135,40 @@ it('mirrors an intermediate backend status while the job is released', function 
     expect(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Running);
 });
 
+it('issues a single conditional update and writes nothing when the status is unchanged', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+    $job = ($this->submit)()->withFakeQueueInteractions();
+
+    ($this->poll)($job);
+    $before = QuantumTask::query()->firstOrFail();
+    $this->travel(5)->seconds();
+
+    DB::enableQueryLog();
+    ($this->poll)($job);
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($queries)->toHaveCount(1)
+        ->and(strtolower($queries[0]['query']))->toStartWith('update')
+        ->and(QuantumTask::query()->firstOrFail()->updated_at->equalTo($before->updated_at))->toBeTrue();
+});
+
+it('records a changed intermediate status without reading the row first', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Queued);
+    $job = ($this->submit)()->withFakeQueueInteractions();
+    ($this->poll)($job);
+
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+
+    DB::enableQueryLog();
+    ($this->poll)($job);
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($queries)->toHaveCount(1)
+        ->and(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Running);
+});
+
 it('keeps the backend status and records the error when polling is exhausted', function () {
     config()->set('aether.max_poll_attempts', 1);
     $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
