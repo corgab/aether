@@ -67,20 +67,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Local Task Retention
-    |--------------------------------------------------------------------------
-    |
-    | The local simulator has no real task queue, so asynchronously submitted
-    | circuits are executed immediately and their results are cached under a
-    | synthetic task identifier. This is how long, in seconds, those results
-    | stay available to the polling job.
-    |
-    */
-
-    'local_task_ttl' => (int) env('AETHER_LOCAL_TASK_TTL', 3600),
-
-    /*
-    |--------------------------------------------------------------------------
     | Persist Asynchronous Tasks
     |--------------------------------------------------------------------------
     |
@@ -117,6 +103,12 @@ return [
         'local' => [
             'synchronous_safe' => true,
             'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+
+            // The local simulator has no real task queue: a dispatched circuit
+            // runs immediately and its result is cached under a synthetic task
+            // identifier. This is how long, in seconds, that result stays
+            // available to the polling job.
+            'task_ttl' => (int) env('AETHER_LOCAL_TASK_TTL', 3600),
 
             // The local simulator keeps a full statevector in memory: a dense
             // vector of 2^n complex128 amplitudes, 16 bytes each, so memory

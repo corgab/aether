@@ -16,6 +16,7 @@ use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
 use BackedEnum;
 use Closure;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Manager;
 use Illuminate\Support\Str;
 use UnitEnum;
@@ -160,6 +161,7 @@ class QuantumManager extends Manager
         return new LocalSimulatorDriver(
             $this->createBridge(),
             $this->config->get('aether.drivers.local', []),
+            $this->container->make(CacheRepository::class),
         );
     }
 
