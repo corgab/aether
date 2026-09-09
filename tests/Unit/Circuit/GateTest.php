@@ -295,7 +295,7 @@ it('builds every gate type through make() exactly as its named factory does', fu
 })->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
 
 it('make() accepts Angle instances and normalises them like the named factories', function (): void {
-    expect(Gate::make(GateType::RX, [0], [Angle::degrees(180)])->params['angle'])->toBe(M_PI);
+    expect(Gate::make(GateType::RX, [0], [Angle::deg(180)])->params['angle'])->toBe(M_PI);
 });
 
 it('make() rejects the wrong number of qubit indices', function (): void {
