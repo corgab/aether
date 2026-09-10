@@ -23,15 +23,15 @@ class QuantumTaskRecorder
      *
      * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The CircuitBuilder::toArray() payload that was submitted.
      */
-    public function recordSubmission(string $taskArn, string $driver, array $circuit): void
+    public function recordSubmission(string $taskArn, string $driver, array $circuit, int $shots): void
     {
-        $this->write(static function () use ($taskArn, $driver, $circuit): void {
+        $this->write(static function () use ($taskArn, $driver, $circuit, $shots): void {
             QuantumTask::query()->create([
                 'task_arn' => $taskArn,
                 'driver' => $driver,
                 'status' => TaskStatus::Created,
                 'circuit' => $circuit,
-                'shots' => $circuit['shots'],
+                'shots' => $shots,
                 'submitted_at' => now(),
             ]);
         });

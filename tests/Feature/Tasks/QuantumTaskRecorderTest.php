@@ -37,7 +37,7 @@ it('runs no query at all when persistence is disabled', function () {
     config()->set('aether.persist_tasks', false);
 
     DB::enableQueryLog();
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
     $this->recorder->recordProgress('arn:1', TaskStatus::Completed, ['00' => 500]);
 
     expect(DB::getQueryLog())->toBeEmpty();
@@ -49,7 +49,7 @@ it('runs no query at all when persistence is disabled', function () {
 // -------------------------------------------------------------------------
 
 it('records a submitted task as created with its circuit, driver and shots', function () {
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
 
     $task = QuantumTask::query()->firstOrFail();
 
@@ -70,7 +70,7 @@ it('records a submitted task as created with its circuit, driver and shots', fun
 // -------------------------------------------------------------------------
 
 it('mirrors an intermediate status without touching the outcome columns', function () {
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
 
     $this->recorder->recordProgress('arn:1', TaskStatus::Running);
 
@@ -84,7 +84,7 @@ it('mirrors an intermediate status without touching the outcome columns', functi
 });
 
 it('records counts and the completion time on success', function () {
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
 
     $this->recorder->recordProgress('arn:1', TaskStatus::Completed, ['00' => 250, '11' => 250]);
 
@@ -98,7 +98,7 @@ it('records counts and the completion time on success', function () {
 });
 
 it('records the error and the failure time while keeping the backend status', function () {
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
 
     $this->recorder->recordProgress('arn:1', TaskStatus::Running, null, 'polling exhausted');
 
@@ -122,7 +122,9 @@ it('leaves a task that was never recorded alone', function () {
 // -------------------------------------------------------------------------
 
 it('reports and swallows a database failure on either write', function () {
-    Schema::dropIfExists('quantum_tasks');
+    QuantumTask::saving(function () {
+        throw new \RuntimeException('Simulated database failure');
+    });
 
     $reported = [];
     $handler = Mockery::mock(ExceptionHandler::class);
@@ -131,10 +133,10 @@ it('reports and swallows a database failure on either write', function () {
     });
     app()->instance(ExceptionHandler::class, $handler);
 
-    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit);
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
     $this->recorder->recordProgress('arn:1', TaskStatus::Completed, ['0' => 1]);
 
     expect($reported)->toHaveCount(2)
-        ->and($reported[0])->toBeInstanceOf(QueryException::class)
-        ->and($reported[1])->toBeInstanceOf(QueryException::class);
+        ->and($reported[0])->toBeInstanceOf(\RuntimeException::class)
+        ->and($reported[1])->toBeInstanceOf(\RuntimeException::class);
 });
