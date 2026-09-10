@@ -126,5 +126,5 @@ it('pins the resolved default driver name on batches when no driver is requested
     $manager = app(QuantumManager::class);
     $batch = $manager->batch([$manager->circuit()->qubits(1)->h(0)->measure()]);
 
-    expect((new ReflectionProperty($batch, 'driverName'))->getValue($batch))->toBe('aws');
+    expect($batch->driverName())->toBe('aws');
 });

@@ -55,7 +55,7 @@ class QuantumManager extends Manager
      * dispatches, and circuit() and batch() pin it onto the builders they
      * create. The queue jobs ask getDefaultDriver() for the same answer.
      */
-    private function driverAlias(string|UnitEnum|null $driver): string
+    public function driverAlias(string|UnitEnum|null $driver): string
     {
         return match (true) {
             $driver === null => $this->getDefaultDriver(),

@@ -52,8 +52,8 @@ class SubmitQuantumCircuit implements ShouldQueue
      */
     public function handle(QuantumManager $manager): void
     {
-        $driverName = $this->driver ?? $manager->getDefaultDriver();
-        $device = $manager->driver($this->driver);
+        $driverName = $manager->driverAlias($this->driver);
+        $device = $manager->driver($driverName);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
             throw QuantumExecutionException::asynchronousUnsupported($driverName);
