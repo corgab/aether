@@ -36,13 +36,6 @@ body:
       placeholder: "PHP 8.3.x, Laravel 13.x"
     validations:
       required: true
-  - type: input
-    id: python
-    attributes:
-      label: Python and amazon-braket-sdk versions
-      placeholder: "Python 3.12.x, amazon-braket-sdk 1.x"
-    validations:
-      required: true
   - type: dropdown
     id: driver
     attributes:

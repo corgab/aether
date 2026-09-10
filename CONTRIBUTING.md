@@ -1,6 +1,6 @@
 # Contributing to Aether
 
-Thank you for your interest in contributing to **Aether**! Aether bridges Laravel with Quantum Computing via AWS Braket and local simulators, combining a modern PHP 8.3+ API with Python-based quantum execution.
+Thank you for your interest in contributing to **Aether**! Aether bridges Laravel with Quantum Computing via AWS Braket and local simulators, providing a native PHP 8.3+ API for quantum execution.
 
 We welcome contributions of all kinds: bug reports, documentation improvements, feature requests, and code contributions.
 
@@ -22,9 +22,7 @@ If you discover a bug, please check the [existing issues](https://github.com/cor
 - **Environment details**:
   - PHP version (`php -v`)
   - Laravel version
-  - Python version (`python3 --version`)
   - Operating system
-  - `amazon-braket-sdk` version
 - **Steps to reproduce** or a minimal reproducible code example.
 - **Expected vs. actual behavior**, including relevant error messages or stack traces.
 
@@ -46,7 +44,6 @@ Opening an issue before writing code helps ensure the enhancement aligns with th
 
 - **PHP**: 8.3 or higher
 - **Composer**: Latest 2.x
-- **Python**: 3.12+
 
 ### Installation
 
@@ -79,7 +76,6 @@ Opening an issue before writing code helps ensure the enhancement aligns with th
 
    ```bash
    composer test
-   pytest tests/python/ -v
    ```
 
 ---
@@ -159,7 +155,6 @@ Python tests live in `tests/python/` and test gate validation, circuit translati
 - **Drivers**: Driver classes extend `AbstractQuantumDriver` and use the `*Driver` suffix (e.g., `LocalSimulatorDriver`, `AwsBraketDriver`).
 - **Contracts**: Interfaces reside in `Aether\Contracts\` with semantic names and **without** a `Contract` suffix (e.g., `Contracts\QuantumDevice`, `Contracts\BatchableDevice`).
 - **Exceptions**: All domain exceptions extend `AetherException` and provide descriptive static factory methods (e.g., `InvalidCircuitException::missingQubits()`).
-- **Python Scripts**: Self-contained scripts live in `bin/python/`. They accept JSON via `stdin`, output JSON via `stdout`, and keep dependencies strictly limited to `amazon-braket-sdk` and `numpy`.
 
 ---
 
@@ -185,7 +180,7 @@ Only maintainers can push to this repository, so contributions come from a fork:
 4. Keep pull requests focused on a single change or fix.
 5. Write clear, meaningful commit messages using [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: add QFT gate support`
-   - `fix: validate qubit indices in Python bridge`
+   - `fix: validate qubit indices in AWS driver`
    - `docs: update driver comparison table`
    - `test: cover batch driver mismatch error`
    - `refactor: simplify driver resolution`

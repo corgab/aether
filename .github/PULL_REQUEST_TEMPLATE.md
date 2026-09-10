@@ -9,7 +9,7 @@
 ## Tests
 
 <!-- Which tests you added or changed, and the result of the local checks:
-     composer format, composer analyse, composer test, pytest tests/python/ -->
+     composer format, composer analyse, composer test -->
 
 Closes #
 
