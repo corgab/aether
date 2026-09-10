@@ -53,11 +53,11 @@ it('synchronous unsafe includes driver name', function (): void {
 // -------------------------------------------------------------------------
 
 it('malformed response is a distinct subclass of quantum execution exception', function (): void {
-    $exception = QuantumExecutionException::malformedResponse('check.py', 'no status key');
+    $exception = QuantumExecutionException::malformedResponse('checkTask', 'no status key');
 
     expect($exception)->toBeInstanceOf(MalformedResponseException::class)
         ->and($exception)->toBeInstanceOf(QuantumExecutionException::class)
-        ->and($exception->getMessage())->toContain('check.py')->toContain('no status key');
+        ->and($exception->getMessage())->toContain('checkTask')->toContain('no status key');
 });
 
 it('python environment exception extends aether exception', function (): void {
