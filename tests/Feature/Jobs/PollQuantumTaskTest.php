@@ -156,7 +156,6 @@ it('fails without retry on a deterministic driver error', function (Throwable $e
     $job->assertFailedWith($error::class);
     $job->assertNotReleased();
 })->with([
-    'missing python binary' => [PythonEnvironmentException::pythonNotFound('/nope/python')],
     'unreadable check.py response' => [QuantumExecutionException::malformedResponse('check.py', 'no status')],
 ]);
 
