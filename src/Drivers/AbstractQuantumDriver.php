@@ -24,6 +24,8 @@ use Aether\Tasks\TaskStatus;
  */
 abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
+    private const BITS_PER_BYTE = 8;
+
     use DispatchesLifecycleEvents;
 
     /**
@@ -363,7 +365,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         // Fetch whole bytes: a final chunk shorter than 8 bits would be
         // zero-padded into a byte whose high bits are never random.
-        $bitsToFetch = (int) ceil($bits / 8) * 8;
+        $bitsToFetch = (int) ceil($bits / self::BITS_PER_BYTE) * self::BITS_PER_BYTE;
         $shots = (int) ceil($bitsToFetch / $qubits);
 
         $payload = $this->payload([

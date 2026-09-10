@@ -16,6 +16,8 @@ use Symfony\Component\Process\Process;
  */
 class PythonBridge implements PythonExecutor
 {
+    private const BITS_PER_BYTE = 8;
+
     private readonly string $scriptsPath;
 
     public function __construct(
@@ -144,15 +146,15 @@ class PythonBridge implements PythonExecutor
      */
     public function bitstringToBytes(string $bitstring): string
     {
-        if (preg_match('/^[01]+$/D', $bitstring) !== 1 || strlen($bitstring) % 8 !== 0) {
+        if (preg_match('/^[01]+$/D', $bitstring) !== 1 || strlen($bitstring) % self::BITS_PER_BYTE !== 0) {
             throw new \InvalidArgumentException(
-                'Bit string must be a sequence of 0/1 digits whose length is a multiple of 8, got '.strlen($bitstring).' character(s): '.var_export($bitstring, true)
+                'Bit string must be a sequence of 0/1 digits whose length is a multiple of ' . self::BITS_PER_BYTE . ', got '.strlen($bitstring).' character(s): '.var_export($bitstring, true)
             );
         }
 
         $bytes = '';
 
-        foreach (str_split($bitstring, 8) as $chunk) {
+        foreach (str_split($bitstring, self::BITS_PER_BYTE) as $chunk) {
             // The guard above makes every chunk exactly 8 binary digits; the
             // mask only narrows the type to chr()'s 0-255 range.
             $bytes .= chr(((int) bindec($chunk)) & 0xFF);
