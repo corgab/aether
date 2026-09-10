@@ -36,7 +36,13 @@ class QuantumManager extends Manager
         // still resolve to a driver, not surface later as a TypeError.
         $default = $this->config->get('aether.default');
 
-        return is_string($default) && $default !== '' ? $default : 'local';
+        if ($default instanceof \BackedEnum) {
+            $default = (string) $default->value;
+        } elseif ($default instanceof \UnitEnum) {
+            $default = $default->name;
+        }
+
+        return is_string($default) && trim($default) !== '' ? trim($default) : 'local';
     }
 
     /**
@@ -152,7 +158,7 @@ class QuantumManager extends Manager
 
         $method = 'create'.Str::studly($name).'Driver';
 
-        if ($name !== '' && method_exists($this, $method)) {
+        if ($method !== 'createDriver' && method_exists($this, $method)) {
             return $this->$method();
         }
 
@@ -171,9 +177,15 @@ class QuantumManager extends Manager
      */
     private function availableDrivers(): array
     {
+        $builtins = [];
+        foreach (get_class_methods($this) as $method) {
+            if ($method !== 'createDriver' && str_starts_with($method, 'create') && str_ends_with($method, 'Driver')) {
+                $builtins[] = \Illuminate\Support\Str::snake(substr($method, 6, -6));
+            }
+        }
+
         return array_values(array_unique([
-            'local',
-            'aws',
+            ...$builtins,
             ...array_map(strval(...), array_keys($this->customCreators)),
         ]));
     }
