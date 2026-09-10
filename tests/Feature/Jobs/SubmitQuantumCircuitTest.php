@@ -74,6 +74,7 @@ it('fails without retry when the driver rejects its configuration under a worker
 
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
+    $queueJob->shouldReceive('getConnectionName')->andReturn(null);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob($queueJob);
@@ -92,6 +93,7 @@ it('fails without retry when the circuit is rejected by a ceiling under a worker
 
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('fail')->once()->with($device->throwOnSubmit);
+    $queueJob->shouldReceive('getConnectionName')->andReturn(null);
 
     $job = new SubmitQuantumCircuit(['qubits' => 30, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob($queueJob);
@@ -131,6 +133,7 @@ it('fails without retry when the serialized circuit cannot be rebuilt under a wo
 
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('fail')->once()->with(Mockery::type(InvalidCircuitException::class));
+    $queueJob->shouldReceive('getConnectionName')->andReturn(null);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [$gate], 'shots' => 100], 'fake-async');
     $job->setJob($queueJob);
