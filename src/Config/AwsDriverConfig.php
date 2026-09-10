@@ -25,6 +25,10 @@ readonly class AwsDriverConfig extends DriverConfig
     /**
      * Estimated-cost ceiling for one ->run(), ->dispatch() or batch, or null for none.
      */
+    public ?string $region;
+    public ?string $bucket;
+    public ?string $deviceArn;
+
     public ?float $maxCostPerRun;
 
     /**
@@ -50,6 +54,10 @@ readonly class AwsDriverConfig extends DriverConfig
     public function __construct(string $driver, array $values)
     {
         parent::__construct($driver, $values);
+
+        $this->region = $this->string('region', $this->get('region'));
+        $this->bucket = $this->string('bucket', $this->get('bucket'));
+        $this->deviceArn = $this->string('device_arn', $this->get('device_arn'));
 
         $this->maxCostPerRun = $this->nonNegativeNumber('max_cost_per_run', $this->get('max_cost_per_run'));
 

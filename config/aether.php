@@ -146,7 +146,7 @@ return [
             // (e.g. SV1) bill per-minute instead, but the task+shot model
             // is what estimateCost() covers; treat simulator estimates as
             // a rough proxy, not an exact figure. Override via env/config
-            // without a package release. The rates are validated (not cast)
+            // without a package release. The rates are strictly validated (not silently cast to 0)
             // when the driver is resolved: a non-numeric or negative value
             // throws InvalidDriverConfigException instead of pricing at 0.
             'pricing' => [
