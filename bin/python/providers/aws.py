@@ -49,11 +49,10 @@ def run_options(config: dict[str, Any]) -> dict[str, Any]:
     bucket (``amazon-braket-<region>-<account>``, created on demand) and its
     ``tasks`` folder, exactly as ``AwsDevice.run()`` does on its own.
     """
-    bucket = str(config.get("bucket") or "").strip()
-    if not bucket:
+    if "bucket" not in config:
         return {}
 
-    return {"s3_destination_folder": (bucket, "results")}
+    return {"s3_destination_folder": (config["bucket"], "results")}
 
 
 def run_batch(

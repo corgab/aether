@@ -35,8 +35,19 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
         return ['region', 'device_arn'];
     }
 
+    protected function normalizeConfig(): void
+    {
+        $bucket = trim((string) ($this->config['bucket'] ?? ''));
+        if ($bucket === '') {
+            unset($this->config['bucket']);
+        } else {
+            $this->config['bucket'] = $bucket;
+        }
+    }
+
     protected function beforeExecution(): void
     {
+        $this->normalizeConfig();
         if (($this->config['synchronous_safe'] ?? true) === false) {
             throw QuantumExecutionException::synchronousUnsafe('aws');
         }
