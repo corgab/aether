@@ -17,6 +17,20 @@ use Aether\Tasks\TaskSnapshot;
  */
 class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevice, EstimatesCost
 {
+    /**
+     * A Braket device ARN always has an empty region field (or us-east-1) and an
+     * empty account-id field, so the resource segment "device/qpu/..." is
+     * preceded by a colon, not a slash.
+     */
+    protected function isSynchronousSafeByDefault(): bool
+    {
+        $deviceArn = $this->config['device_arn'] ?? null;
+        if (is_string($deviceArn) && str_contains($deviceArn, 'device/qpu/')) {
+            return false;
+        }
+        return true;
+    }
+
     protected function driverName(): string
     {
         return 'aws';
