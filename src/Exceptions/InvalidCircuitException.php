@@ -91,7 +91,7 @@ class InvalidCircuitException extends AetherException
     public static function qubitAlreadyMeasured(string $gate, int $qubit): self
     {
         return new self(
-            "Cannot apply {$gate} to qubit {$qubit}: it has already been measured. Braket rejects any gate or measurement on a measured qubit, so move the measurement to the end of the circuit."
+            "Cannot apply {$gate} to qubit {$qubit}: it has already been measured. Quantum circuits cannot apply gates or measurements to a measured qubit, so move the measurement to the end of the circuit."
         );
     }
 

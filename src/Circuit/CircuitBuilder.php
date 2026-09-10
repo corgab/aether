@@ -417,8 +417,6 @@ class CircuitBuilder
             // are checked against what the parent has already measured.
             if (! $gate->isMeasurement()) {
                 $this->assertMeasurementOrder($gate, strtoupper($gate->type), $gate->qubitIndices());
-            }
-            if (! $gate->isMeasurement()) {
                 $this->gates[] = $gate;
             }
         }
@@ -676,12 +674,12 @@ class CircuitBuilder
     }
 
     /**
-     * Enforce Braket's measurement ordering before the circuit reaches Python:
+     * Enforce strict measurement ordering during circuit construction:
      * a qubit can be measured once, and nothing may act on it afterwards.
      *
      * Explicit measurements record their targets; a measure-all marks the
      * whole circuit, including qubits added by a later qubits() call, since
-     * the Python side expands it against the final qubit count.
+     * the driver expands it against the final qubit count.
      *
      * @param  array<int>  $indices  The gate's qubit indices, already range-checked.
      *
