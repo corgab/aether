@@ -83,9 +83,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             throw QuantumExecutionException::synchronousUnsafe($this->driverName());
         }
 
-        $deviceArn = $this->config['device_arn'] ?? null;
-
-        if (is_string($deviceArn) && static::isQpuArn($deviceArn)) {
+        if (!$this->isSynchronousSafeByDefault()) {
+            $deviceArn = $this->config['device_arn'] ?? 'unknown';
             throw QuantumExecutionException::synchronousUnsafeForQpu($this->driverName(), $deviceArn);
         }
     }
@@ -131,9 +130,9 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * empty account-id field, so the resource segment "device/qpu/..." is
      * preceded by a colon, not a slash.
      */
-    protected static function isQpuArn(string $arn): bool
+    protected function isSynchronousSafeByDefault(): bool
     {
-        return str_contains($arn, 'device/qpu/');
+        return true;
     }
 
     /**
