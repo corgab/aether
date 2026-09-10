@@ -324,6 +324,20 @@ final readonly class Gate
     }
 
     /**
+     * Require an angle to be numeric.
+     *
+     * @throws InvalidCircuitException
+     */
+    private static function numericAngle(string $gate, mixed $value): int|float
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            throw InvalidCircuitException::invalidAngle(strtoupper($gate), $value);
+        }
+
+        return $value;
+    }
+
+    /**
      * Require a qubit index to be an integer.
      *
      * PHP cannot type array elements or a serialized definition's values, so
@@ -399,7 +413,7 @@ final readonly class Gate
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $params[$key] = self::radians((float) $definition[$key]);
+            $params[$key] = self::radians(self::numericAngle($type, $definition[$key]));
         }
 
         return new self($type, $params);
@@ -431,7 +445,7 @@ final readonly class Gate
 
         $keys = GateType::from($this->type)->shape()->qubitKeys();
 
-        return array_map(fn (string $key): int => (int) $this->params[$key], $keys);
+        return array_map(fn (string $key): int => $this->params[$key], $keys);
     }
 
     /**
