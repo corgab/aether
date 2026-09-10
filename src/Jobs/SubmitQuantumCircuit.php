@@ -109,8 +109,10 @@ class SubmitQuantumCircuit implements ShouldQueue
      */
     private function pollConnection(): ?string
     {
-        if ($this->connection !== null) {
-            return $this->connection;
+        $connection = $this->connection ?? $this->job?->getConnectionName();
+
+        if ($connection !== null && $connection !== 'sync') {
+            return $connection;
         }
 
         $default = config('queue.default');
