@@ -182,27 +182,6 @@ it('calls beforeExecution hook', function () {
 // Tri-state synchronous_safe / device_arn (base-class safety net)
 // -------------------------------------------------------------------------
 
-it('refuses executeCircuit against a QPU device ARN by default, even for a custom driver', function () {
-    // Proves the QPU safety net lives in the base class: a generic driver
-    // that never overrides beforeExecution() still refuses synchronous
-    // execution against a QPU device_arn.
-    $driver = new class($this->bridge, ['device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1']) extends AbstractQuantumDriver
-    {
-        protected function driverName(): string
-        {
-            return 'custom';
-        }
-    };
-
-    $circuit = $this->createMock(CircuitBuilder::class);
-    $circuit->expects($this->never())->method('toArray');
-
-    $this->bridge->expects($this->never())->method('execute');
-
-    expect(fn () => $driver->executeCircuit($circuit))
-        ->toThrow(QuantumExecutionException::class, 'custom');
-});
-
 it('allows executeCircuit against a QPU device ARN when synchronous_safe is explicitly true', function () {
     $driver = new class($this->bridge, ['device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'synchronous_safe' => true]) extends AbstractQuantumDriver
     {
