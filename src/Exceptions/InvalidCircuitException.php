@@ -102,7 +102,7 @@ class InvalidCircuitException extends AetherException
     public static function emptyBatch(): self
     {
         return new self(
-            'Quantum::batch() needs at least one circuit. An empty batch has nothing to run and would only start a Python process to return no results.'
+            'Quantum::batch() needs at least one circuit. An empty batch has nothing to run and would only trigger an empty execution to return no results.'
         );
     }
 
