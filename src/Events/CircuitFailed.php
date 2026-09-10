@@ -25,7 +25,7 @@ final readonly class CircuitFailed
      */
     public function __construct(
         public string $driver,
-        public array $circuit,
+        public array|string $circuit,
         public string $taskArn,
         public TaskStatus $status,
         public string $reason,

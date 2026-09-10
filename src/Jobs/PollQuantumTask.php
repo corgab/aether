@@ -144,7 +144,7 @@ class PollQuantumTask implements ShouldQueue
      * a listener that throws is reported and swallowed, so it can never
      * replace the task failure as the reason the job failed.
      */
-    private function abandonTask(Dispatcher $events, string $driverName, TaskStatus $status, AetherException $exception): never
+    private function abandonTask(Dispatcher $events, string $driverName, TaskStatus $status, \Throwable $exception): never
     {
         $this->persist($status, null, $exception->getMessage());
 
