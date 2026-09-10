@@ -22,14 +22,6 @@ final readonly class Gate
     /**
      * Build a gate of any type from positional qubit indices and angles.
      *
-     * The parameter layout comes from GateType::shape(): qubit indices are
-     * matched to the shape's qubit keys and angles to its angle keys, in wire
-     * order, so this is the one place that knows how a gate's arguments map
-     * onto its wire representation. Every named factory below is a typed
-     * one-line wrapper around it, and fromArray() rebuilds gates through it.
-     * A Measure type delegates to measure(): its qubits are the targets, and
-     * none means "measure all".
-     *
      * @param  int[]  $qubits  Qubit indices in the shape's wire order.
      * @param  array<float|Angle>  $angles  Angles in the shape's wire order.
      *
@@ -293,11 +285,6 @@ final readonly class Gate
      * - Pass null (default) to measure all qubits.
      * - Pass an int to measure a single qubit.
      * - Pass a non-empty array to measure the specified qubits.
-     *
-     * The empty-targets guard lives here rather than in CircuitBuilder so
-     * every construction path — the fluent measure(), fromArray() on a
-     * queued definition, or a fragment appended from another builder —
-     * rejects a measurement that would measure nothing.
      *
      * @param  int|int[]|null  $targets
      *

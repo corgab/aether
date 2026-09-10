@@ -8,16 +8,6 @@ use InvalidArgumentException;
 
 /**
  * Shared shape validation for stubbed measurement counts.
- *
- * Used by both QuantumFake and ResultSequence so every entry point that
- * accepts a raw counts array (respondWith(), ResultSequence::push(),
- * ResultSequence::whenEmpty(), QuantumFake::result()) rejects malformed
- * stubs at the point they are set, rather than failing later with a
- * confusing error deep inside CircuitResult or a consumer under test.
- *
- * An empty array is deliberately accepted: CircuitResult([]) is a legal
- * value (zero shots, mostFrequent() unavailable) and tests need to be able
- * to stub that branch.
  */
 trait ValidatesCounts
 {
