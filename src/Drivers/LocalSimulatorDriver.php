@@ -113,6 +113,12 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     {
         $ttl = $this->config['task_ttl'] ?? null;
 
-        return is_numeric($ttl) && (int) $ttl >= 0 ? (int) $ttl : self::DEFAULT_TASK_TTL;
+        // A non-positive value falls back to the default rather than being
+        // taken literally: 0 (or negative) as a cache TTL is not a
+        // meaningful "expire immediately" request here, it is what a blank
+        // or garbage config value coerces to, and every other numeric
+        // driver option in this codebase treats non-positive the same way
+        // (entropy_qubits, max_qubits).
+        return is_numeric($ttl) && (int) $ttl > 0 ? (int) $ttl : self::DEFAULT_TASK_TTL;
     }
 }
