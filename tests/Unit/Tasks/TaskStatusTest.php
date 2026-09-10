@@ -37,7 +37,9 @@ it('knows which state is successful', function () {
         ->and(TaskStatus::Failed->isSuccessful())->toBeFalse()
         ->and(TaskStatus::Cancelling->isSuccessful())->toBeFalse()
         ->and(TaskStatus::Cancelled->isSuccessful())->toBeFalse()
-        ->and(TaskStatus::Running->isSuccessful())->toBeFalse();
+        ->and(TaskStatus::Running->isSuccessful())->toBeFalse()
+        ->and(TaskStatus::Queued->isSuccessful())->toBeFalse()
+        ->and(TaskStatus::Created->isSuccessful())->toBeFalse();
 });
 
 it('covers exactly the Braket task states', function () {

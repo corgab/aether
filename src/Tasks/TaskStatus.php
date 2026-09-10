@@ -29,7 +29,7 @@ enum TaskStatus: string
     {
         return match ($this) {
             self::Completed, self::Failed, self::Cancelled => true,
-            default => false,
+            self::Created, self::Queued, self::Running, self::Cancelling => false,
         };
     }
 
