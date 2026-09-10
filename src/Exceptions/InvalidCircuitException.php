@@ -118,6 +118,17 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for a gate built with the wrong number of qubit
+     * indices or angles for its shape.
+     */
+    public static function gateArity(string $type, string $kind, int $expected, int $given): self
+    {
+        return new self(
+            "Gate [{$type}] takes {$expected} {$kind} argument(s), {$given} given."
+        );
+    }
+
+    /**
      * Create an exception for a circuit requesting more qubits than the
      * driver's configured `max_qubits` ceiling allows.
      */

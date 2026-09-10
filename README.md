@@ -328,12 +328,12 @@ Appending a fragment that requires more qubits than the circuit has throws an `I
 Gate knowledge lives in a single metadata layer on each side of the bridge: the `GateType` / `GateShape` enums in `src/Circuit/` (PHP) and the `GATE_PARAMS` table in `bin/python/common.py` (Python). Adding a gate touches exactly five places:
 
 1. A `GateType` case (and, for a new parameter shape, a `GateShape` case)
-2. A static factory on `Gate`
+2. A static factory on `Gate` (a one-liner delegating to `Gate::make()`, which lays the arguments out from the shape)
 3. A fluent method on `CircuitBuilder` (a one-liner delegating to `push()`)
 4. A `GATE_PARAMS` row in `bin/python/common.py`
 5. A row in the gate table above
 
-Everything else is derived from the metadata. The test suite enforces completeness: a `GateType` case without a factory, fluent method, or wire-contract dataset entry fails the Unit suite, and a PHP/Python mismatch fails `tests/Feature/GateParityTest.php`, which compares the two tables through the real Python bridge.
+Everything else is derived from the metadata: `Gate::make(GateType $type, array $qubits, array $angles = [])` and `CircuitBuilder::gate()` build any gate from positional arguments, so the named factories and fluent methods are typed sugar over one generic constructor. Use `->gate()` when the gate type is data rather than code, e.g. when replaying a stored circuit description. The test suite enforces completeness: a `GateType` case without a factory, fluent method, or wire-contract dataset entry fails the Unit suite, and a PHP/Python mismatch fails `tests/Feature/GateParityTest.php`, which compares the two tables through the real Python bridge.
 
 ## Events
 

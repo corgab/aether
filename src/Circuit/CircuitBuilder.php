@@ -94,6 +94,23 @@ class CircuitBuilder
     }
 
     /**
+     * Add a gate of any type from positional qubit indices and angles.
+     *
+     * The generic entry point behind the named fluent methods, which remain
+     * as typed sugar: use this when the gate type is data rather than code,
+     * e.g. when building a circuit from a stored description.
+     *
+     * @param  int[]  $qubits  Qubit indices in the gate's wire order.
+     * @param  array<float|Angle>  $angles  Angles in the gate's wire order.
+     *
+     * @throws InvalidCircuitException
+     */
+    public function gate(GateType $type, array $qubits, array $angles = []): static
+    {
+        return $this->push(Gate::make($type, $qubits, $angles));
+    }
+
+    /**
      * Add a Hadamard gate on the given qubit.
      *
      * @throws InvalidCircuitException
