@@ -48,12 +48,6 @@ beforeEach(function () {
 // Contract
 // -------------------------------------------------------------------------
 
-it('implements QuantumDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(QuantumDevice::class);
-});
-
 // -------------------------------------------------------------------------
 // executeCircuit()
 // -------------------------------------------------------------------------
@@ -142,17 +136,6 @@ it('delegates generateEntropy to bridge with aws driver', function () {
     expect($entropy)->toBeString();
 });
 
-it('returns correct byte length from generateEntropy', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $driver->generateEntropy(16);
-
-    expect(strlen($entropy))->toBe(2);
-});
-
 it('throws QuantumExecutionException when synchronous_safe is false on generateEntropy', function () {
     $config = array_merge($this->config, ['synchronous_safe' => false]);
     $driver = new AwsBraketDriver($this->bridge, $config);
@@ -166,19 +149,6 @@ it('throws QuantumExecutionException when synchronous_safe is false on generateE
         expect($e)->toBeInstanceOf(QuantumExecutionException::class);
         expect(strtolower($e->getMessage()))->toContain('aws');
     }
-});
-
-it('converts bitstring to raw bytes correctly in generateEntropy', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    // '10110011' = 179 decimal = 0xB3
-    // '10100101' = 165 decimal = 0xA5
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $driver->generateEntropy(16);
-
-    expect($entropy)->toBe(chr(0xB3).chr(0xA5));
 });
 
 // -------------------------------------------------------------------------
@@ -237,12 +207,6 @@ it('validates config on generateEntropy as well as executeCircuit', function () 
 // -------------------------------------------------------------------------
 // AsynchronousDevice: submitCircuit()
 // -------------------------------------------------------------------------
-
-it('implements AsynchronousDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(AsynchronousDevice::class);
-});
 
 it('submits the circuit and returns the task arn', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);

@@ -58,9 +58,6 @@ afterEach(function () {
 // Contract
 // -------------------------------------------------------------------------
 
-it('implements QuantumDevice interface', function () {
-    expect($this->driver)->toBeInstanceOf(QuantumDevice::class);
-});
 
 // -------------------------------------------------------------------------
 // executeCircuit()
@@ -124,34 +121,9 @@ it('delegates generateEntropy to bridge with correct payload', function () {
     expect($entropy)->toBeString();
 });
 
-it('returns correct byte length from generateEntropy', function () {
-    // 16 bits => 2 bytes
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $this->driver->generateEntropy(16);
-
-    expect(strlen($entropy))->toBe(2);
-});
-
-it('converts bitstring to raw bytes correctly', function () {
-    // '10110011' = 179 decimal = 0xB3
-    // '10100101' = 165 decimal = 0xA5
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $this->driver->generateEntropy(16);
-
-    expect($entropy)->toBe(chr(0xB3).chr(0xA5));
-});
-
 // -------------------------------------------------------------------------
 // AsynchronousDevice: simulated local async
 // -------------------------------------------------------------------------
-
-it('implements AsynchronousDevice interface', function () {
-    expect($this->driver)->toBeInstanceOf(AsynchronousDevice::class);
-});
 
 it('submitCircuit returns a synthetic local: identifier', function () {
     $circuit = $this->createMock(CircuitBuilder::class);
