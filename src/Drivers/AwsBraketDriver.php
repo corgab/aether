@@ -7,6 +7,7 @@ namespace Aether\Drivers;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
+use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -18,6 +19,20 @@ use Aether\Tasks\TaskSnapshot;
  */
 class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevice, EstimatesCost
 {
+    /**
+     * Normalizes the bucket once, before the (readonly) config array is ever
+     * stored, so every path — synchronous or asynchronous — sees the same
+     * shape. Doing this later, by writing into $this->config from a method,
+     * cannot work: $config is declared readonly on AbstractQuantumDriver, and
+     * only that class's own constructor may ever assign it.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function __construct(PythonExecutor $bridge, array $config)
+    {
+        parent::__construct($bridge, self::normalizeBucket($config));
+    }
+
     protected function driverName(): string
     {
         return 'aws';
@@ -35,19 +50,30 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
         return ['region', 'device_arn'];
     }
 
-    protected function normalizeConfig(): void
+    /**
+     * Trim the configured bucket, or drop the key entirely once it is blank
+     * (absent, null, or whitespace-only — what env() yields for
+     * `AETHER_S3_BUCKET=`), so the Python side's `"bucket" not in config`
+     * check is the single place that decides whether one was given.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private static function normalizeBucket(array $config): array
     {
-        $bucket = trim((string) ($this->config['bucket'] ?? ''));
+        $bucket = trim((string) ($config['bucket'] ?? ''));
+
         if ($bucket === '') {
-            unset($this->config['bucket']);
+            unset($config['bucket']);
         } else {
-            $this->config['bucket'] = $bucket;
+            $config['bucket'] = $bucket;
         }
+
+        return $config;
     }
 
     protected function beforeExecution(): void
     {
-        $this->normalizeConfig();
         if (($this->config['synchronous_safe'] ?? true) === false) {
             throw QuantumExecutionException::synchronousUnsafe('aws');
         }
