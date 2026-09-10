@@ -23,12 +23,24 @@ readonly class AwsDriverConfig extends DriverConfig
     public const DEFAULT_CURRENCY = 'USD';
 
     /**
-     * Estimated-cost ceiling for one ->run(), ->dispatch() or batch, or null for none.
+     * AWS region (`region`), or null when not configured.
      */
     public ?string $region;
+
+    /**
+     * S3 bucket results are written to (`bucket`), or null to let the Braket
+     * SDK fall back to its own default bucket.
+     */
     public ?string $bucket;
+
+    /**
+     * Braket device ARN (`device_arn`), or null when not configured.
+     */
     public ?string $deviceArn;
 
+    /**
+     * Estimated-cost ceiling for one ->run(), ->dispatch() or batch, or null for none.
+     */
     public ?float $maxCostPerRun;
 
     /**
