@@ -139,6 +139,26 @@ class PollQuantumTask implements ShouldQueue
         }
 
         try {
+            if ($counts === null && $error === null) {
+                $cacheKey = "aether:task_status:{$this->taskArn}";
+                if (\Illuminate\Support\Facades\Cache::get($cacheKey) === $status->value) {
+                    return;
+                }
+
+                $task = QuantumTask::query()->where('task_arn', $this->taskArn)->first();
+
+                if ($task === null) {
+                    return;
+                }
+
+                $task->status = $status;
+                $task->save();
+
+                \Illuminate\Support\Facades\Cache::put($cacheKey, $status->value, now()->addMinutes((int) config('aether.task_ttl', 60)));
+
+                return;
+            }
+
             $task = QuantumTask::query()->where('task_arn', $this->taskArn)->first();
 
             if ($task === null) {
@@ -158,6 +178,8 @@ class PollQuantumTask implements ShouldQueue
             }
 
             $task->save();
+
+            \Illuminate\Support\Facades\Cache::forget("aether:task_status:{$this->taskArn}");
         } catch (\Throwable $e) {
             report($e);
         }
