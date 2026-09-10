@@ -127,7 +127,7 @@ class PollQuantumTask implements ShouldQueue
         // with backoff().
         try {
             $snapshot = $device->checkTask($this->taskArn);
-        } catch (InvalidDriverConfigException|PythonEnvironmentException|MalformedResponseException $e) {
+        } catch (InvalidDriverConfigException|MalformedResponseException $e) {
             $this->persist(null, null, $e->getMessage());
             $this->failWithoutRetry($e);
 

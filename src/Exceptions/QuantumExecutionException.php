@@ -42,14 +42,14 @@ class QuantumExecutionException extends AetherException
     }
 
     /**
-     * Create an exception when a Python script returns a response that does
+     * Create an exception when the quantum backend returns a response that does
      * not match the shape expected by the driver (missing key, wrong type,
      * or otherwise unusable).
      */
-    public static function malformedResponse(string $script, string $reason): MalformedResponseException
+    public static function malformedResponse(string $context, string $reason): MalformedResponseException
     {
         return new MalformedResponseException(
-            "Python script [{$script}] returned a malformed response: {$reason}"
+            "The quantum backend returned a malformed response during [{$context}]: {$reason}"
         );
     }
 

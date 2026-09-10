@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Aether\Exceptions;
 
 /**
- * Thrown when a Python script answers with a response the driver cannot use:
+ * Thrown when a backend answers with a response the driver cannot use:
  * a missing key, a wrong type, an unknown task status, an identifier in the
  * wrong shape.
  *
