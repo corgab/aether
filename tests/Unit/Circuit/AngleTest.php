@@ -74,15 +74,15 @@ it('toDegrees converts pi/2 to 90', function (): void {
 
 it('throws on NaN', function (): void {
     Angle::rad(NAN);
-})->throws(InvalidArgumentException::class, 'finite');
+})->throws(\Aether\Exceptions\InvalidAngleException::class, 'finite');
 
 it('throws on positive infinity', function (): void {
     Angle::rad(INF);
-})->throws(InvalidArgumentException::class, 'finite');
+})->throws(\Aether\Exceptions\InvalidAngleException::class, 'finite');
 
 it('throws on negative infinity', function (): void {
     Angle::rad(-INF);
-})->throws(InvalidArgumentException::class, 'finite');
+})->throws(\Aether\Exceptions\InvalidAngleException::class, 'finite');
 
 // -------------------------------------------------------------------------
 // Immutability
