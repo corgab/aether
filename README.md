@@ -109,7 +109,7 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
-`integer($min, $max)` accepts any bounds whose span fits in a signed 64-bit integer, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
+`integer($min, $max)` accepts any bounds whose span fits in the system's maximum integer size, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
 
 ### Batch Execution
 

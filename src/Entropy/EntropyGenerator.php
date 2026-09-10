@@ -70,7 +70,7 @@ class EntropyGenerator
         // PHP_INT_MAX + $min is the largest $max that still fits.
         if ($min < 0 && $max > PHP_INT_MAX + $min) {
             throw new \InvalidArgumentException(
-                "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in a signed 64-bit integer."
+                "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in the system's maximum integer size (PHP_INT_MAX)."
             );
         }
 

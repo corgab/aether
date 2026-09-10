@@ -165,7 +165,7 @@ it('integer throws when entropy is exhausted without an in-range value', functio
 // Wide ranges
 // -------------------------------------------------------------------------
 
-it('integer covers the full positive 64-bit range', function () use (&$device, &$generator): void {
+it('integer covers the full positive range up to PHP_INT_MAX', function () use (&$device, &$generator): void {
     // The first 63-bit chunk of all-ones is PHP_INT_MAX itself, so it is accepted as-is.
     $device->method('generateEntropy')->with(256)->willReturn(str_repeat("\xff", 32));
 
@@ -180,7 +180,7 @@ it('integer can return the top of a power-of-two range', function () use (&$devi
     expect($generator->integer(0, 2 ** 62))->toBe(2 ** 62);
 });
 
-it('integer rejects a span wider than a signed 64-bit integer', function () use (&$device, &$generator): void {
+it('integer rejects a span wider than the system's maximum integer size', function () use (&$device, &$generator): void {
     $device->expects($this->never())->method('generateEntropy');
 
     expect(fn () => $generator->integer(PHP_INT_MIN, PHP_INT_MAX))
