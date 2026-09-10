@@ -113,6 +113,6 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
     {
         $ttl = $this->config['task_ttl'] ?? null;
 
-        return is_numeric($ttl) && (int) $ttl > 0 ? (int) $ttl : self::DEFAULT_TASK_TTL;
+        return is_numeric($ttl) && (int) $ttl >= 0 ? (int) $ttl : self::DEFAULT_TASK_TTL;
     }
 }
