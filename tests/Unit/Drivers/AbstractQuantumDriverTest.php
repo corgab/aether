@@ -524,7 +524,7 @@ it('rejects a non-positive bit count before touching the bridge', function () {
     $this->bridge->expects($this->never())->method('execute');
 
     expect(fn () => $this->driver->generateEntropy(0))
-        ->toThrow(InvalidArgumentException::class, 'must be a positive integer');
+        ->toThrow(QuantumExecutionException::class, 'must be a positive integer');
 });
 
 it('keeps the ceiling messages free of entropy hints for ordinary circuits', function () {
