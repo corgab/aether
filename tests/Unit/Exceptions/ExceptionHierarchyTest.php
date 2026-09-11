@@ -179,6 +179,25 @@ it('invalid angle includes gate and value', function (): void {
         ->toContain("'a'");
 });
 
+it('repeated measurement target includes qubit', function (): void {
+    $exception = InvalidCircuitException::repeatedMeasurementTarget(0);
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('Qubit 0')
+        ->toContain('more than once');
+});
+
+it('qubit already measured includes gate and qubit', function (): void {
+    $exception = InvalidCircuitException::qubitAlreadyMeasured('H', 0);
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('H')
+        ->toContain('qubit 0')
+        ->toContain('already been measured');
+});
+
 // -------------------------------------------------------------------------
 // InvalidDriverConfigException
 // -------------------------------------------------------------------------
