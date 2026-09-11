@@ -7,6 +7,7 @@ namespace Aether;
 use Aether\Bridge\PythonBridge;
 use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
@@ -33,17 +34,7 @@ class QuantumManager extends Manager
      */
     public function getDefaultDriver(): string
     {
-        // A null or blank aether.default (an empty AETHER_DRIVER= line) must
-        // still resolve to a driver, not surface later as a TypeError.
-        $default = $this->config->get('aether.default');
-
-        if ($default instanceof BackedEnum) {
-            $default = (string) $default->value;
-        } elseif ($default instanceof UnitEnum) {
-            $default = $default->name;
-        }
-
-        return is_string($default) && trim($default) !== '' ? trim($default) : 'local';
+        return $this->settings()->defaultDriver();
     }
 
     /**
@@ -137,7 +128,7 @@ class QuantumManager extends Manager
      *
      *     Quantum::extend('ionq', fn () => new IonqDriver(
      *         Quantum::bridge(),
-     *         config('aether.drivers.ionq'),
+     *         app(AetherConfig::class)->driver('ionq'),
      *     ));
      */
     public function bridge(): PythonBridge
@@ -196,12 +187,9 @@ class QuantumManager extends Manager
      */
     protected function createLocalDriver(): LocalSimulatorDriver
     {
-        $config = $this->config->get('aether.drivers.local', []);
-        $config = is_array($config) ? $config : [];
-
         return new LocalSimulatorDriver(
             $this->createBridge(),
-            $config,
+            $this->settings()->driver('local'),
             $this->container->make(CacheRepository::class),
         );
     }
@@ -213,7 +201,7 @@ class QuantumManager extends Manager
     {
         return new AwsBraketDriver(
             $this->createBridge(),
-            $this->config->get('aether.drivers.aws', []),
+            $this->settings()->driver('aws'),
         );
     }
 
@@ -222,9 +210,29 @@ class QuantumManager extends Manager
      */
     private function createBridge(): PythonBridge
     {
+        $settings = $this->settings();
+
         return new PythonBridge(
-            $this->config->get('aether.python_path', 'python3'),
-            (int) $this->config->get('aether.process_timeout', 300),
+            $settings->pythonPath(),
+            $settings->processTimeout(),
         );
+    }
+
+    /**
+     * The typed package settings.
+     *
+     * Taken from the container when the service provider has bound it (so a
+     * swapped instance is honoured), otherwise built over the same config
+     * repository Manager already holds, so a bare container with only
+     * `config` bound still works. Resolved per call: the reader is stateless
+     * and a config value changed after the manager was built must still win.
+     */
+    private function settings(): AetherConfig
+    {
+        if ($this->container->bound(AetherConfig::class)) {
+            return $this->container->make(AetherConfig::class);
+        }
+
+        return new AetherConfig($this->config);
     }
 }

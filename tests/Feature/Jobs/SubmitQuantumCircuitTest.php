@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
@@ -24,7 +25,7 @@ it('submits the circuit and queues a poll job with the configured delay', functi
     $manager->extend('fake-async', fn () => $device);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
-    $job->handle($manager, app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     expect($device->submittedCircuits)->toHaveCount(1)
         ->and($device->submittedCircuits[0])->toBeInstanceOf(CircuitBuilder::class);
@@ -43,7 +44,7 @@ it('throws asynchronousUnsupported when the resolved driver does not support asy
     $manager->extend('fake-sync', fn () => $device);
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
-    $job->handle($manager, app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 })->throws(QuantumExecutionException::class);
 
 it('mentions the unsupported driver name in the exception message', function () {
@@ -54,7 +55,7 @@ it('mentions the unsupported driver name in the exception message', function () 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
 
     try {
-        $job->handle($manager, app(QuantumTaskRecorder::class));
+        $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
         $this->fail('Expected QuantumExecutionException to be thrown.');
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain('fake-sync');
@@ -75,7 +76,7 @@ it('fails without retrying when the poll job cannot be queued after submission',
     $job = (new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))
         ->withFakeQueueInteractions();
 
-    $job->handle($manager, app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
     $job->assertNotReleased();
@@ -98,7 +99,7 @@ it('throws the scheduling failure when handled outside a queue worker', function
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class)))
         ->toThrow(QuantumExecutionException::class, 'could not be queued');
 
     expect($device->submittedCircuits)->toHaveCount(1);
@@ -117,7 +118,7 @@ it('reports the scheduling failure when failing the job under a worker', functio
     $manager->extend('fake-async', fn () => $device);
 
     $job = (new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($manager, app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
     Exceptions::assertReported(QuantumExecutionException::class);
@@ -137,7 +138,7 @@ it('rethrows instead of failing silently when running on the sync connection', f
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob(new SyncJob(app(), '{}', 'sync', 'default'));
 
-    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class)))
         ->toThrow(QuantumExecutionException::class, 'poll job blew up inline');
     expect($device->submittedCircuits)->toHaveCount(1);
 });
@@ -152,7 +153,7 @@ it('still retries when submission itself fails', function () {
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))->toThrow(RuntimeException::class, 'submission failed');
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class), app(AetherConfig::class)))->toThrow(RuntimeException::class, 'submission failed');
 
     expect($device->submittedCircuits)->toHaveCount(0);
 

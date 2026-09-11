@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Events\CircuitCompleted;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
@@ -42,7 +43,7 @@ beforeEach(function () {
     // Submit through the real job, then hand back the poll job it queued so
     // each test can drive the polling state machine directly.
     $this->submit = function (): PollQuantumTask {
-        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager, app(QuantumTaskRecorder::class));
+        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
         $pollJob = null;
         Queue::assertPushed(PollQuantumTask::class, function (PollQuantumTask $job) use (&$pollJob) {
@@ -54,7 +55,7 @@ beforeEach(function () {
         return $pollJob;
     };
 
-    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 });
 
 // -------------------------------------------------------------------------
@@ -99,7 +100,7 @@ it('records the scheduling failure on the persisted task without retrying', func
     });
 
     $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($this->manager, app(QuantumTaskRecorder::class));
+    $job->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
 
@@ -122,7 +123,7 @@ it('clears a recorded scheduling failure once the task completes', function () {
     });
 
     $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($this->manager, app(QuantumTaskRecorder::class));
+    $job->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     expect(QuantumTask::query()->firstOrFail()->failed_at)->not->toBeNull();
 

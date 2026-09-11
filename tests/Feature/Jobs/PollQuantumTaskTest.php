@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Events\CircuitCompleted;
 use Aether\Events\CircuitFailed;
 use Aether\Exceptions\QuantumExecutionException;
@@ -13,6 +14,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Aether\Tests\Feature\Jobs\FakeSynchronousOnlyDevice;
+use Illuminate\Config\Repository;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Event;
@@ -31,6 +33,28 @@ it('budgets its attempts from the configured max_poll_attempts', function () {
     expect($job->tries())->toBe(42);
 });
 
+it('budgets the attempts inside handle() from the injected settings, not the container', function () {
+    config(['aether.max_poll_attempts' => 720]);
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $mockJob = Mockery::mock(Job::class);
+    $mockJob->shouldReceive('attempts')->andReturn(2);
+    $mockJob->shouldNotReceive('release');
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($mockJob);
+
+    $settings = new AetherConfig(new Repository(['aether' => ['max_poll_attempts' => 2]]));
+
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), $settings))
+        ->toThrow(QuantumExecutionException::class);
+});
+
 it('releases itself back to the queue with the configured delay while the task is not terminal', function (TaskStatus $status) {
     config(['aether.poll_interval' => 3, 'aether.max_poll_attempts' => 720]);
 
@@ -41,7 +65,7 @@ it('releases itself back to the queue with the configured delay while the task i
     $manager->extend('fake-async', fn () => $device);
 
     $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $job->assertReleased(delay: 3);
 })->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
@@ -64,7 +88,7 @@ it('throws pollingExhausted and does not release once past max_poll_attempts', f
     $job->setJob($mockJob);
 
     try {
-        $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+        $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
         $this->fail('Expected QuantumExecutionException to be thrown.');
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain($device->taskArnToReturn);
@@ -80,7 +104,7 @@ it('throws TaskFailedException when the task terminates as failed or cancelled',
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 })->with([TaskStatus::Failed, TaskStatus::Cancelled])->throws(TaskFailedException::class);
 
 it('dispatches CircuitFailed before throwing when the task terminates as failed or cancelled', function (TaskStatus $status) {
@@ -95,7 +119,7 @@ it('dispatches CircuitFailed before throwing when the task terminates as failed 
     $circuit = ['qubits' => 2, 'gates' => [], 'shots' => 100];
     $job = new PollQuantumTask($device->taskArnToReturn, $circuit, 'fake-async');
 
-    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(TaskFailedException::class);
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class)))->toThrow(TaskFailedException::class);
 
     Event::assertDispatched(
         CircuitFailed::class,
@@ -124,7 +148,7 @@ it('dispatches CircuitFailed with the last known status when the polling budget 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob($mockJob);
 
-    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(QuantumExecutionException::class);
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class)))->toThrow(QuantumExecutionException::class);
 
     Event::assertDispatched(
         CircuitFailed::class,
@@ -145,7 +169,7 @@ it('dispatches CircuitFailed when the task completes without counts', function (
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(QuantumExecutionException::class);
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class)))->toThrow(QuantumExecutionException::class);
 
     Event::assertDispatched(
         CircuitFailed::class,
@@ -165,7 +189,7 @@ it('does not dispatch CircuitFailed when the task completes with counts', functi
     $manager->extend('fake-async', fn () => $device);
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 1, 'gates' => [], 'shots' => 1], 'fake-async');
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     Event::assertNotDispatched(CircuitFailed::class);
 });
@@ -181,7 +205,7 @@ it('dispatches CircuitCompleted with the counts and task arn once completed', fu
 
     $circuit = ['qubits' => 2, 'gates' => [], 'shots' => 10];
     $job = new PollQuantumTask($device->taskArnToReturn, $circuit, 'fake-async');
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     Event::assertDispatched(
         CircuitCompleted::class,
@@ -203,7 +227,7 @@ it('resolves the default driver name when none is given explicitly', function ()
     $manager->extend('fake-async', fn () => $device);
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 1, 'gates' => [], 'shots' => 1]);
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     Event::assertDispatched(
         CircuitCompleted::class,
@@ -220,7 +244,7 @@ it('throws a malformed response exception when completed with null counts', func
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 })->throws(QuantumExecutionException::class);
 
 it('throws asynchronousUnsupported when the resolved driver does not support async execution', function () {
@@ -229,5 +253,5 @@ it('throws asynchronousUnsupported when the resolved driver does not support asy
     $manager->extend('fake-sync', fn () => $device);
 
     $job = new PollQuantumTask('arn:fake', ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
-    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 })->throws(QuantumExecutionException::class);

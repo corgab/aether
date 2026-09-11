@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Contracts\PythonExecutor;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Events\CircuitCompleted;
@@ -53,7 +54,7 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     $circuit = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
 
     // Stage one: the submission job hands the task off to the backend.
-    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class), app(QuantumTaskRecorder::class));
+    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $arn = null;
 
@@ -68,6 +69,7 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
         app(QuantumManager::class),
         app(Dispatcher::class),
         app(QuantumTaskRecorder::class),
+        app(AetherConfig::class),
     );
 
     Event::assertDispatched(CircuitCompleted::class, function (CircuitCompleted $event) use ($arn): bool {
