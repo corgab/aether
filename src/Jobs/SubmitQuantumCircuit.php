@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether\Jobs;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\QuantumExecutionException;
@@ -50,15 +51,17 @@ class SubmitQuantumCircuit implements ShouldQueue
         public readonly array $circuit,
         public readonly ?string $driver = null,
     ) {
-        $this->onQueue(config('aether.queue'));
+        // Constructors get no method injection, so the queue name is the one
+        // setting resolved from the container by hand.
+        $this->onQueue(app(AetherConfig::class)->queue());
     }
 
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, QuantumTaskRecorder $recorder): void
+    public function handle(QuantumManager $manager, QuantumTaskRecorder $recorder, AetherConfig $config): void
     {
-        $driverName = $this->driver ?? config('aether.default', 'local');
+        $driverName = $this->driver ?? $config->defaultDriver();
         $device = $manager->driver($this->driver);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
@@ -75,7 +78,7 @@ class SubmitQuantumCircuit implements ShouldQueue
             // letting the job retry and submit a second billable task.
             $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots']);
 
-            $this->schedulePolling($taskArn);
+            $this->schedulePolling($taskArn, $config);
         } catch (\Throwable $e) {
             $exception = QuantumExecutionException::pollingNotScheduled($taskArn, $driverName, $e);
 
@@ -104,9 +107,9 @@ class SubmitQuantumCircuit implements ShouldQueue
      * — which actually performs the queue push — runs while still inside the
      * caller's try block, letting a push failure be caught there.
      */
-    private function schedulePolling(string $taskArn): void
+    private function schedulePolling(string $taskArn, AetherConfig $config): void
     {
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
-            ->delay((int) config('aether.poll_interval', 5));
+            ->delay($config->pollInterval());
     }
 }

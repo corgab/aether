@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Tasks;
 
+use Aether\Config\AetherConfig;
 use Aether\Models\QuantumTask;
 
 /**
@@ -18,6 +19,10 @@ use Aether\Models\QuantumTask;
  */
 class QuantumTaskRecorder
 {
+    public function __construct(
+        private readonly AetherConfig $config,
+    ) {}
+
     /**
      * Record a freshly submitted task.
      *
@@ -79,7 +84,7 @@ class QuantumTaskRecorder
      */
     public function enabled(): bool
     {
-        return (bool) config('aether.persist_tasks', false);
+        return $this->config->persistTasks();
     }
 
     /**
