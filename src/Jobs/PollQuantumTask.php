@@ -7,22 +7,27 @@ namespace Aether\Jobs;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
+use Aether\Events\CircuitFailed;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\QuantumTaskRecorder;
+use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Polls an asynchronous quantum task until it reaches a terminal state.
  *
  * Uses Laravel's native job release mechanism to check the task status
  * repeatedly up to `aether.max_poll_attempts`. Once the task completes,
- * fires {@see CircuitCompleted}; a non-successful terminal state raises
- * {@see TaskFailedException}.
+ * fires {@see CircuitCompleted}. A task that ends without a result (a
+ * non-successful terminal state, an exhausted polling budget, or a completed
+ * task with no counts) fires {@see CircuitFailed} and then raises
+ * {@see TaskFailedException} or {@see QuantumExecutionException}.
  *
  * The high attempt allowance exists purely to budget the polling loop, so
  * genuine failures are capped separately by {@see $maxExceptions}.
@@ -46,12 +51,12 @@ class PollQuantumTask implements ShouldQueue
      * Create a new job instance.
      *
      * @param  string  $taskArn  The task identifier returned by submitCircuit().
-     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}  $circuit  The original CircuitBuilder::toArray() payload.
+     * @param  array{qubits: int, gates: array<int, array<string, mixed>>, shots: int}|string  $circuit  The original CircuitBuilder::toArray() payload or OpenQASM string.
      * @param  string|null  $driver  The driver name to resolve, or null for the configured default.
      */
     public function __construct(
         public readonly string $taskArn,
-        public readonly array $circuit,
+        public readonly array|string $circuit,
         public readonly ?string $driver = null,
     ) {
         $this->onQueue(config('aether.queue'));
@@ -86,9 +91,13 @@ class PollQuantumTask implements ShouldQueue
             $maxAttempts = $this->tries();
 
             if ($this->attempts() >= $maxAttempts) {
-                $e = QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts());
-                $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
-                throw $e;
+                $this->abandonTask(
+                    $events,
+                    $recorder,
+                    $driverName,
+                    $snapshot->status,
+                    QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts()),
+                );
             }
 
             $recorder->recordProgress($this->taskArn, $snapshot->status);
@@ -98,18 +107,26 @@ class PollQuantumTask implements ShouldQueue
         }
 
         if (! $snapshot->status->isSuccessful()) {
-            $e = TaskFailedException::forTask($this->taskArn, $snapshot->status);
-            $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
-            throw $e;
+            $this->abandonTask(
+                $events,
+                $recorder,
+                $driverName,
+                $snapshot->status,
+                TaskFailedException::forTask($this->taskArn, $snapshot->status),
+            );
         }
 
         if ($snapshot->counts === null) {
-            $e = QuantumExecutionException::malformedResponse(
-                'checkTask',
-                "task [{$this->taskArn}] completed but returned no measurement counts."
+            $this->abandonTask(
+                $events,
+                $recorder,
+                $driverName,
+                $snapshot->status,
+                QuantumExecutionException::malformedResponse(
+                    'checkTask',
+                    "task [{$this->taskArn}] completed but returned no measurement counts."
+                ),
             );
-            $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
-            throw $e;
         }
 
         $recorder->recordProgress($this->taskArn, $snapshot->status, $snapshot->counts);
@@ -120,5 +137,39 @@ class PollQuantumTask implements ShouldQueue
             new CircuitResult($snapshot->counts),
             $this->taskArn,
         ));
+    }
+
+    /**
+     * Record a task that ended without a result, announce it, and fail the job.
+     *
+     * CircuitFailed is the counterpart of CircuitCompleted: it is dispatched
+     * before the exception so application code can react to the failure
+     * (notify, refund, retry elsewhere) without reading failed_jobs. The
+     * exception still propagates so the job is failed and recorded as usual;
+     * a listener that throws is reported and swallowed, so it can never
+     * replace the task failure as the reason the job failed.
+     */
+    private function abandonTask(
+        Dispatcher $events,
+        QuantumTaskRecorder $recorder,
+        string $driverName,
+        TaskStatus $status,
+        Throwable $exception,
+    ): never {
+        $recorder->recordProgress($this->taskArn, $status, null, $exception->getMessage());
+
+        try {
+            $events->dispatch(new CircuitFailed(
+                $driverName,
+                $this->circuit,
+                $this->taskArn,
+                $status,
+                $exception->getMessage(),
+            ));
+        } catch (Throwable $listenerFailure) {
+            report($listenerFailure);
+        }
+
+        throw $exception;
     }
 }

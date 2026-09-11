@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Events\CircuitCompleted;
+use Aether\Events\CircuitFailed;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\Jobs\PollQuantumTask;
@@ -81,6 +82,93 @@ it('throws TaskFailedException when the task terminates as failed or cancelled',
 
     $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 })->with([TaskStatus::Failed, TaskStatus::Cancelled])->throws(TaskFailedException::class);
+
+it('dispatches CircuitFailed before throwing when the task terminates as failed or cancelled', function (TaskStatus $status) {
+    Event::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot($status);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $circuit = ['qubits' => 2, 'gates' => [], 'shots' => 100];
+    $job = new PollQuantumTask($device->taskArnToReturn, $circuit, 'fake-async');
+
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(TaskFailedException::class);
+
+    Event::assertDispatched(
+        CircuitFailed::class,
+        fn (CircuitFailed $event): bool => $event->driver === 'fake-async'
+            && $event->taskArn === $device->taskArnToReturn
+            && $event->circuit === $circuit
+            && $event->status === $status
+            && str_contains($event->reason, $status->value),
+    );
+    Event::assertNotDispatched(CircuitCompleted::class);
+})->with([TaskStatus::Failed, TaskStatus::Cancelled]);
+
+it('dispatches CircuitFailed with the last known status when the polling budget is exhausted', function () {
+    Event::fake();
+    config(['aether.max_poll_attempts' => 2]);
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $mockJob = Mockery::mock(Job::class);
+    $mockJob->shouldReceive('attempts')->andReturn(2);
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+    $job->setJob($mockJob);
+
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(QuantumExecutionException::class);
+
+    Event::assertDispatched(
+        CircuitFailed::class,
+        fn (CircuitFailed $event): bool => $event->status === TaskStatus::Running
+            && $event->taskArn === $device->taskArnToReturn
+            && str_contains($event->reason, $device->taskArnToReturn),
+    );
+});
+
+it('dispatches CircuitFailed when the task completes without counts', function () {
+    Event::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, null);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
+
+    expect(fn () => $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class)))->toThrow(QuantumExecutionException::class);
+
+    Event::assertDispatched(
+        CircuitFailed::class,
+        fn (CircuitFailed $event): bool => $event->status === TaskStatus::Completed
+            && str_contains($event->reason, 'no measurement counts'),
+    );
+    Event::assertNotDispatched(CircuitCompleted::class);
+});
+
+it('does not dispatch CircuitFailed when the task completes with counts', function () {
+    Event::fake();
+
+    $device = new FakeAsynchronousDevice;
+    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, ['0' => 1]);
+
+    $manager = app(QuantumManager::class);
+    $manager->extend('fake-async', fn () => $device);
+
+    $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 1, 'gates' => [], 'shots' => 1], 'fake-async');
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
+
+    Event::assertNotDispatched(CircuitFailed::class);
+});
 
 it('dispatches CircuitCompleted with the counts and task arn once completed', function () {
     Event::fake();

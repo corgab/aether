@@ -57,6 +57,7 @@ Quantum (Facade)
 - **Ceilings cover entropy:** generateEntropy() describes its circuit as a CircuitBuilder and runs validateCircuits(), so max_qubits and max_cost_per_run apply to Quantum::entropy() too.
 - **Task persistence goes through `Tasks\QuantumTaskRecorder`:** both jobs call `recordSubmission()` / `recordProgress()`; the recorder alone checks `aether.persist_tasks` and reports-and-swallows database failures, so a job never repeats that guard or try/catch.
 - **Entropy strength is the device's:** only a QPU yields genuinely random bits; the local and managed simulators are pseudorandom. Docblocks and README must never call simulator entropy cryptographically strong.
+- **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before throwing on failure. Both belong to the job: `QuantumFake` only reports statuses, so a job run against it dispatches each event once.
 
 ## Config
 

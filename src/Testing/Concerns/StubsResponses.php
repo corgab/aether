@@ -96,6 +96,9 @@ trait StubsResponses
      * flight (e.g. Queued, Running) or that terminated unsuccessfully
      * (Failed, Cancelled), so polling loops and event handling can be
      * exercised in tests.
+     *
+     * Like a real backend, the fake only reports the status: CircuitCompleted
+     * and CircuitFailed are dispatched by the polling job that reads it.
      */
     public function respondWithTaskStatus(TaskStatus $status): static
     {
