@@ -40,7 +40,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
 
     /**
      * Add the cost ceiling to the shared admission checks, so it holds on
-     * ->run(), Quantum::batch() and ->dispatch() alike.
+     * ->run(), Quantum::batch(), ->dispatch() and Quantum::entropy() alike.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
@@ -94,16 +94,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     }
 
     /**
-     * Guard against a run — one circuit, or a whole batch — whose estimated
-     * cost exceeds the driver's configured `max_cost_per_run` ceiling.
-     *
-     * A blank `max_cost_per_run` (absent, null, or an empty string — what
-     * env() yields for `AETHER_AWS_MAX_COST=`) means unlimited — the default,
-     * so existing configs keep working unchanged. A configured ceiling with
-     * no `pricing` rates would silently never trip (every estimate would be
-     * 0.00), so that combination fails fast as a misconfiguration instead.
-     * Shots are only summed across $circuits once a ceiling is actually
-     * configured, mirroring the qubit-ceiling guard's lazy evaluation.
+     * Guard against a run whose estimated cost exceeds the configured `max_cost_per_run`.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
