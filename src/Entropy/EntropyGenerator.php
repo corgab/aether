@@ -33,9 +33,7 @@ class EntropyGenerator
     public function generate(int $bits): string
     {
         if ($bits < 1) {
-            throw new \InvalidArgumentException(
-                "Requested bit count ({$bits}) must be a positive integer."
-            );
+            throw QuantumExecutionException::invalidEntropyBitCount($bits);
         }
 
         return $this->device->generateEntropy($bits);
@@ -55,9 +53,7 @@ class EntropyGenerator
     public function integer(int $min, int $max): int
     {
         if ($min > $max) {
-            throw new \InvalidArgumentException(
-                "Minimum value ({$min}) must not exceed maximum value ({$max})."
-            );
+            throw QuantumExecutionException::invalidEntropyRange($min, $max);
         }
 
         $range = $max - $min;

@@ -25,6 +25,9 @@ use PHPUnit\Framework\Assert;
 /**
  * Test double for QuantumDevice (and AsynchronousDevice) that records interactions.
  *
+ * Note: Stub validation deliberately throws native \InvalidArgumentException
+ * for incorrect test-usage, mirroring Laravel's Http::fake().
+ *
  * Also dispatches CircuitExecuted and EntropyGenerated exactly like the real
  * drivers (through the same guarded DispatchesLifecycleEvents trait), so
  * Event::fake() assertions on those events keep working for code under test
