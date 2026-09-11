@@ -122,9 +122,7 @@ it('leaves a task that was never recorded alone', function () {
 // -------------------------------------------------------------------------
 
 it('reports and swallows a database failure on either write', function () {
-    QuantumTask::saving(function () {
-        throw new \RuntimeException('Simulated database failure');
-    });
+    Schema::dropIfExists('quantum_tasks');
 
     $reported = [];
     $handler = Mockery::mock(ExceptionHandler::class);
@@ -137,6 +135,6 @@ it('reports and swallows a database failure on either write', function () {
     $this->recorder->recordProgress('arn:1', TaskStatus::Completed, ['0' => 1]);
 
     expect($reported)->toHaveCount(2)
-        ->and($reported[0])->toBeInstanceOf(\RuntimeException::class)
-        ->and($reported[1])->toBeInstanceOf(\RuntimeException::class);
+        ->and($reported[0])->toBeInstanceOf(QueryException::class)
+        ->and($reported[1])->toBeInstanceOf(QueryException::class);
 });

@@ -75,7 +75,7 @@ class SubmitQuantumCircuit implements ShouldQueue
             // Best-effort by design: the remote task already exists at this point,
             // so the recorder reports and swallows a database failure rather than
             // letting the job retry and submit a second billable task.
-            $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots'] ?? 0);
+            $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots']);
 
             $this->schedulePolling($taskArn);
         } catch (\Throwable $e) {

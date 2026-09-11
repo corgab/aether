@@ -82,7 +82,7 @@ it('records the submitted task with its circuit, driver and shots', function () 
 
 it('still dispatches the poll job when the insert fails', function () {
     QuantumTask::saving(function () {
-        throw new \RuntimeException('Simulated database failure');
+        throw new RuntimeException('Simulated database failure');
     });
 
     ($this->submit)();

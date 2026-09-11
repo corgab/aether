@@ -61,6 +61,8 @@ class QuantumTaskRecorder
             if ($counts !== null) {
                 $task->counts = $counts;
                 $task->completed_at = now();
+                $task->error = null;
+                $task->failed_at = null;
             }
 
             if ($error !== null) {
