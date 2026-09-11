@@ -9,6 +9,7 @@ use Aether\Events\EntropyGenerated;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Facades\Quantum;
 use Aether\Results\CircuitResult;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Facades\Event;
 
 // -------------------------------------------------------------------------
@@ -21,7 +22,7 @@ it('dispatches CircuitExecuted when a circuit executes synchronously', function 
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn(['counts' => ['0' => 48, '1' => 52]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     $circuit = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
@@ -43,7 +44,7 @@ it('does not dispatch CircuitExecuted when the circuit fails to execute', functi
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn([]); // missing the "counts" key
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     expect(fn () => Quantum::circuit('local')->qubits(1)->h(0)->measure()->run())
@@ -58,7 +59,7 @@ it('does not dispatch CircuitExecuted when a circuit is dispatched asynchronousl
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn(['counts' => ['0' => 48, '1' => 52]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     // The local driver simulates submission by running the circuit inline; to
@@ -85,7 +86,7 @@ it('dispatches EntropyGenerated when entropy is generated', function () {
     );
     $bridge->method('execute')->willReturn(['bits' => str_repeat('1', 16)]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     Quantum::entropy('local')->generate(8);
@@ -102,7 +103,7 @@ it('does not dispatch EntropyGenerated when entropy generation fails', function 
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn([]); // missing the "bits" key
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     expect(fn () => Quantum::entropy('local')->generate(8))
@@ -160,7 +161,7 @@ it('dispatches one CircuitExecuted per circuit when a batch executes', function 
         ['counts' => ['1' => 100]],
     ]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     $first = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
@@ -181,7 +182,7 @@ it('does not dispatch CircuitExecuted when a batch response is malformed', funct
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn(['results' => [['counts' => ['0' => 100]]]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     $first = Quantum::circuit('local')->qubits(1)->h(0)->measure();

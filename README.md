@@ -183,7 +183,7 @@ A task that fails or is cancelled throws `TaskFailedException` from the polling 
 
 `SubmitQuantumCircuit` itself retries up to three times, but only for failures before a remote task exists — a submission that never reaches the backend is safe to retry. Once the circuit has been submitted, a failure to queue `PollQuantumTask` (e.g. the queue connection is down) fails the submission job immediately instead of retrying, so a queued retry never creates a second billable task. That failure lands in `failed_jobs` as a `QuantumExecutionException` naming the ARN; with `persist_tasks` on, the row for that task also records the error. The task itself still exists on the backend and is simply untracked — dispatch `PollQuantumTask` yourself with that ARN to pick up polling manually.
 
-The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
+The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id for `drivers.local.task_ttl` seconds (`AETHER_LOCAL_TASK_TTL`, one hour by default), so you can develop the full asynchronous flow without touching AWS.
 
 #### Task Persistence
 

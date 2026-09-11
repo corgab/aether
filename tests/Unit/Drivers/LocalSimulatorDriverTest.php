@@ -14,9 +14,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository as CacheRepository;
-use Illuminate\Config\Repository as ConfigRepository;
-use Illuminate\Container\Container;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Contracts\Cache\Repository as CacheContract;
 use Illuminate\Support\Str;
 
 // -------------------------------------------------------------------------
@@ -37,20 +35,11 @@ beforeEach(function () use ($config) {
             return $bytes;
         });
     $this->config = $config;
-    $this->driver = new LocalSimulatorDriver($this->bridge, $this->config);
-
-    // submitCircuit()/checkTask() go through the Cache facade and the global
-    // config() helper. Neither requires a full Laravel app: an ArrayStore-backed
-    // cache repository is swapped into the facade, and a bare container carries
-    // a minimal config repository for the config() helper to resolve.
-    Cache::swap(new CacheRepository(new ArrayStore));
-    Container::setInstance(tap(new Container, function (Container $container) {
-        $container->instance('config', new ConfigRepository(['aether' => ['local_task_ttl' => 3600]]));
-    }));
-});
-
-afterEach(function () {
-    Container::setInstance(null);
+    // The driver takes its cache store by injection, so an in-memory
+    // repository is all submitCircuit()/checkTask() need: no facade root, no
+    // container, no global config() helper.
+    $this->cache = new CacheRepository(new ArrayStore);
+    $this->driver = new LocalSimulatorDriver($this->bridge, $this->config, $this->cache);
 });
 
 // -------------------------------------------------------------------------
@@ -163,6 +152,30 @@ it('submitCircuit still runs the circuit synchronously through the bridge', func
     $this->driver->submitCircuit($circuit);
 });
 
+it('caches a dispatched result for the configured task_ttl', function (mixed $ttl, int $expected) {
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $cache = $this->createMock(CacheContract::class);
+    $cache->expects($this->once())
+        ->method('put')
+        ->with($this->stringStartsWith('aether:local-task:local:'), ['0' => 100], $expected)
+        ->willReturn(true);
+
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($this->config, ['task_ttl' => $ttl]), $cache);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    $driver->submitCircuit($circuit);
+})->with([
+    'configured' => [42, 42],
+    'numeric string from env' => ['90', 90],
+    'absent' => [null, LocalSimulatorDriver::DEFAULT_TASK_TTL],
+    'zero' => [0, LocalSimulatorDriver::DEFAULT_TASK_TTL],
+    'garbage' => ['soon', LocalSimulatorDriver::DEFAULT_TASK_TTL],
+]);
+
 it('checkTask reports Failed for an unknown task key', function () {
     $snapshot = $this->driver->checkTask('local:'.Str::uuid());
 
@@ -181,7 +194,7 @@ it('checkTask rejects a task arn that is not in local: form', function () {
 // -------------------------------------------------------------------------
 
 it('rejects submitCircuit when the circuit exceeds max_qubits', function () use ($config) {
-    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]), $this->cache);
 
     $circuit = $this->createMock(CircuitBuilder::class);
     $circuit->method('qubitCount')->willReturn(6);
@@ -194,7 +207,7 @@ it('rejects submitCircuit when the circuit exceeds max_qubits', function () use 
 });
 
 it('allows submitCircuit when the circuit is within max_qubits', function () use ($config) {
-    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]));
+    $driver = new LocalSimulatorDriver($this->bridge, array_merge($config, ['max_qubits' => 5]), $this->cache);
 
     $circuit = $this->createMock(CircuitBuilder::class);
     $circuit->method('qubitCount')->willReturn(5);
