@@ -402,6 +402,22 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $response = $this->bridge->execute('entropy.py', $payload, $this->config->toArray());
 
+        $this->validateEntropyResponse($response, $bitsToFetch);
+
+        $bitstring = substr($response['bits'], 0, $bitsToFetch);
+
+        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
+
+        return $this->bridge->bitstringToBytes($bitstring);
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     *
+     * @throws QuantumExecutionException
+     */
+    private function validateEntropyResponse(array $response, int $bitsToFetch): void
+    {
         if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
             throw QuantumExecutionException::malformedResponse(
                 'entropy.py',
@@ -422,11 +438,5 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
                 "expected at least {$bitsToFetch} bits in the response, got ".strlen($response['bits']).'.'
             );
         }
-
-        $bitstring = substr($response['bits'], 0, $bitsToFetch);
-
-        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
-
-        return $this->bridge->bitstringToBytes($bitstring);
     }
 }
