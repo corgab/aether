@@ -167,8 +167,9 @@ class PythonBridge implements PythonExecutor
         // The remaining bits (if any) are processed 8 bits at a time.
         // PHPstan knows $last is not empty due to the regex check above.
         foreach (str_split($last, self::BITS_PER_BYTE) as $chunk) {
-            // The guard above makes every chunk exactly 8 binary digits.
-            $bytes .= chr((int) bindec($chunk));
+            // The guard above makes every chunk exactly 8 binary digits; the
+            // mask narrows bindec()'s return type to int<0,255> for PHPStan.
+            $bytes .= chr(((int) bindec($chunk)) & 0xFF);
         }
 
         return $bytes;
