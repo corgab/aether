@@ -33,7 +33,17 @@ class QuantumManager extends Manager
      */
     public function getDefaultDriver(): string
     {
-        return $this->config->get('aether.default', 'local');
+        // A null or blank aether.default (an empty AETHER_DRIVER= line) must
+        // still resolve to a driver, not surface later as a TypeError.
+        $default = $this->config->get('aether.default');
+
+        if ($default instanceof BackedEnum) {
+            $default = (string) $default->value;
+        } elseif ($default instanceof UnitEnum) {
+            $default = $default->name;
+        }
+
+        return is_string($default) && trim($default) !== '' ? trim($default) : 'local';
     }
 
     /**
@@ -140,17 +150,45 @@ class QuantumManager extends Manager
      */
     protected function createDriver($driver)
     {
-        if (isset($this->customCreators[$driver])) {
-            return $this->callCustomCreator($driver);
+        // Manager has already turned an enum into its value, which may be an int.
+        $name = (string) $driver;
+
+        if (isset($this->customCreators[$name])) {
+            return $this->callCustomCreator($name);
         }
 
-        $method = 'create'.Str::studly($driver).'Driver';
+        $method = 'create'.Str::studly($name).'Driver';
 
-        if (method_exists($this, $method)) {
+        if ($method !== 'createDriver' && method_exists($this, $method)) {
             return $this->$method();
         }
 
-        throw DriverNotFoundException::forDriver($driver);
+        // Manager resolves a null argument to the default before calling us, so
+        // an unknown name that equals the default points at configuration; any
+        // other unknown name was asked for explicitly by the caller.
+        throw $name === $this->getDefaultDriver()
+            ? DriverNotFoundException::forDefaultDriver($name)
+            : DriverNotFoundException::forDriver($name, $this->availableDrivers());
+    }
+
+    /**
+     * The driver names that resolve today: the built-ins plus every extend()ed one.
+     *
+     * @return list<string>
+     */
+    private function availableDrivers(): array
+    {
+        $builtins = [];
+        foreach (get_class_methods($this) as $method) {
+            if ($method !== 'createDriver' && str_starts_with($method, 'create') && str_ends_with($method, 'Driver')) {
+                $builtins[] = Str::snake(substr($method, 6, -6));
+            }
+        }
+
+        return array_values(array_unique([
+            ...$builtins,
+            ...array_map(strval(...), array_keys($this->customCreators)),
+        ]));
     }
 
     /**

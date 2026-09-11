@@ -94,11 +94,30 @@ it('driver not found exception extends aether exception', function (): void {
     expect(is_subclass_of(DriverNotFoundException::class, AetherException::class))->toBeTrue();
 });
 
-it('for driver includes driver name', function (): void {
+it('for driver includes driver name and points at registration, not at the default setting', function (): void {
     $exception = DriverNotFoundException::forDriver('braket');
 
     expect($exception)->toBeInstanceOf(DriverNotFoundException::class);
-    expect($exception->getMessage())->toContain('braket');
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain("Quantum::extend('braket'")
+        ->not->toContain('aether.default');
+});
+
+it('for driver lists the registered drivers when given', function (): void {
+    $exception = DriverNotFoundException::forDriver('ionk', ['local', 'aws', 'ionq']);
+
+    expect($exception->getMessage())->toContain("Registered drivers: 'local', 'aws', 'ionq'.");
+});
+
+it('for default driver points at the aether.default setting', function (): void {
+    $exception = DriverNotFoundException::forDefaultDriver('braket');
+
+    expect($exception)->toBeInstanceOf(DriverNotFoundException::class);
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain('aether.default')
+        ->toContain('AETHER_DRIVER');
 });
 
 // -------------------------------------------------------------------------
