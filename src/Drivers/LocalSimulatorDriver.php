@@ -16,21 +16,8 @@ use Illuminate\Support\Str;
 /**
  * Quantum driver for the local Braket simulator.
  *
- * Local execution is synchronous and instantaneous — there is no real
- * remote task to submit or poll. To let application code exercise the same
- * submitCircuit()/checkTask() workflow used against real QPUs while
- * developing locally, this driver *simulates* asynchronous execution:
- *
- *  - submitCircuit() runs the circuit synchronously (via runCircuit(), so the
- *    synchronous CircuitExecuted event does not fire for what is, to the
- *    caller, an asynchronous dispatch), caches the resulting counts under a
- *    synthetic "local:<uuid>" identifier for `task_ttl` seconds, and returns
- *    that identifier as if it were a task ARN.
- *  - checkTask() looks the identifier up in the cache and immediately
- *    reports it as Completed (or Failed if the key is missing/expired).
- *
- * No process ever actually queues or polls anything; check.py explicitly
- * refuses to run for the "local" driver (see bin/python/check.py).
+ * Simulates asynchronous execution by running circuits synchronously and caching
+ * the results under a synthetic "local:<uuid>" identifier for `task_ttl` seconds for checkTask().
  */
 class LocalSimulatorDriver extends AbstractQuantumDriver implements AsynchronousDevice
 {

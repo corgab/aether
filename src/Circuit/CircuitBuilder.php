@@ -94,6 +94,19 @@ class CircuitBuilder
     }
 
     /**
+     * Add a gate of any type from positional qubit indices and angles.
+     *
+     * @param  int[]  $qubits  Qubit indices in the gate's wire order.
+     * @param  array<float|Angle>  $angles  Angles in the gate's wire order.
+     *
+     * @throws InvalidCircuitException
+     */
+    public function gate(GateType $type, array $qubits, array $angles = []): static
+    {
+        return $this->push(Gate::make($type, $qubits, $angles));
+    }
+
+    /**
      * Add a Hadamard gate on the given qubit.
      *
      * @throws InvalidCircuitException
@@ -531,12 +544,7 @@ class CircuitBuilder
     }
 
     /**
-     * Validate the circuit and dispatch it to the queue for asynchronous
-     * execution, instead of blocking on synchronous execution like run().
-     *
-     * The circuit is serialized via toArray() so it survives queue
-     * serialization, and reconstructed with CircuitBuilder::fromArray() by
-     * the job once it runs.
+     * Validate the circuit and dispatch it to the queue for asynchronous execution.
      *
      * @return PendingDispatch Laravel's pending dispatch, chainable with ->onQueue() / ->delay().
      *
