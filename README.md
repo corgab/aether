@@ -45,11 +45,11 @@ For AWS Braket:
 ```env
 AETHER_DRIVER=aws
 AWS_DEFAULT_REGION=us-east-1
-AETHER_S3_BUCKET=your-bucket
+AETHER_S3_BUCKET=            # optional; leave blank to use Braket's default bucket
 AETHER_DEVICE_ARN=arn:aws:braket:::device/quantum-simulator/amazon/sv1
 ```
 
-`AETHER_S3_BUCKET` is required by the `aws` driver, together with the region and the device ARN: a missing or empty value throws an `InvalidDriverConfigException` on every call. Braket writes the task results to `s3://<bucket>/results`.
+The `aws` driver needs the region and the device ARN; a missing or empty value for either throws an `InvalidDriverConfigException` on every call. `AETHER_S3_BUCKET` is optional: when set, Braket writes the task results to `s3://<bucket>/results`; when unset or blank, the SDK uses its own default bucket (`amazon-braket-<region>-<account-id>`), creating it on first use. That fallback needs `s3:CreateBucket` on the calling credentials in addition to the Braket and S3 object permissions; with a locked-down role, create the bucket yourself and set `AETHER_S3_BUCKET`.
 
 See [Choosing a Driver](#choosing-a-driver) for a comparison of the available backends.
 

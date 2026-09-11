@@ -42,16 +42,17 @@ def resolve_device(config: dict[str, Any]) -> Any:
 
 
 def run_options(config: dict[str, Any]) -> dict[str, Any]:
-    """Return the extra ``device.run()`` kwargs: the S3 destination folder.
+    """Return the extra ``device.run()`` kwargs: the S3 destination folder, if any.
 
-    Raises:
-        ValueError: When *config* has no non-empty ``bucket``.
+    A configured ``bucket`` routes results to ``s3://<bucket>/results``.
+    Without one the kwargs stay empty and the SDK falls back to its default
+    bucket (``amazon-braket-<region>-<account>``, created on demand) and its
+    ``tasks`` folder, exactly as ``AwsDevice.run()`` does on its own.
     """
-    bucket = config.get("bucket")
-    if not bucket:
-        raise ValueError("Driver 'aws' requires a non-empty 'bucket' in driver_config.")
+    if "bucket" not in config:
+        return {}
 
-    return {"s3_destination_folder": (bucket, "results")}
+    return {"s3_destination_folder": (config["bucket"], "results")}
 
 
 def run_batch(
