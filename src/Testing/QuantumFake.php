@@ -28,11 +28,7 @@ use PHPUnit\Framework\Assert;
  * Note: Stub validation deliberately throws native \InvalidArgumentException
  * for incorrect test-usage, mirroring Laravel's Http::fake().
  *
- * Also dispatches CircuitExecuted and EntropyGenerated exactly like the real
- * drivers (through the same guarded DispatchesLifecycleEvents trait), so
- * Event::fake() assertions on those events keep working for code under test
- * even when Quantum::fake() stands in for the backend — the same fake/event
- * parity Http::fake() gives Http-driven code.
+ * Dispatches CircuitExecuted and EntropyGenerated events for parity with real drivers.
  *
  * Stubbing follows Http::fake() idioms:
  *
@@ -42,13 +38,8 @@ use PHPUnit\Framework\Assert;
  *   Quantum::fake(fn (CircuitBuilder $c) => $c->qubitCount() === 2 ? ['00' => 1000] : null);
  *   Quantum::fake(QuantumFake::sequence([['0' => 10], ['1' => 10]]));
  *
- * A stub closure returning null falls through to the default deterministic
- * result for that call, exactly like Http::fake()'s closure stubs.
- *
- * The fake also implements EstimatesCost, so application code calling
- * CircuitBuilder::estimateCost() stays testable when the backend is faked:
- * by default every estimate is free (0.00 USD); respondCostWith() stubs a
- * specific CostEstimate or a closure computing one.
+ * A stub closure returning null falls through to the default deterministic result.
+ * Also implements EstimatesCost with free (0.00 USD) estimates by default.
  *
  * @phpstan-type CircuitStub array<string, int>|CircuitResult|Closure(CircuitBuilder): (array<string, int>|CircuitResult|null)|ResultSequence
  */
@@ -171,16 +162,7 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
 
     /**
      * Record the bit request and return the stubbed entropy bytes, or a
-     * deterministic counter sequence when nothing was stubbed.
-     *
-     * The counter-based default keeps advancing across calls rather than
-     * repeating a constant. A repeating byte makes the bitstring periodic,
-     * and EntropyGenerator::integer() rejection-samples fixed-width chunks of
-     * it — with a periodic source every chunk carries the same value, so any
-     * range that rejects that value rejects every chunk and the generator
-     * exhausts itself instead of returning. respondEntropyWith() lets a test
-     * opt into a fixed or periodic byte stream anyway; that trade-off is then
-     * the caller's choice, not the default.
+     * deterministic advancing counter sequence when nothing was stubbed.
      */
     public function generateEntropy(int $bits): string
     {
@@ -300,15 +282,10 @@ class QuantumFake implements AsynchronousDevice, BatchableDevice, EstimatesCost,
     }
 
     /**
-     * Stub the raw bytes returned by generateEntropy(), overriding the
-     * default deterministic counter sequence.
+     * Stub the raw bytes returned by generateEntropy().
      *
-     * Pass a fixed byte string (tiled to fill whatever length a given
-     * generateEntropy($bits) call needs — use QuantumFake::hex() to build it
-     * from a hex string) or a closure receiving the requested bit count and
-     * returning the raw bytes for it. A closure returning null falls through
-     * to the default counter bytes for that call, matching respondWith()'s
-     * closure semantics.
+     * Accepts a fixed byte string or a closure receiving the requested bit count.
+     * A closure returning null falls through to the default counter bytes.
      *
      * @param  string|Closure(int): (string|null)  $entropy
      */

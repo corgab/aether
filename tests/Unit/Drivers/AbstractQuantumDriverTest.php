@@ -122,7 +122,7 @@ it('defaults to 16 qubits when entropy_qubits not in config', function () {
 it('exposes assertConfigured() to subclasses for the asynchronous path', function () {
     // A driver whose async methods only need config validation, not the
     // synchronous-safety hook, must be able to call assertConfigured()
-    // directly without going through the private preflight()/beforeExecution().
+    // directly without going through the private preflightSynchronous()/beforeExecution().
     $driver = new class($this->bridge, []) extends AbstractQuantumDriver
     {
         protected function driverName(): string
@@ -524,7 +524,7 @@ it('rejects a non-positive bit count before touching the bridge', function () {
     $this->bridge->expects($this->never())->method('execute');
 
     expect(fn () => $this->driver->generateEntropy(0))
-        ->toThrow(InvalidArgumentException::class, 'must be a positive integer');
+        ->toThrow(QuantumExecutionException::class, 'must be a positive integer');
 });
 
 it('keeps the ceiling messages free of entropy hints for ordinary circuits', function () {
