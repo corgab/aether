@@ -24,6 +24,8 @@ use Aether\Tasks\TaskStatus;
  */
 abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
+    private const BITS_PER_BYTE = 8;
+
     use DispatchesLifecycleEvents;
 
     /**
@@ -329,6 +331,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         return $circuit->measure()->shots($shots);
     }
 
+    /**
+     * Returns ceil($bits / 8) bytes, every bit of which was measured: the
+     * request is rounded up to whole bytes before it reaches the device.
+     */
     public function generateEntropy(int $bits): string
     {
         if ($bits < 1) {
@@ -346,7 +352,10 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             $qubits = 16;
         }
 
-        $shots = (int) ceil($bits / $qubits);
+        // Fetch whole bytes: a final chunk shorter than 8 bits would be
+        // zero-padded into a byte whose high bits are never random.
+        $bitsToFetch = (int) ceil($bits / self::BITS_PER_BYTE) * self::BITS_PER_BYTE;
+        $shots = (int) ceil($bitsToFetch / $qubits);
 
         try {
             $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
@@ -368,14 +377,21 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             );
         }
 
-        if (strlen($response['bits']) < $bits) {
+        if (preg_match('/^[01]*$/D', $response['bits']) !== 1) {
             throw QuantumExecutionException::malformedResponse(
                 'entropy.py',
-                "expected at least {$bits} bits in the response, got ".strlen($response['bits']).'.'
+                'expected the "bits" value to contain only 0 and 1 digits.'
             );
         }
 
-        $bitstring = substr($response['bits'], 0, $bits);
+        if (strlen($response['bits']) < $bitsToFetch) {
+            throw QuantumExecutionException::malformedResponse(
+                'entropy.py',
+                "expected at least {$bitsToFetch} bits in the response, got ".strlen($response['bits']).'.'
+            );
+        }
+
+        $bitstring = substr($response['bits'], 0, $bitsToFetch);
 
         $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
 

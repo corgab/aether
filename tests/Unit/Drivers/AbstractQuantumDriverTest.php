@@ -233,6 +233,48 @@ it('throws when entropy.py returns fewer bits than requested', function () {
     $this->driver->generateEntropy(16);
 })->throws(QuantumExecutionException::class);
 
+it('rounds a bit count up to whole bytes before asking the device', function (int $bits, int $qubits, int $shots, int $fetched) {
+    $bridge = $this->createMock(PythonExecutor::class);
+    $bridge->expects($this->once())
+        ->method('execute')
+        ->with('entropy.py', $this->callback(fn (array $p): bool => $p['qubits'] === $qubits && $p['shots'] === $shots), $this->anything())
+        ->willReturn(['bits' => str_repeat('1', $shots * $qubits)]);
+    $bridge->expects($this->once())
+        ->method('bitstringToBytes')
+        ->with(str_repeat('1', $fetched))
+        ->willReturn(str_repeat("\xff", intdiv($fetched, 8)));
+
+    $driver = new class($bridge, ['entropy_qubits' => $qubits]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    expect($driver->generateEntropy($bits))->toBe(str_repeat("\xff", intdiv($fetched, 8)));
+})->with([
+    '12 bits on 16 qubits' => [12, 16, 1, 16],
+    '9 bits on 4 qubits' => [9, 4, 4, 16],
+    '17 bits on 16 qubits' => [17, 16, 2, 24],
+    '16 bits on 16 qubits' => [16, 16, 1, 16],
+]);
+
+it('rejects entropy.py output that is not made of binary digits', function () {
+    $this->bridge->method('execute')->willReturn(['bits' => 'abcdefgh']);
+
+    expect(fn () => $this->driver->generateEntropy(8))
+        ->toThrow(QuantumExecutionException::class, 'only 0 and 1 digits');
+});
+
+it('requires the device to return the rounded-up bit count', function () {
+    // 12 requested bits need 16 measured bits; 12 is no longer enough.
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 12)]);
+
+    expect(fn () => $this->driver->generateEntropy(12))
+        ->toThrow(QuantumExecutionException::class, 'expected at least 16 bits');
+});
+
 // -------------------------------------------------------------------------
 // entropy_qubits clamping
 // -------------------------------------------------------------------------

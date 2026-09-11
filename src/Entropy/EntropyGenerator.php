@@ -27,6 +27,10 @@ class EntropyGenerator
 
     /**
      * Generate raw entropy bytes.
+     *
+     * Returns ceil($bits / 8) bytes. A bit count that is not a multiple of 8
+     * is rounded up before it reaches the device, so every returned byte is
+     * fully measured rather than zero-padded.
      */
     public function generate(int $bits): string
     {

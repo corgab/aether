@@ -20,6 +20,9 @@ interface QuantumDevice
     /**
      * Generate random bytes covering the requested bit count.
      *
+     * Returns ceil($bits / 8) raw bytes; a bit count that is not a multiple of
+     * 8 is rounded up so every byte is fully random rather than zero-padded.
+     *
      * The strength of the randomness is whatever the implementing backend
      * measures, not a guarantee of this contract: real quantum hardware
      * yields genuinely random bits, a simulated backend yields pseudorandom

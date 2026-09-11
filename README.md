@@ -109,6 +109,8 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+`generate()` accepts any positive bit count and returns `ceil($bits / 8)` raw bytes. When the count is not a multiple of 8, the driver rounds it up before asking the backend (e.g. `generate(12)` measures 16 bits and returns 2 bytes), so every returned byte is fully random rather than zero-padded.
+
 > **Where the randomness comes from.** The bits are the measurement outcomes of qubits placed in superposition, so their quality is the device's. Only a real QPU measures genuinely random bits; the `local` simulator and the managed Braket simulators such as SV1 simulate the circuit classically, and their outcomes come from a pseudorandom number generator. Entropy generation is synchronous, and synchronous runs against a QPU are refused by the synchronous-safety rules, so as shipped `EntropyGenerator` can only reach simulators: treat everything it returns as pseudorandom, fine for development and statistical use, not for keys, tokens or nonces. Use your platform's CSPRNG (`random_bytes()`) for secrets until an asynchronous entropy path exists.
 
 `integer($min, $max)` accepts any bounds whose span fits in the system's maximum integer size, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
