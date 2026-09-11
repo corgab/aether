@@ -12,6 +12,7 @@ use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskStatus;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
@@ -46,7 +47,7 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn(['counts' => ['0' => 48, '1' => 52]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     $circuit = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);

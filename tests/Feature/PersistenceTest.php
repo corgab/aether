@@ -91,6 +91,52 @@ it('still dispatches the poll job when the insert fails', function () {
     expect($this->device->submittedCircuits)->toHaveCount(1);
 });
 
+it('records the scheduling failure on the persisted task without retrying', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager);
+
+    $job->assertFailedWith(QuantumExecutionException::class);
+
+    $this->assertDatabaseCount('quantum_tasks', 1);
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Created)
+        ->and($task->error)->toContain('could not be queued')
+        ->and($task->failed_at)->not->toBeNull();
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('clears a recorded scheduling failure once the task completes', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager);
+
+    expect(QuantumTask::query()->firstOrFail()->failed_at)->not->toBeNull();
+
+    // An operator picks polling up by hand; the task then completes.
+    ($this->poll)(new PollQuantumTask($this->device->taskArnToReturn, $this->circuit, 'fake-async'));
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Completed)
+        ->and($task->error)->toBeNull()
+        ->and($task->failed_at)->toBeNull()
+        ->and($task->completed_at)->not->toBeNull();
+});
+
 // -------------------------------------------------------------------------
 // Polling
 // -------------------------------------------------------------------------
@@ -111,15 +157,15 @@ it('marks the task completed with its counts', function () {
     Event::assertDispatched(CircuitCompleted::class);
 });
 
-it('mirrors an intermediate backend status while the job is released', function () {
-    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+it('mirrors an intermediate backend status while the job is released', function (TaskStatus $status) {
+    $this->device->snapshotToReturn = new TaskSnapshot($status);
     $job = ($this->submit)()->withFakeQueueInteractions();
 
     ($this->poll)($job);
 
     $job->assertReleased();
-    expect(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Running);
-});
+    expect(QuantumTask::query()->firstOrFail()->status)->toBe($status);
+})->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
 
 it('keeps the backend status and records the error when polling is exhausted', function () {
     config()->set('aether.max_poll_attempts', 1);

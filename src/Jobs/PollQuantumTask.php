@@ -68,8 +68,10 @@ class PollQuantumTask implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, Dispatcher $events, QuantumTaskRecorder $recorder): void
+    public function handle(QuantumManager $manager, Dispatcher $events, ?QuantumTaskRecorder $recorder = null): void
     {
+        $recorder ??= app(QuantumTaskRecorder::class);
+
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
 

@@ -20,11 +20,47 @@ final readonly class Gate
     ) {}
 
     /**
+     * Build a gate of any type from positional qubit indices and angles.
+     *
+     * @param  int[]  $qubits  Qubit indices in the shape's wire order.
+     * @param  array<float|Angle>  $angles  Angles in the shape's wire order.
+     *
+     * @throws InvalidCircuitException When the argument counts do not match the shape.
+     */
+    public static function make(GateType $type, array $qubits, array $angles = []): self
+    {
+        if ($type === GateType::Measure) {
+            if ($angles !== []) {
+                throw InvalidCircuitException::gateArity($type->value, 'angle', 0, count($angles));
+            }
+
+            return self::measure($qubits === [] ? null : array_values($qubits));
+        }
+
+        $shape = $type->shape();
+        $qubitKeys = $shape->qubitKeys();
+        $angleKeys = $shape->angleKeys();
+
+        if (count($qubits) !== count($qubitKeys)) {
+            throw InvalidCircuitException::gateArity($type->value, 'qubit', count($qubitKeys), count($qubits));
+        }
+
+        if (count($angles) !== count($angleKeys)) {
+            throw InvalidCircuitException::gateArity($type->value, 'angle', count($angleKeys), count($angles));
+        }
+
+        $params = array_combine($qubitKeys, array_values($qubits))
+            + array_combine($angleKeys, array_map(self::radians(...), array_values($angles)));
+
+        return new self($type->value, $params);
+    }
+
+    /**
      * Create a Hadamard gate on the given qubit.
      */
     public static function h(int $target): self
     {
-        return new self('h', ['target' => $target]);
+        return self::make(GateType::H, [$target]);
     }
 
     /**
@@ -32,7 +68,7 @@ final readonly class Gate
      */
     public static function x(int $target): self
     {
-        return new self('x', ['target' => $target]);
+        return self::make(GateType::X, [$target]);
     }
 
     /**
@@ -40,7 +76,7 @@ final readonly class Gate
      */
     public static function y(int $target): self
     {
-        return new self('y', ['target' => $target]);
+        return self::make(GateType::Y, [$target]);
     }
 
     /**
@@ -48,7 +84,7 @@ final readonly class Gate
      */
     public static function z(int $target): self
     {
-        return new self('z', ['target' => $target]);
+        return self::make(GateType::Z, [$target]);
     }
 
     /**
@@ -56,7 +92,7 @@ final readonly class Gate
      */
     public static function i(int $target): self
     {
-        return new self('i', ['target' => $target]);
+        return self::make(GateType::I, [$target]);
     }
 
     /**
@@ -64,7 +100,7 @@ final readonly class Gate
      */
     public static function s(int $target): self
     {
-        return new self('s', ['target' => $target]);
+        return self::make(GateType::S, [$target]);
     }
 
     /**
@@ -72,7 +108,7 @@ final readonly class Gate
      */
     public static function si(int $target): self
     {
-        return new self('si', ['target' => $target]);
+        return self::make(GateType::SI, [$target]);
     }
 
     /**
@@ -80,7 +116,7 @@ final readonly class Gate
      */
     public static function t(int $target): self
     {
-        return new self('t', ['target' => $target]);
+        return self::make(GateType::T, [$target]);
     }
 
     /**
@@ -88,7 +124,7 @@ final readonly class Gate
      */
     public static function ti(int $target): self
     {
-        return new self('ti', ['target' => $target]);
+        return self::make(GateType::TI, [$target]);
     }
 
     /**
@@ -96,10 +132,7 @@ final readonly class Gate
      */
     public static function rx(int $target, float|Angle $angle): self
     {
-        return new self('rx', [
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::RX, [$target], [$angle]);
     }
 
     /**
@@ -107,10 +140,7 @@ final readonly class Gate
      */
     public static function ry(int $target, float|Angle $angle): self
     {
-        return new self('ry', [
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::RY, [$target], [$angle]);
     }
 
     /**
@@ -118,10 +148,7 @@ final readonly class Gate
      */
     public static function rz(int $target, float|Angle $angle): self
     {
-        return new self('rz', [
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::RZ, [$target], [$angle]);
     }
 
     /**
@@ -129,7 +156,7 @@ final readonly class Gate
      */
     public static function cnot(int $control, int $target): self
     {
-        return new self('cnot', ['control' => $control, 'target' => $target]);
+        return self::make(GateType::CNOT, [$control, $target]);
     }
 
     /**
@@ -137,7 +164,7 @@ final readonly class Gate
      */
     public static function cz(int $control, int $target): self
     {
-        return new self('cz', ['control' => $control, 'target' => $target]);
+        return self::make(GateType::CZ, [$control, $target]);
     }
 
     /**
@@ -145,7 +172,7 @@ final readonly class Gate
      */
     public static function cy(int $control, int $target): self
     {
-        return new self('cy', ['control' => $control, 'target' => $target]);
+        return self::make(GateType::CY, [$control, $target]);
     }
 
     /**
@@ -153,7 +180,7 @@ final readonly class Gate
      */
     public static function swap(int $qubit0, int $qubit1): self
     {
-        return new self('swap', ['target0' => $qubit0, 'target1' => $qubit1]);
+        return self::make(GateType::Swap, [$qubit0, $qubit1]);
     }
 
     /**
@@ -161,7 +188,7 @@ final readonly class Gate
      */
     public static function ccnot(int $control0, int $control1, int $target): self
     {
-        return new self('ccnot', ['control0' => $control0, 'control1' => $control1, 'target' => $target]);
+        return self::make(GateType::CCNOT, [$control0, $control1, $target]);
     }
 
     /**
@@ -169,11 +196,7 @@ final readonly class Gate
      */
     public static function crx(int $control, int $target, float|Angle $angle): self
     {
-        return new self('crx', [
-            'control' => $control,
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::CRX, [$control, $target], [$angle]);
     }
 
     /**
@@ -181,11 +204,7 @@ final readonly class Gate
      */
     public static function cry(int $control, int $target, float|Angle $angle): self
     {
-        return new self('cry', [
-            'control' => $control,
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::CRY, [$control, $target], [$angle]);
     }
 
     /**
@@ -193,11 +212,7 @@ final readonly class Gate
      */
     public static function crz(int $control, int $target, float|Angle $angle): self
     {
-        return new self('crz', [
-            'control' => $control,
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::CRZ, [$control, $target], [$angle]);
     }
 
     /**
@@ -205,11 +220,7 @@ final readonly class Gate
      */
     public static function cphaseshift(int $control, int $target, float|Angle $angle): self
     {
-        return new self('cphaseshift', [
-            'control' => $control,
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::CPhaseShift, [$control, $target], [$angle]);
     }
 
     /**
@@ -217,10 +228,7 @@ final readonly class Gate
      */
     public static function phaseshift(int $target, float|Angle $angle): self
     {
-        return new self('phaseshift', [
-            'target' => $target,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::PhaseShift, [$target], [$angle]);
     }
 
     /**
@@ -228,12 +236,7 @@ final readonly class Gate
      */
     public static function u(int $target, float|Angle $theta, float|Angle $phi, float|Angle $lambda): self
     {
-        return new self('u', [
-            'target' => $target,
-            'theta' => self::radians($theta),
-            'phi' => self::radians($phi),
-            'lambda' => self::radians($lambda),
-        ]);
+        return self::make(GateType::U, [$target], [$theta, $phi, $lambda]);
     }
 
     /**
@@ -241,11 +244,7 @@ final readonly class Gate
      */
     public static function cswap(int $control, int $qubit0, int $qubit1): self
     {
-        return new self('cswap', [
-            'control' => $control,
-            'target0' => $qubit0,
-            'target1' => $qubit1,
-        ]);
+        return self::make(GateType::CSwap, [$control, $qubit0, $qubit1]);
     }
 
     /**
@@ -253,7 +252,7 @@ final readonly class Gate
      */
     public static function iswap(int $qubit0, int $qubit1): self
     {
-        return new self('iswap', ['target0' => $qubit0, 'target1' => $qubit1]);
+        return self::make(GateType::ISwap, [$qubit0, $qubit1]);
     }
 
     /**
@@ -261,11 +260,7 @@ final readonly class Gate
      */
     public static function xx(int $qubit0, int $qubit1, float|Angle $angle): self
     {
-        return new self('xx', [
-            'target0' => $qubit0,
-            'target1' => $qubit1,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::XX, [$qubit0, $qubit1], [$angle]);
     }
 
     /**
@@ -273,11 +268,7 @@ final readonly class Gate
      */
     public static function yy(int $qubit0, int $qubit1, float|Angle $angle): self
     {
-        return new self('yy', [
-            'target0' => $qubit0,
-            'target1' => $qubit1,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::YY, [$qubit0, $qubit1], [$angle]);
     }
 
     /**
@@ -285,11 +276,7 @@ final readonly class Gate
      */
     public static function zz(int $qubit0, int $qubit1, float|Angle $angle): self
     {
-        return new self('zz', [
-            'target0' => $qubit0,
-            'target1' => $qubit1,
-            'angle' => self::radians($angle),
-        ]);
+        return self::make(GateType::ZZ, [$qubit0, $qubit1], [$angle]);
     }
 
     /**
@@ -298,11 +285,6 @@ final readonly class Gate
      * - Pass null (default) to measure all qubits.
      * - Pass an int to measure a single qubit.
      * - Pass a non-empty array to measure the specified qubits.
-     *
-     * The empty-targets guard lives here rather than in CircuitBuilder so
-     * every construction path — the fluent measure(), fromArray() on a
-     * queued definition, or a fragment appended from another builder —
-     * rejects a measurement that would measure nothing.
      *
      * @param  int|int[]|null  $targets
      *
@@ -327,8 +309,8 @@ final readonly class Gate
      * Rebuild a Gate from the flat array shape produced by toArray().
      *
      * Dispatches generically on GateType/GateShape metadata instead of a
-     * per-type match arm: qubit-index keys are cast to int, angle keys are
-     * cast to float and normalised via radians(), in wire order.
+     * per-type match arm: qubit-index keys are cast to int and angle keys to
+     * float, in wire order, then make() lays them out and normalises angles.
      *
      * @param  array<string, mixed>  $definition
      *
@@ -353,14 +335,15 @@ final readonly class Gate
         }
 
         $shape = $gateType->shape();
-        $params = [];
+        $qubits = [];
+        $angles = [];
 
         foreach ($shape->qubitKeys() as $key) {
             if (! array_key_exists($key, $definition)) {
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $params[$key] = (int) $definition[$key];
+            $qubits[] = (int) $definition[$key];
         }
 
         foreach ($shape->angleKeys() as $key) {
@@ -368,10 +351,10 @@ final readonly class Gate
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $params[$key] = self::radians((float) $definition[$key]);
+            $angles[] = (float) $definition[$key];
         }
 
-        return new self($type, $params);
+        return self::make($gateType, $qubits, $angles);
     }
 
     /**

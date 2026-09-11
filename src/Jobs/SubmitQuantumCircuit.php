@@ -10,8 +10,10 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\QuantumManager;
 use Aether\Tasks\QuantumTaskRecorder;
+use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Jobs\SyncJob;
 
 /**
  * Submits a circuit for asynchronous execution and schedules the first
@@ -30,6 +32,11 @@ class SubmitQuantumCircuit implements ShouldQueue
      *
      * A handful of retries absorb transient submission failures (e.g. a
      * dropped connection to the backend) without operator intervention.
+     * Retries only cover failures *before* a task is submitted: once
+     * submitCircuit() has returned, retrying would risk creating a second
+     * billable task, so a post-submission failure fails the job outright
+     * (or rethrows when not running under a worker) instead of letting a
+     * retryable exception escape.
      */
     public int $tries = 3;
 
@@ -49,8 +56,10 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, QuantumTaskRecorder $recorder): void
+    public function handle(QuantumManager $manager, ?QuantumTaskRecorder $recorder = null): void
     {
+        $recorder ??= app(QuantumTaskRecorder::class);
+
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
 
@@ -62,11 +71,43 @@ class SubmitQuantumCircuit implements ShouldQueue
 
         $taskArn = $device->submitCircuit($builder);
 
-        // Best-effort by design: the remote task already exists at this point,
-        // so the recorder reports and swallows a database failure rather than
-        // letting the job retry and submit a second billable task.
-        $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots'] ?? 0);
+        try {
+            // Best-effort by design: the remote task already exists at this point,
+            // so the recorder reports and swallows a database failure rather than
+            // letting the job retry and submit a second billable task.
+            $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots'] ?? 0);
 
+            $this->schedulePolling($taskArn);
+        } catch (\Throwable $e) {
+            $exception = QuantumExecutionException::pollingNotScheduled($taskArn, $driverName, $e);
+
+            $recorder->recordProgress($taskArn, TaskStatus::Created, null, $exception->getMessage());
+
+            // Outside a real worker there is nothing to mark as failed: with no
+            // queue job, or on the sync connection (where the poll job has just
+            // run inline and any exception is its own, not a scheduling one),
+            // rethrow so the caller sees it and the worker, if any, reports it.
+            if ($this->job === null || $this->job instanceof SyncJob) {
+                throw $exception;
+            }
+
+            // fail() bypasses the worker's reporting path, so report here or the
+            // untracked billable task never reaches the application's logs.
+            report($exception);
+
+            $this->fail($exception);
+        }
+    }
+
+    /**
+     * Queue the first status poll for the submitted task.
+     *
+     * Built inside this method so the returned PendingDispatch's destructor
+     * — which actually performs the queue push — runs while still inside the
+     * caller's try block, letting a push failure be caught there.
+     */
+    private function schedulePolling(string $taskArn): void
+    {
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
             ->delay((int) config('aether.poll_interval', 5));
     }

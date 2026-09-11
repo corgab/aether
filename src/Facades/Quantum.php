@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Facades;
 
+use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\QuantumDevice;
 use Aether\Entropy\EntropyGenerator;
@@ -17,8 +18,10 @@ use Illuminate\Support\Facades\Facade;
 /**
  * Facade for the QuantumManager.
  *
- * @method static QuantumDevice driver(?string $name = null)
+ * @method static string getDefaultDriver()
+ * @method static QuantumDevice driver(string|\UnitEnum|null $driver = null)
  * @method static CircuitBuilder circuit(?string $driver = null)
+ * @method static BatchBuilder batch(array<array-key, CircuitBuilder> $circuits, ?string $driver = null)
  * @method static EntropyGenerator entropy(?string $driver = null)
  * @method static \Aether\Bridge\PythonBridge bridge()
  * @method static void extend(string $name, Closure $callback)
