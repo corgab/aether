@@ -371,6 +371,23 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
+     * Calculates the actual number of bits to fetch (rounded up to whole bytes)
+     * and the required number of circuit shots given the target bit count and
+     * available entropy qubits.
+     *
+     * @return array{0: int, 1: int} The required bits to fetch and shots to run.
+     */
+    private function calculateEntropyParameters(int $bits, int $qubits): array
+    {
+        // Fetch whole bytes: a final chunk shorter than 8 bits would be
+        // zero-padded into a byte whose high bits are never random.
+        $bitsToFetch = (int) ceil($bits / self::BITS_PER_BYTE) * self::BITS_PER_BYTE;
+        $shots = (int) ceil($bitsToFetch / $qubits);
+
+        return [$bitsToFetch, $shots];
+    }
+
+    /**
      * Returns ceil($bits / 8) bytes, every bit of which was measured: the
      * request is rounded up to whole bytes before it reaches the device.
      */
@@ -384,10 +401,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
         $qubits = $this->config->entropyQubits;
 
-        // Fetch whole bytes: a final chunk shorter than 8 bits would be
-        // zero-padded into a byte whose high bits are never random.
-        $bitsToFetch = (int) ceil($bits / self::BITS_PER_BYTE) * self::BITS_PER_BYTE;
-        $shots = (int) ceil($bitsToFetch / $qubits);
+        [$bitsToFetch, $shots] = $this->calculateEntropyParameters($bits, $qubits);
 
         try {
             $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
@@ -395,6 +409,22 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             throw InvalidCircuitException::entropyRejected($bits, $qubits, $shots, $e);
         }
 
+        $bitstring = $this->runEntropyDefinition($qubits, $shots, $bitsToFetch);
+
+        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
+
+        return $this->bridge->bitstringToBytes($bitstring);
+    }
+
+    /**
+     * Submit the entropy generation request to the Python bridge and validate the response.
+     *
+     * @return string The valid bitstring of at least $bitsToFetch length.
+     *
+     * @throws QuantumExecutionException When the response is missing or malformed.
+     */
+    private function runEntropyDefinition(int $qubits, int $shots, int $bitsToFetch): string
+    {
         $payload = $this->payload([
             'qubits' => $qubits,
             'shots' => $shots,
@@ -423,10 +453,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             );
         }
 
-        $bitstring = substr($response['bits'], 0, $bitsToFetch);
-
-        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
-
-        return $this->bridge->bitstringToBytes($bitstring);
+        return substr($response['bits'], 0, $bitsToFetch);
     }
 }
