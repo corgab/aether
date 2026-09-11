@@ -55,6 +55,7 @@ Quantum (Facade)
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
 - **No double submission:** SubmitQuantumCircuit retries only before submitCircuit() returns; a post-submission failure fails the job (or rethrows when not under a worker) instead of letting a retryable exception escape, so a queued retry can never create a second billable task.
 - **Ceilings cover entropy:** generateEntropy() describes its circuit as a CircuitBuilder and runs validateCircuits(), so max_qubits and max_cost_per_run apply to Quantum::entropy() too.
+- **Task persistence goes through `Tasks\QuantumTaskRecorder`:** both jobs call `recordSubmission()` / `recordProgress()`; the recorder alone checks `aether.persist_tasks` and reports-and-swallows database failures, so a job never repeats that guard or try/catch.
 
 ## Config
 

@@ -9,10 +9,9 @@ use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
-use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
-use Aether\Tasks\TaskStatus;
+use Aether\Tasks\QuantumTaskRecorder;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -69,8 +68,10 @@ class PollQuantumTask implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, Dispatcher $events): void
+    public function handle(QuantumManager $manager, Dispatcher $events, ?QuantumTaskRecorder $recorder = null): void
     {
+        $recorder ??= app(QuantumTaskRecorder::class);
+
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
 
@@ -80,16 +81,19 @@ class PollQuantumTask implements ShouldQueue
 
         $snapshot = $device->checkTask($this->taskArn);
 
+        // The recorder mirrors the backend status onto the quantum_tasks row
+        // (when persistence is on) and swallows database failures, so it can
+        // never fail the job or suppress the CircuitCompleted event below.
         if (! $snapshot->status->isTerminal()) {
             $maxAttempts = $this->tries();
 
             if ($this->attempts() >= $maxAttempts) {
                 $e = QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts());
-                $this->persist($snapshot->status, null, $e->getMessage());
+                $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
                 throw $e;
             }
 
-            $this->persist($snapshot->status);
+            $recorder->recordProgress($this->taskArn, $snapshot->status);
             $this->release((int) config('aether.poll_interval', 5));
 
             return;
@@ -97,7 +101,7 @@ class PollQuantumTask implements ShouldQueue
 
         if (! $snapshot->status->isSuccessful()) {
             $e = TaskFailedException::forTask($this->taskArn, $snapshot->status);
-            $this->persist($snapshot->status, null, $e->getMessage());
+            $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
             throw $e;
         }
 
@@ -106,11 +110,11 @@ class PollQuantumTask implements ShouldQueue
                 'checkTask',
                 "task [{$this->taskArn}] completed but returned no measurement counts."
             );
-            $this->persist($snapshot->status, null, $e->getMessage());
+            $recorder->recordProgress($this->taskArn, $snapshot->status, null, $e->getMessage());
             throw $e;
         }
 
-        $this->persist($snapshot->status, $snapshot->counts);
+        $recorder->recordProgress($this->taskArn, $snapshot->status, $snapshot->counts);
 
         $events->dispatch(new CircuitCompleted(
             $driverName,
@@ -118,45 +122,5 @@ class PollQuantumTask implements ShouldQueue
             new CircuitResult($snapshot->counts),
             $this->taskArn,
         ));
-    }
-
-    /**
-     * Mirror the backend state onto the persisted quantum_tasks row when enabled.
-     *
-     * @param  array<string, int>|null  $counts
-     */
-    private function persist(TaskStatus $status, ?array $counts = null, ?string $error = null): void
-    {
-        if (! config('aether.persist_tasks', false)) {
-            return;
-        }
-
-        try {
-            $task = QuantumTask::query()->where('task_arn', $this->taskArn)->first();
-
-            if ($task === null) {
-                return;
-            }
-
-            $task->status = $status;
-
-            if ($counts !== null) {
-                $task->counts = $counts;
-                $task->completed_at = now();
-                // A completed task is not failed, whatever an earlier polling
-                // hiccup (e.g. a scheduling failure recovered by hand) recorded.
-                $task->error = null;
-                $task->failed_at = null;
-            }
-
-            if ($error !== null) {
-                $task->error = $error;
-                $task->failed_at = now();
-            }
-
-            $task->save();
-        } catch (\Throwable $e) {
-            report($e);
-        }
     }
 }

@@ -7,6 +7,7 @@ use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\Jobs\PollQuantumTask;
 use Aether\QuantumManager;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
@@ -39,7 +40,7 @@ it('releases itself back to the queue with the configured delay while the task i
     $manager->extend('fake-async', fn () => $device);
 
     $job = (new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 
     $job->assertReleased(delay: 3);
 })->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
@@ -62,7 +63,7 @@ it('throws pollingExhausted and does not release once past max_poll_attempts', f
     $job->setJob($mockJob);
 
     try {
-        $job->handle($manager, app(Dispatcher::class));
+        $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
         $this->fail('Expected QuantumExecutionException to be thrown.');
     } catch (QuantumExecutionException $exception) {
         expect($exception->getMessage())->toContain($device->taskArnToReturn);
@@ -78,7 +79,7 @@ it('throws TaskFailedException when the task terminates as failed or cancelled',
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 })->with([TaskStatus::Failed, TaskStatus::Cancelled])->throws(TaskFailedException::class);
 
 it('dispatches CircuitCompleted with the counts and task arn once completed', function () {
@@ -92,7 +93,7 @@ it('dispatches CircuitCompleted with the counts and task arn once completed', fu
 
     $circuit = ['qubits' => 2, 'gates' => [], 'shots' => 10];
     $job = new PollQuantumTask($device->taskArnToReturn, $circuit, 'fake-async');
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 
     Event::assertDispatched(
         CircuitCompleted::class,
@@ -114,7 +115,7 @@ it('resolves the default driver name when none is given explicitly', function ()
     $manager->extend('fake-async', fn () => $device);
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 1, 'gates' => [], 'shots' => 1]);
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 
     Event::assertDispatched(
         CircuitCompleted::class,
@@ -131,7 +132,7 @@ it('throws a malformed response exception when completed with null counts', func
 
     $job = new PollQuantumTask($device->taskArnToReturn, ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 })->throws(QuantumExecutionException::class);
 
 it('throws asynchronousUnsupported when the resolved driver does not support async execution', function () {
@@ -140,5 +141,5 @@ it('throws asynchronousUnsupported when the resolved driver does not support asy
     $manager->extend('fake-sync', fn () => $device);
 
     $job = new PollQuantumTask('arn:fake', ['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-sync');
-    $job->handle($manager, app(Dispatcher::class));
+    $job->handle($manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 })->throws(QuantumExecutionException::class);

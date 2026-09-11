@@ -10,6 +10,7 @@ use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -52,7 +53,7 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     $circuit = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
 
     // Stage one: the submission job hands the task off to the backend.
-    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class));
+    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class), app(QuantumTaskRecorder::class));
 
     $arn = null;
 
@@ -66,6 +67,7 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     (new PollQuantumTask($arn, $circuit->toArray(), 'local'))->handle(
         app(QuantumManager::class),
         app(Dispatcher::class),
+        app(QuantumTaskRecorder::class),
     );
 
     Event::assertDispatched(CircuitCompleted::class, function (CircuitCompleted $event) use ($arn): bool {

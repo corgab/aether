@@ -9,17 +9,20 @@ use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
+// End-to-end coverage of the jobs driving QuantumTaskRecorder: what each job
+// records and when. The persistence rules themselves (the persist_tasks gate,
+// report-and-swallow) are pinned in tests/Feature/Tasks/QuantumTaskRecorderTest.
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
@@ -39,7 +42,7 @@ beforeEach(function () {
     // Submit through the real job, then hand back the poll job it queued so
     // each test can drive the polling state machine directly.
     $this->submit = function (): PollQuantumTask {
-        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager);
+        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager, app(QuantumTaskRecorder::class));
 
         $pollJob = null;
         Queue::assertPushed(PollQuantumTask::class, function (PollQuantumTask $job) use (&$pollJob) {
@@ -51,7 +54,7 @@ beforeEach(function () {
         return $pollJob;
     };
 
-    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class));
+    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class), app(QuantumTaskRecorder::class));
 });
 
 // -------------------------------------------------------------------------
@@ -77,16 +80,10 @@ it('records the submitted task with its circuit, driver and shots', function () 
         ->and($task->error)->toBeNull();
 });
 
-it('does not record anything when persist_tasks is disabled', function () {
-    config()->set('aether.persist_tasks', false);
-
-    ($this->submit)();
-
-    $this->assertDatabaseCount('quantum_tasks', 0);
-});
-
 it('still dispatches the poll job when the insert fails', function () {
-    Schema::dropIfExists('quantum_tasks');
+    QuantumTask::saving(function () {
+        throw new RuntimeException('Simulated database failure');
+    });
 
     ($this->submit)();
 
@@ -143,17 +140,6 @@ it('clears a recorded scheduling failure once the task completes', function () {
 // -------------------------------------------------------------------------
 // Polling
 // -------------------------------------------------------------------------
-
-it('runs no query at all from the poll job when persist_tasks is disabled', function () {
-    config()->set('aether.persist_tasks', false);
-    $job = ($this->submit)();
-
-    DB::enableQueryLog();
-    ($this->poll)($job);
-
-    expect(DB::getQueryLog())->toBeEmpty();
-    Event::assertDispatched(CircuitCompleted::class);
-});
 
 it('marks the task completed with its counts', function () {
     $job = ($this->submit)();

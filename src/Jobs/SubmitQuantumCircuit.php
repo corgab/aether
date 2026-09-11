@@ -8,8 +8,8 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Exceptions\QuantumExecutionException;
-use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -56,8 +56,10 @@ class SubmitQuantumCircuit implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager): void
+    public function handle(QuantumManager $manager, ?QuantumTaskRecorder $recorder = null): void
     {
+        $recorder ??= app(QuantumTaskRecorder::class);
+
         $driverName = $this->driver ?? config('aether.default', 'local');
         $device = $manager->driver($this->driver);
 
@@ -70,13 +72,16 @@ class SubmitQuantumCircuit implements ShouldQueue
         $taskArn = $device->submitCircuit($builder);
 
         try {
-            $this->persistSubmission($taskArn, $driverName);
+            // Best-effort by design: the remote task already exists at this point,
+            // so the recorder reports and swallows a database failure rather than
+            // letting the job retry and submit a second billable task.
+            $recorder->recordSubmission($taskArn, $driverName, $this->circuit, $this->circuit['shots']);
 
             $this->schedulePolling($taskArn);
         } catch (\Throwable $e) {
             $exception = QuantumExecutionException::pollingNotScheduled($taskArn, $driverName, $e);
 
-            $this->persistSchedulingFailure($taskArn, $exception->getMessage());
+            $recorder->recordProgress($taskArn, TaskStatus::Created, null, $exception->getMessage());
 
             // Outside a real worker there is nothing to mark as failed: with no
             // queue job, or on the sync connection (where the poll job has just
@@ -105,62 +110,5 @@ class SubmitQuantumCircuit implements ShouldQueue
     {
         PollQuantumTask::dispatch($taskArn, $this->circuit, $this->driver)
             ->delay((int) config('aether.poll_interval', 5));
-    }
-
-    /**
-     * Record the submitted task in the quantum_tasks table, when persistence
-     * is enabled.
-     *
-     * Best-effort by design: the remote task already exists at this point, so
-     * a database failure is reported and swallowed rather than allowed to
-     * retry the job and submit a second billable task.
-     */
-    private function persistSubmission(string $taskArn, string $driverName): void
-    {
-        if (! config('aether.persist_tasks', false)) {
-            return;
-        }
-
-        try {
-            QuantumTask::query()->create([
-                'task_arn' => $taskArn,
-                'driver' => $driverName,
-                'status' => TaskStatus::Created,
-                'circuit' => $this->circuit,
-                'shots' => $this->circuit['shots'],
-                'submitted_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            report($e);
-        }
-    }
-
-    /**
-     * Best-effort record of a post-submission scheduling failure on the
-     * persisted quantum_tasks row, when persistence is enabled.
-     *
-     * A database failure here is reported and swallowed rather than allowed
-     * to escape: the job is already being failed for the scheduling error
-     * itself, and this bookkeeping must never mask or replace that.
-     */
-    private function persistSchedulingFailure(string $taskArn, string $message): void
-    {
-        if (! config('aether.persist_tasks', false)) {
-            return;
-        }
-
-        try {
-            $task = QuantumTask::query()->where('task_arn', $taskArn)->first();
-
-            if ($task === null) {
-                return;
-            }
-
-            $task->error = $message;
-            $task->failed_at = now();
-            $task->save();
-        } catch (\Throwable $e) {
-            report($e);
-        }
     }
 }
