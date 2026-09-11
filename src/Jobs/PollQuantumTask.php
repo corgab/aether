@@ -121,14 +121,7 @@ class PollQuantumTask implements ShouldQueue
     }
 
     /**
-     * Mirror the backend state onto the persisted quantum_tasks row, when
-     * persistence is enabled.
-     *
-     * The status column always reflects what the backend last reported; our
-     * own polling problems (exhausted budget, malformed response) only ever
-     * populate error and failed_at. Persistence is best-effort: a database
-     * failure is reported and swallowed so it can never fail the job or
-     * suppress the CircuitCompleted event.
+     * Mirror the backend state onto the persisted quantum_tasks row when enabled.
      *
      * @param  array<string, int>|null  $counts
      */
@@ -150,6 +143,10 @@ class PollQuantumTask implements ShouldQueue
             if ($counts !== null) {
                 $task->counts = $counts;
                 $task->completed_at = now();
+                // A completed task is not failed, whatever an earlier polling
+                // hiccup (e.g. a scheduling failure recovered by hand) recorded.
+                $task->error = null;
+                $task->failed_at = null;
             }
 
             if ($error !== null) {

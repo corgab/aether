@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Circuit;
 
-use Aether\Exceptions\InvalidAngleException;
+use Aether\Exceptions\InvalidCircuitException;
 
 /**
  * Immutable value object representing an angle for parametric quantum gates.
@@ -14,7 +14,7 @@ final readonly class Angle
     private function __construct(public float $radians)
     {
         if (! is_finite($radians)) {
-            throw InvalidAngleException::notFinite();
+            throw InvalidCircuitException::nonFiniteAngle($radians);
         }
     }
 

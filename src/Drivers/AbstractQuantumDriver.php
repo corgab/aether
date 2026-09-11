@@ -64,12 +64,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     /**
      * Admission checks every circuit must pass before it reaches Python.
      *
-     * This is the single funnel for per-circuit guards: executeCircuit(),
-     * executeBatch() and submitTask() all call it, so a guard added here (or
-     * in an override) holds on ->run(), Quantum::batch() and ->dispatch()
-     * alike. Concrete drivers extend it by overriding and calling the parent
-     * first — see AwsBraketDriver::validateCircuits() for the cost ceiling.
-     *
+
      * @param  list<CircuitBuilder>  $circuits
      *
      * @throws InvalidCircuitException
@@ -82,20 +77,9 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Run the mandatory pre-flight steps before spawning a *synchronous*
-     * Python subprocess (executeCircuit()/generateEntropy()).
-     *
-     * The config check lives in assertConfigured() rather than in
-     * beforeExecution() so a driver overriding the hook cannot silently skip
-     * validation by forgetting to call the parent implementation.
-     *
-     * Asynchronous paths (submitTask()/pollTask()) must NOT go through this
-     * method: submitting a task or polling it never blocks on the QPU, so the
-     * synchronous-safety hook (e.g. AwsBraketDriver::beforeExecution()) must
-     * not fire for them. They call assertConfigured() directly instead — see
-     * its docblock for why that still enforces validation.
+     * Run mandatory pre-flight steps before spawning a synchronous Python subprocess.
      */
-    private function preflight(): void
+    private function preflightSynchronous(): void
     {
         $this->assertConfigured();
         $this->beforeExecution();
@@ -104,12 +88,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     /**
      * Ensure every required config key is present and non-empty, failing fast
      * with a clear message before any Python subprocess is spawned.
-     *
-     * Protected (rather than folded into beforeExecution()) so both the
-     * synchronous preflight() and the asynchronous submitTask()/pollTask()
-     * paths enforce it directly. A driver cannot skip config validation by
-     * only overriding beforeExecution(), because that hook is never the one
-     * responsible for running this check.
      */
     protected function assertConfigured(): void
     {
@@ -131,13 +109,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     /**
      * Guard against a circuit that requests more qubits than the driver's
      * configured `max_qubits` ceiling allows.
-     *
-     * Statevector simulation memory doubles with every additional qubit, so
-     * an unbounded circuit can exhaust host memory well before it would ever
-     * reach a remote device's own limits. A blank `max_qubits` (absent, null,
-     * or an empty string — what env() yields for `AETHER_MAX_QUBITS=`) means
-     * unlimited, the default for every driver, so existing configs keep
-     * working unchanged.
      *
      * @throws InvalidCircuitException
      */
@@ -180,7 +151,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     public function executeBatch(array $circuits): BatchResult
     {
-        $this->preflight();
+        $this->preflightSynchronous();
         $this->validateCircuits(array_values($circuits));
 
         $payload = $this->payload([
@@ -232,7 +203,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->preflight();
+        $this->preflightSynchronous();
         $this->validateCircuits([$circuit]);
 
         $definition = $circuit->toArray();
@@ -247,17 +218,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Run the circuit synchronously through circuit.py and return its result,
      * without dispatching CircuitExecuted.
      *
-     * Drivers that only *simulate* asynchronous submission by running the
-     * circuit inline (see LocalSimulatorDriver::submitCircuit()) use this so a
-     * ->dispatch() does not also fire the synchronous ->run() event: the
-     * asynchronous path already announces completion via CircuitCompleted
-     * from the polling job.
-     *
      * @throws InvalidCircuitException
      */
     protected function runCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->preflight();
+        $this->preflightSynchronous();
         $this->validateCircuits([$circuit]);
 
         return $this->runDefinition($circuit->toArray());
@@ -288,12 +253,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     /**
      * Submit the circuit through submit.py and return the backend's task
      * identifier, without waiting for the result.
-     *
-     * Shared implementation for drivers exposing it via
-     * AsynchronousDevice::submitCircuit(). Runs config validation and the
-     * circuit admission checks only — submitting never blocks on the QPU, so
-     * the synchronous-safety hook in beforeExecution() deliberately does not
-     * fire here.
      *
      * @throws InvalidCircuitException
      * @throws QuantumExecutionException When submit.py returns no usable task identifier.
@@ -344,9 +303,35 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         return TaskSnapshot::fromResponse($response);
     }
 
+    /**
+     * Describe the entropy circuit as a CircuitBuilder so it can be run
+     * through the same admission funnel as any other circuit.
+     *
+     * Mirrors the circuit bin/python/entropy.py builds — a Hadamard on every
+     * qubit, then a measurement of them all — so any guard added to the
+     * funnel sees the same shape it would see for a user circuit. It is
+     * never executed from PHP: it exists only so the `max_qubits` and (on
+     * aws) `max_cost_per_run` ceilings apply to entropy generation exactly
+     * as they do to ->run(), ->dispatch() and Quantum::batch().
+     */
+    private function entropyCircuit(int $qubits, int $shots): CircuitBuilder
+    {
+        $circuit = (new CircuitBuilder($this, $this->driverName()))->qubits($qubits);
+
+        for ($qubit = 0; $qubit < $qubits; $qubit++) {
+            $circuit->h($qubit);
+        }
+
+        return $circuit->measure()->shots($shots);
+    }
+
     public function generateEntropy(int $bits): string
     {
-        $this->preflight();
+        if ($bits < 1) {
+            throw QuantumExecutionException::invalidEntropyBitCount($bits);
+        }
+
+        $this->preflightSynchronous();
 
         $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
 
@@ -358,6 +343,12 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         }
 
         $shots = (int) ceil($bits / $qubits);
+
+        try {
+            $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
+        } catch (InvalidCircuitException $e) {
+            throw InvalidCircuitException::entropyRejected($bits, $qubits, $shots, $e);
+        }
 
         $payload = $this->payload([
             'qubits' => $qubits,

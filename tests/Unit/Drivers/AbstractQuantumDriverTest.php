@@ -122,7 +122,7 @@ it('defaults to 16 qubits when entropy_qubits not in config', function () {
 it('exposes assertConfigured() to subclasses for the asynchronous path', function () {
     // A driver whose async methods only need config validation, not the
     // synchronous-safety hook, must be able to call assertConfigured()
-    // directly without going through the private preflight()/beforeExecution().
+    // directly without going through the private preflightSynchronous()/beforeExecution().
     $driver = new class($this->bridge, []) extends AbstractQuantumDriver
     {
         protected function driverName(): string
@@ -495,4 +495,70 @@ it('does not enforce a ceiling on executeBatch when max_qubits is absent', funct
     $result = $this->driver->executeBatch([$circuit]);
 
     expect($result)->toBeInstanceOf(BatchResult::class);
+});
+
+it('throws InvalidCircuitException on generateEntropy when entropy_qubits exceeds max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 8, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16-qubit circuit')
+            ->toContain('max_qubits ceiling of 8')
+            ->toContain('entropy_qubits');
+        expect($e->getPrevious())->toBeInstanceOf(InvalidCircuitException::class);
+    }
+});
+
+it('rejects a non-positive bit count before touching the bridge', function () {
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $this->driver->generateEntropy(0))
+        ->toThrow(QuantumExecutionException::class, 'must be a positive integer');
+});
+
+it('keeps the ceiling messages free of entropy hints for ordinary circuits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(6);
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->not->toContain('entropy');
+    }
+});
+
+it('allows generateEntropy when entropy_qubits is within max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 16, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 16)]);
+
+    $bytes = $driver->generateEntropy(8);
+
+    expect(strlen($bytes))->toBe(1);
 });
