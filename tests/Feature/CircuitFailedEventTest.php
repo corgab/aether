@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Events\CircuitCompleted;
 use Aether\Events\CircuitFailed;
 use Aether\Exceptions\TaskFailedException;
@@ -23,7 +24,7 @@ it('dispatches CircuitFailed exactly once when the polling job runs against a st
 
     $job = new PollQuantumTask($arn, $circuit->toArray(), 'aws');
 
-    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class), app(QuantumTaskRecorder::class)))
+    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class)))
         ->toThrow(TaskFailedException::class);
 
     Event::assertDispatchedTimes(CircuitFailed::class, 1);
@@ -59,6 +60,6 @@ it('still fails the job with the task exception when a CircuitFailed listener th
 
     $job = new PollQuantumTask($arn, $circuit->toArray(), 'aws');
 
-    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class), app(QuantumTaskRecorder::class)))
+    expect(fn () => $job->handle(app(QuantumManager::class), app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class)))
         ->toThrow(TaskFailedException::class, $arn);
 });

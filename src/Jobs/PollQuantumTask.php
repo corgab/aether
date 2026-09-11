@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Jobs;
 
+use Aether\Config\AetherConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
@@ -59,23 +60,28 @@ class PollQuantumTask implements ShouldQueue
         public readonly array $circuit,
         public readonly ?string $driver = null,
     ) {
-        $this->onQueue(config('aether.queue'));
+        // Constructors get no method injection, so the queue name is resolved
+        // from the container by hand; tries() below is in the same position.
+        $this->onQueue(app(AetherConfig::class)->queue());
     }
 
     /**
      * Determine the number of times the job may be attempted.
+     *
+     * Called by the queue worker with no arguments, so the setting is read
+     * from the container rather than injected.
      */
     public function tries(): int
     {
-        return (int) config('aether.max_poll_attempts', 720);
+        return app(AetherConfig::class)->maxPollAttempts();
     }
 
     /**
      * Execute the job.
      */
-    public function handle(QuantumManager $manager, Dispatcher $events, QuantumTaskRecorder $recorder): void
+    public function handle(QuantumManager $manager, Dispatcher $events, QuantumTaskRecorder $recorder, AetherConfig $config): void
     {
-        $driverName = $this->driver ?? config('aether.default', 'local');
+        $driverName = $this->driver ?? $config->defaultDriver();
         $device = $manager->driver($this->driver);
 
         if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
@@ -88,7 +94,7 @@ class PollQuantumTask implements ShouldQueue
         // (when persistence is on) and swallows database failures, so it can
         // never fail the job or suppress the CircuitCompleted event below.
         if (! $snapshot->status->isTerminal()) {
-            $maxAttempts = $this->tries();
+            $maxAttempts = $config->maxPollAttempts();
 
             if ($this->attempts() >= $maxAttempts) {
                 $this->abandonTask(
@@ -101,7 +107,7 @@ class PollQuantumTask implements ShouldQueue
             }
 
             $recorder->recordProgress($this->taskArn, $snapshot->status);
-            $this->release((int) config('aether.poll_interval', 5));
+            $this->release($config->pollInterval());
 
             return;
         }

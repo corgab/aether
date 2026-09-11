@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aether\Commands;
 
+use Aether\Config\AetherConfig;
 use Aether\QuantumManager;
 use Illuminate\Console\Command;
 use Symfony\Component\Process\Process;
@@ -31,13 +32,13 @@ class AetherInstallCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(QuantumManager $manager): int
+    public function handle(QuantumManager $manager, AetherConfig $config): int
     {
         $this->components->info('Installing Aether...');
 
         $this->publishConfig();
 
-        $pythonPath = (string) config('aether.python_path', 'python3');
+        $pythonPath = $config->pythonPath();
 
         $pythonOk = $this->checkPython($pythonPath);
 
