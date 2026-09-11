@@ -47,11 +47,25 @@ class EntropyGenerator
 
     /**
      * Generate an unbiased random integer in [$min, $max] using rejection sampling.
+     *
+     * Any bounds are accepted as long as $max - $min fits in a signed 64-bit
+     * integer, so integer(0, PHP_INT_MAX) works while
+     * integer(PHP_INT_MIN, PHP_INT_MAX) is rejected.
      */
     public function integer(int $min, int $max): int
     {
         if ($min > $max) {
             throw QuantumExecutionException::invalidEntropyRange($min, $max);
+        }
+
+        // A span wider than PHP_INT_MAX would overflow the subtraction and
+        // need a 64-bit chunk, which bindec() can only return as a float.
+        // With a non-negative $min the span cannot overflow; otherwise
+        // PHP_INT_MAX + $min is the largest $max that still fits.
+        if ($min < 0 && $max > PHP_INT_MAX + $min) {
+            throw new \InvalidArgumentException(
+                "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in the system's maximum integer size (PHP_INT_MAX)."
+            );
         }
 
         $range = $max - $min;
@@ -61,8 +75,9 @@ class EntropyGenerator
             return $min;
         }
 
-        $bitsNeeded = (int) ceil(log($range + 1, 2));
-        $mask = (1 << $bitsNeeded) - 1;
+        // decbin() gives the exact bit length; ceil(log(range + 1, 2)) loses
+        // precision above 2^53 and under-counts for ranges such as 2^62.
+        $bitsNeeded = strlen(decbin($range));
 
         // A correct entropy source accepts on the first batch with overwhelming
         // probability; the cap is a safety net against a degenerate source that
@@ -76,7 +91,8 @@ class EntropyGenerator
                 $chunk = substr($bitstring, $offset, $bitsNeeded);
                 $offset += $bitsNeeded;
 
-                $value = (int) bindec($chunk) & $mask;
+                // The chunk is exactly $bitsNeeded digits, so no mask is needed.
+                $value = (int) bindec($chunk);
 
                 if ($value <= $range) {
                     return $min + $value;

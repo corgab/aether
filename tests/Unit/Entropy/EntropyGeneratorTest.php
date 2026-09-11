@@ -162,6 +162,32 @@ it('integer throws when entropy is exhausted without an in-range value', functio
 })->throws(QuantumExecutionException::class, 'entropy');
 
 // -------------------------------------------------------------------------
+// Wide ranges
+// -------------------------------------------------------------------------
+
+it('integer covers the full positive range up to PHP_INT_MAX', function () use (&$device, &$generator): void {
+    // The first 63-bit chunk of all-ones is PHP_INT_MAX itself, so it is accepted as-is.
+    $device->method('generateEntropy')->with(256)->willReturn(str_repeat("\xff", 32));
+
+    expect($generator->integer(0, PHP_INT_MAX))->toBe(PHP_INT_MAX);
+});
+
+it('integer can return the top of a power-of-two range', function () use (&$device, &$generator): void {
+    // 2^62 needs 63 bits; the float-based bit count rounded down to 62 and
+    // could never produce it. First chunk: 1 followed by 62 zeros.
+    $device->method('generateEntropy')->with(256)->willReturn("\x80".str_repeat("\x00", 31));
+
+    expect($generator->integer(0, 2 ** 62))->toBe(2 ** 62);
+});
+
+it('integer rejects a span wider than the system\'s maximum integer size', function () use (&$device, &$generator): void {
+    $device->expects($this->never())->method('generateEntropy');
+
+    expect(fn () => $generator->integer(PHP_INT_MIN, PHP_INT_MAX))
+        ->toThrow(InvalidArgumentException::class, 'exceeds PHP_INT_MAX');
+});
+
+// -------------------------------------------------------------------------
 // Validation: min > max
 // -------------------------------------------------------------------------
 
