@@ -139,6 +139,21 @@ it('measure with int wraps in array', function (): void {
     expect($gate->params)->toBe(['targets' => [2]]);
 });
 
+it('measure rejects targets that are not integer qubit indices', function (mixed $targets, string $given): void {
+    expect(fn () => Gate::measure($targets))
+        ->toThrow(InvalidCircuitException::class, "got {$given}");
+})->with([
+    'string' => [['a'], "'a'"],
+    'numeric string' => [['1'], "'1'"],
+    'float' => [[1.5], '1.5'],
+    'mixed with a valid index' => [[0, 'x'], "'x'"],
+    'nested array' => [[[0]], 'array'],
+]);
+
+it('measure reindexes explicit targets', function (): void {
+    expect(Gate::measure([2 => 1, 5 => 0])->qubitIndices())->toBe([1, 0]);
+});
+
 it('measure with array keeps array', function (): void {
     $gate = Gate::measure([0, 1, 2]);
 
@@ -333,6 +348,18 @@ it('round trips every gate type through fromArray/toArray', function (GateType $
 
     expect(Gate::fromArray($definition)->toArray())->toBe($definition);
 })->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
+
+it('fromArray rejects qubit indices that are not integers instead of casting them', function (array $definition, string $given): void {
+    expect(fn () => Gate::fromArray($definition))
+        ->toThrow(InvalidCircuitException::class, "got {$given}");
+})->with([
+    'measure target string' => [['type' => 'measure', 'targets' => ['a']], "'a'"],
+    'measure targets scalar' => [['type' => 'measure', 'targets' => 'a'], "'a'"],
+    'measure targets int' => [['type' => 'measure', 'targets' => 3], '3'],
+    'single-qubit gate string' => [['type' => 'h', 'target' => 'a'], "'a'"],
+    'single-qubit gate numeric string' => [['type' => 'h', 'target' => '1'], "'1'"],
+    'two-qubit gate float control' => [['type' => 'cnot', 'control' => 1.9, 'target' => 0], '1.9'],
+]);
 
 it('round trips a measure gate with explicit targets through fromArray/toArray', function (): void {
     $definition = ['type' => 'measure', 'targets' => [0, 2]];

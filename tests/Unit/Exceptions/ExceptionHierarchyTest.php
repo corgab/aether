@@ -159,6 +159,26 @@ it('empty batch returns meaningful message', function (): void {
     expect($exception->getMessage())->toContain('Quantum::batch() needs at least one circuit');
 });
 
+it('invalid qubit index includes gate and value', function (): void {
+    $exception = InvalidCircuitException::invalidQubitIndex('H', 'a');
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('Gate H')
+        ->toContain('integer qubit indices')
+        ->toContain("'a'");
+});
+
+it('invalid angle includes gate and value', function (): void {
+    $exception = InvalidCircuitException::invalidAngle('RX', 'a');
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('RX')
+        ->toContain('expected number')
+        ->toContain("'a'");
+});
+
 // -------------------------------------------------------------------------
 // InvalidDriverConfigException
 // -------------------------------------------------------------------------

@@ -76,6 +76,18 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for a gate parameter that is not an integer qubit index.
+     */
+    public static function invalidQubitIndex(string $gate, mixed $value): self
+    {
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
+
+        return new self(
+            "Gate {$gate} expects integer qubit indices, got {$given}."
+        );
+    }
+
+    /**
      * Create an exception for a measurement operation with an empty target list.
      */
     public static function emptyMeasurementTargets(): self
@@ -120,6 +132,13 @@ class InvalidCircuitException extends AetherException
      * Create an exception for a gate definition missing a required parameter
      * key while being rebuilt from its array shape (see Gate::fromArray()).
      */
+    public static function invalidAngle(string $gate, mixed $value): self
+    {
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
+
+        return new self("Invalid angle parameter for {$gate} gate: expected number, {$given} given.");
+    }
+
     public static function missingGateParameter(string $type, string $key): self
     {
         return new self(
