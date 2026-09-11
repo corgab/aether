@@ -910,6 +910,25 @@ it('depth excludes measurement', function () use (&$builder): void {
     expect($builder->depth())->toBe(1);
 });
 
+it('appends the same gate through the generic gate() as through the named method', function (GateType $type): void {
+    $device = $this->createMock(QuantumDevice::class);
+    $shape = $type->shape();
+    $qubits = range(0, count($shape->qubitKeys()) - 1);
+    $angles = array_map(static fn (int $i): float => 0.1 * ($i + 1), array_keys($shape->angleKeys()));
+
+    $generic = (new CircuitBuilder($device))->qubits(3)->gate($type, $qubits, $angles);
+    $named = (new CircuitBuilder($device))->qubits(3)->{$type->value}(...$qubits, ...$angles);
+
+    expect($generic->toArray()['gates'])->toBe($named->toArray()['gates']);
+})->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
+
+it('validates the qubit indices of a generically added gate like any other', function (): void {
+    $device = $this->createMock(QuantumDevice::class);
+
+    expect(fn () => (new CircuitBuilder($device))->qubits(1)->gate(GateType::CNOT, [0, 1]))
+        ->toThrow(InvalidCircuitException::class);
+});
+
 it('every Gate self-returning static factory has a matching GateType case', function (): void {
     $reflection = new ReflectionClass(Gate::class);
 
@@ -918,7 +937,9 @@ it('every Gate self-returning static factory has a matching GateType case', func
         array_filter(
             $reflection->getMethods(ReflectionMethod::IS_PUBLIC | ReflectionMethod::IS_STATIC),
             static function (ReflectionMethod $method): bool {
-                if ($method->getName() === 'fromArray') {
+                // fromArray() and make() are the generic constructors every
+                // named factory delegates to, not gates themselves.
+                if (in_array($method->getName(), ['fromArray', 'make'], true)) {
                     return false;
                 }
 

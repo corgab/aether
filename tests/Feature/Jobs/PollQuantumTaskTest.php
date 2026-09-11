@@ -29,11 +29,11 @@ it('budgets its attempts from the configured max_poll_attempts', function () {
     expect($job->tries())->toBe(42);
 });
 
-it('releases itself back to the queue with the configured delay when the task is not terminal', function () {
+it('releases itself back to the queue with the configured delay while the task is not terminal', function (TaskStatus $status) {
     config(['aether.poll_interval' => 3, 'aether.max_poll_attempts' => 720]);
 
     $device = new FakeAsynchronousDevice;
-    $device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+    $device->snapshotToReturn = new TaskSnapshot($status);
 
     $manager = app(QuantumManager::class);
     $manager->extend('fake-async', fn () => $device);
@@ -42,7 +42,7 @@ it('releases itself back to the queue with the configured delay when the task is
     $job->handle($manager, app(Dispatcher::class));
 
     $job->assertReleased(delay: 3);
-});
+})->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
 
 it('throws pollingExhausted and does not release once past max_poll_attempts', function () {
     config(['aether.max_poll_attempts' => 2]);

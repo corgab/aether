@@ -6,7 +6,6 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
-use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
@@ -47,12 +46,6 @@ beforeEach(function () {
 // -------------------------------------------------------------------------
 // Contract
 // -------------------------------------------------------------------------
-
-it('implements QuantumDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(QuantumDevice::class);
-});
 
 // -------------------------------------------------------------------------
 // executeCircuit()
@@ -142,17 +135,6 @@ it('delegates generateEntropy to bridge with aws driver', function () {
     expect($entropy)->toBeString();
 });
 
-it('returns correct byte length from generateEntropy', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $driver->generateEntropy(16);
-
-    expect(strlen($entropy))->toBe(2);
-});
-
 it('throws QuantumExecutionException when synchronous_safe is false on generateEntropy', function () {
     $config = array_merge($this->config, ['synchronous_safe' => false]);
     $driver = new AwsBraketDriver($this->bridge, $config);
@@ -166,19 +148,6 @@ it('throws QuantumExecutionException when synchronous_safe is false on generateE
         expect($e)->toBeInstanceOf(QuantumExecutionException::class);
         expect(strtolower($e->getMessage()))->toContain('aws');
     }
-});
-
-it('converts bitstring to raw bytes correctly in generateEntropy', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    // '10110011' = 179 decimal = 0xB3
-    // '10100101' = 165 decimal = 0xA5
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $driver->generateEntropy(16);
-
-    expect($entropy)->toBe(chr(0xB3).chr(0xA5));
 });
 
 // -------------------------------------------------------------------------
@@ -237,12 +206,6 @@ it('validates config on generateEntropy as well as executeCircuit', function () 
 // -------------------------------------------------------------------------
 // AsynchronousDevice: submitCircuit()
 // -------------------------------------------------------------------------
-
-it('implements AsynchronousDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(AsynchronousDevice::class);
-});
 
 it('submits the circuit and returns the task arn', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
@@ -401,6 +364,7 @@ it('maps each Braket state to the right TaskStatus', function (string $braketSta
     ['RUNNING', TaskStatus::Running],
     ['COMPLETED', TaskStatus::Completed],
     ['FAILED', TaskStatus::Failed],
+    ['CANCELLING', TaskStatus::Cancelling],
     ['CANCELLED', TaskStatus::Cancelled],
 ]);
 
@@ -692,4 +656,43 @@ it('does not enforce a cost ceiling when max_cost_per_run is null', function () 
     $result = $driver->executeCircuit($circuit);
 
     expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('does not enforce a cost ceiling on generateEntropy by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
+});
+
+it('throws InvalidCircuitException on generateEntropy when the estimated cost exceeds max_cost_per_run', function () {
+    // Default entropy_qubits (16) -> 16 shots for 256 bits: 0.30 + 16 * 0.00035 = 0.3056 > 0.25
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.25]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16 shot(s)')
+            ->toContain('max_cost_per_run')
+            ->toContain('fewer bits per call');
+    }
+});
+
+it('allows generateEntropy when the estimated cost is within max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.50]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
 });

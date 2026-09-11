@@ -282,6 +282,42 @@ it('throws InvalidCircuitException when given INF', function (): void {
 // fromArray() — metadata-driven round trip for every gate type
 // -------------------------------------------------------------------------
 
+it('builds every gate type through make() exactly as its named factory does', function (GateType $type): void {
+    $shape = $type->shape();
+    $qubits = range(0, count($shape->qubitKeys()) - 1);
+    $angles = array_map(static fn (int $i): float => 0.1 * ($i + 1), array_keys($shape->angleKeys()));
+
+    $generic = Gate::make($type, $qubits, $angles);
+    $named = Gate::{$type->value}(...$qubits, ...$angles);
+
+    expect($generic->toArray())->toBe($named->toArray())
+        ->and(array_keys($generic->params))->toBe([...$shape->qubitKeys(), ...$shape->angleKeys()]);
+})->with(array_filter(GateType::cases(), fn (GateType $type): bool => $type !== GateType::Measure));
+
+it('make() accepts Angle instances and normalises them like the named factories', function (): void {
+    expect(Gate::make(GateType::RX, [0], [Angle::deg(180)])->params['angle'])->toBe(M_PI);
+});
+
+it('make() rejects the wrong number of qubit indices', function (): void {
+    expect(fn () => Gate::make(GateType::CNOT, [0]))
+        ->toThrow(InvalidCircuitException::class, 'Gate [cnot] takes 2 qubit argument(s), 1 given.');
+});
+
+it('make() rejects the wrong number of angles', function (): void {
+    expect(fn () => Gate::make(GateType::U, [0], [1.0]))
+        ->toThrow(InvalidCircuitException::class, 'Gate [u] takes 3 angle argument(s), 1 given.');
+});
+
+it('make() builds a measurement from its qubits, or a measure-all when none are given', function (): void {
+    expect(Gate::make(GateType::Measure, [0, 2])->toArray())->toBe(Gate::measure([0, 2])->toArray())
+        ->and(Gate::make(GateType::Measure, [])->toArray())->toBe(Gate::measure()->toArray());
+});
+
+it('make() rejects angles on a measurement', function (): void {
+    expect(fn () => Gate::make(GateType::Measure, [0], [1.0]))
+        ->toThrow(InvalidCircuitException::class, 'Gate [measure] takes 0 angle argument(s), 1 given.');
+});
+
 it('round trips every gate type through fromArray/toArray', function (GateType $type): void {
     $shape = $type->shape();
     $definition = ['type' => $type->value];

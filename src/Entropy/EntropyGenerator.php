@@ -15,13 +15,6 @@ class EntropyGenerator
     /**
      * Hard ceiling on the number of 256-bit entropy batches fetched while
      * rejection sampling before giving up.
-     *
-     * This is a safety net, not a tuning knob: a correct entropy source accepts
-     * within the first batch with overwhelming probability (the per-chunk
-     * rejection rate is always below 50%), so reaching this bound means the
-     * source is degenerate. The value is deliberately large enough never to
-     * false-trip on a healthy source while still guaranteeing integer()
-     * terminates.
      */
     private const MAX_ENTROPY_BATCHES = 1000;
 
@@ -33,9 +26,7 @@ class EntropyGenerator
     public function generate(int $bits): string
     {
         if ($bits < 1) {
-            throw new \InvalidArgumentException(
-                "Requested bit count ({$bits}) must be a positive integer."
-            );
+            throw QuantumExecutionException::invalidEntropyBitCount($bits);
         }
 
         return $this->device->generateEntropy($bits);
@@ -55,9 +46,7 @@ class EntropyGenerator
     public function integer(int $min, int $max): int
     {
         if ($min > $max) {
-            throw new \InvalidArgumentException(
-                "Minimum value ({$min}) must not exceed maximum value ({$max})."
-            );
+            throw QuantumExecutionException::invalidEntropyRange($min, $max);
         }
 
         $range = $max - $min;

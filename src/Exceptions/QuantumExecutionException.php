@@ -108,4 +108,24 @@ class QuantumExecutionException extends AetherException
 
         return new self($message, 0, $previous);
     }
+
+    /**
+     * Create an exception for an invalid requested bit count.
+     */
+    public static function invalidEntropyBitCount(int $bits): self
+    {
+        return new self(
+            "Requested bit count ({$bits}) must be a positive integer."
+        );
+    }
+
+    /**
+     * Create an exception for an invalid range.
+     */
+    public static function invalidEntropyRange(int $min, int $max): self
+    {
+        return new self(
+            "Minimum value ({$min}) must not exceed maximum value ({$max})."
+        );
+    }
 }
