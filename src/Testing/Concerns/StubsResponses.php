@@ -7,7 +7,6 @@ namespace Aether\Testing\Concerns;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Results\CircuitResult;
 use Aether\Results\CostEstimate;
-use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Testing\ResultSequence;
 use Closure;
