@@ -45,7 +45,14 @@ it('implements array access and iterable', function () {
 
 it('throws on array mutation', function () {
     $batch = new BatchResult([]);
-    expect(fn () => $batch[0] = new CircuitResult([]))->toThrow(BadMethodCallException::class);
+    expect(fn () => $batch[0] = new CircuitResult([]))->toThrow(BadMethodCallException::class, 'BatchResult is immutable.');
+});
+
+it('throws on array unset', function () {
+    $batch = new BatchResult([]);
+    expect(function () use ($batch) {
+        unset($batch[0]);
+    })->toThrow(BadMethodCallException::class, 'BatchResult is immutable.');
 });
 
 it('exposes results and get', function () {
