@@ -65,3 +65,15 @@ it('throws OutOfBoundsException for offsetGet', function () {
     $batch = new BatchResult([]);
     expect(fn () => $batch[1])->toThrow(OutOfBoundsException::class);
 });
+
+it('checks offsetExists explicitly', function () {
+    $result1 = new CircuitResult(['00' => 500]);
+    $result2 = new CircuitResult(['11' => 500]);
+
+    $batch = new BatchResult([$result1, $result2]);
+
+    expect($batch->offsetExists(0))->toBeTrue();
+    expect($batch->offsetExists(1))->toBeTrue();
+    expect($batch->offsetExists(2))->toBeFalse();
+    expect($batch->offsetExists(-1))->toBeFalse();
+});
