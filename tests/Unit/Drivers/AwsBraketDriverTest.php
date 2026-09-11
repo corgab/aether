@@ -525,6 +525,34 @@ it('falls back to zero-cost rates when pricing config is absent', function () {
 });
 
 // -------------------------------------------------------------------------
+// Typed config
+// -------------------------------------------------------------------------
+
+it('rejects a non-numeric max_cost_per_run when the driver is constructed', function () {
+    expect(fn () => new AwsBraketDriver($this->bridge, array_merge($this->config, ['max_cost_per_run' => 'abc'])))
+        ->toThrow(InvalidDriverConfigException::class, 'Driver [aws] has an invalid value for [max_cost_per_run]');
+});
+
+it('rejects a negative pricing rate when the driver is constructed', function () {
+    $config = array_merge($this->config, ['pricing' => ['per_task' => -0.30, 'per_shot' => 0.00035]]);
+
+    expect(fn () => new AwsBraketDriver($this->bridge, $config))
+        ->toThrow(InvalidDriverConfigException::class, 'invalid value for [pricing.per_task]');
+});
+
+it('reads the rates env() hands over as strings', function () {
+    $config = array_merge($this->config, [
+        'pricing' => ['per_task' => '0.30', 'per_shot' => '0.00035', 'currency' => 'EUR'],
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $estimate = $driver->estimateCost(1000);
+
+    expect($estimate->amount)->toEqualWithDelta(0.65, 1e-9)
+        ->and($estimate->currency)->toBe('EUR');
+});
+
+// -------------------------------------------------------------------------
 // max_cost_per_run guard
 // -------------------------------------------------------------------------
 

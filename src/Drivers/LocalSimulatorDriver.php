@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\DriverConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\QuantumExecutionException;
@@ -15,9 +16,10 @@ use Illuminate\Support\Str;
 
 /**
  * Quantum driver for the local Braket simulator.
- *
  * Simulates asynchronous execution by running circuits synchronously and caching
  * the results under a synthetic "local:<uuid>" identifier for `task_ttl` seconds for checkTask().
+ *
+ * @extends AbstractQuantumDriver<DriverConfig>
  */
 class LocalSimulatorDriver extends AbstractQuantumDriver implements AsynchronousDevice
 {
@@ -98,7 +100,7 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      */
     private function taskTtl(): int
     {
-        $ttl = $this->config['task_ttl'] ?? null;
+        $ttl = $this->config->get('task_ttl');
 
         // A non-positive value falls back to the default rather than being
         // taken literally: 0 (or negative) as a cache TTL is not a
