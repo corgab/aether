@@ -65,10 +65,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Admission checks every circuit must pass before it reaches Python.
      *
      * This is the single funnel for per-circuit guards: executeCircuit(),
-     * executeBatch() and submitTask() all call it, so a guard added here (or
-     * in an override) holds on ->run(), Quantum::batch() and ->dispatch()
-     * alike. Concrete drivers extend it by overriding and calling the parent
-     * first — see AwsBraketDriver::validateCircuits() for the cost ceiling.
+     * executeBatch(), submitTask() and generateEntropy() all call it, so a
+     * guard added here (or in an override) holds on ->run(), Quantum::batch(),
+     * ->dispatch() and Quantum::entropy() alike. Concrete drivers extend it
+     * by overriding and calling the parent first — see
+     * AwsBraketDriver::validateCircuits() for the cost ceiling.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
@@ -344,8 +345,34 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         return TaskSnapshot::fromResponse($response);
     }
 
+    /**
+     * Describe the entropy circuit as a CircuitBuilder so it can be run
+     * through the same admission funnel as any other circuit.
+     *
+     * Mirrors the circuit bin/python/entropy.py builds — a Hadamard on every
+     * qubit, then a measurement of them all — so any guard added to the
+     * funnel sees the same shape it would see for a user circuit. It is
+     * never executed from PHP: it exists only so the `max_qubits` and (on
+     * aws) `max_cost_per_run` ceilings apply to entropy generation exactly
+     * as they do to ->run(), ->dispatch() and Quantum::batch().
+     */
+    private function entropyCircuit(int $qubits, int $shots): CircuitBuilder
+    {
+        $circuit = (new CircuitBuilder($this, $this->driverName()))->qubits($qubits);
+
+        for ($qubit = 0; $qubit < $qubits; $qubit++) {
+            $circuit->h($qubit);
+        }
+
+        return $circuit->measure()->shots($shots);
+    }
+
     public function generateEntropy(int $bits): string
     {
+        if ($bits < 1) {
+            throw new \InvalidArgumentException("Requested bit count ({$bits}) must be a positive integer.");
+        }
+
         $this->preflight();
 
         $qubits = (int) ($this->config['entropy_qubits'] ?? 16);
@@ -358,6 +385,12 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         }
 
         $shots = (int) ceil($bits / $qubits);
+
+        try {
+            $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
+        } catch (InvalidCircuitException $e) {
+            throw InvalidCircuitException::entropyRejected($bits, $qubits, $shots, $e);
+        }
 
         $payload = $this->payload([
             'qubits' => $qubits,

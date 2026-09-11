@@ -693,3 +693,42 @@ it('does not enforce a cost ceiling when max_cost_per_run is null', function () 
 
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
+
+it('does not enforce a cost ceiling on generateEntropy by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
+});
+
+it('throws InvalidCircuitException on generateEntropy when the estimated cost exceeds max_cost_per_run', function () {
+    // Default entropy_qubits (16) -> 16 shots for 256 bits: 0.30 + 16 * 0.00035 = 0.3056 > 0.25
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.25]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16 shot(s)')
+            ->toContain('max_cost_per_run')
+            ->toContain('fewer bits per call');
+    }
+});
+
+it('allows generateEntropy when the estimated cost is within max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.50]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
+});
