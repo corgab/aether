@@ -114,12 +114,15 @@ class EntropyGenerator
      */
     private function bytesToBitstring(string $bytes): string
     {
-        $bits = '';
+        static $lookup = null;
 
-        for ($i = 0, $len = strlen($bytes); $i < $len; $i++) {
-            $bits .= str_pad(decbin(ord($bytes[$i])), 8, '0', STR_PAD_LEFT);
+        if ($lookup === null) {
+            $lookup = [];
+            for ($i = 0; $i < 256; $i++) {
+                $lookup[chr($i)] = sprintf('%08b', $i);
+            }
         }
 
-        return $bits;
+        return strtr($bytes, $lookup);
     }
 }
