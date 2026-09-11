@@ -163,21 +163,31 @@ class QuantumManager extends Manager
     }
 
     /**
+     * The built-in drivers cached by class name.
+     *
+     * @var array<class-string, list<string>>
+     */
+    private static array $builtinDrivers = [];
+
+    /**
      * The driver names that resolve today: the built-ins plus every extend()ed one.
      *
      * @return list<string>
      */
     private function availableDrivers(): array
     {
-        $builtins = [];
-        foreach (get_class_methods($this) as $method) {
-            if ($method !== 'createDriver' && str_starts_with($method, 'create') && str_ends_with($method, 'Driver')) {
-                $builtins[] = Str::snake(substr($method, 6, -6));
+        if (! isset(self::$builtinDrivers[static::class])) {
+            $builtins = [];
+            foreach (get_class_methods($this) as $method) {
+                if ($method !== 'createDriver' && str_starts_with($method, 'create') && str_ends_with($method, 'Driver')) {
+                    $builtins[] = Str::snake(substr($method, 6, -6));
+                }
             }
+            self::$builtinDrivers[static::class] = $builtins;
         }
 
         return array_values(array_unique([
-            ...$builtins,
+            ...self::$builtinDrivers[static::class],
             ...array_map(strval(...), array_keys($this->customCreators)),
         ]));
     }
