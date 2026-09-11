@@ -18,13 +18,17 @@ class BatchBuilder
     /**
      * @param  list<CircuitBuilder>  $circuits
      *
-     * @throws InvalidCircuitException When a circuit is pinned to a different driver than the batch.
+     * @throws InvalidCircuitException When the batch is empty, or a circuit is pinned to a different driver than the batch.
      */
     public function __construct(
         private readonly QuantumDevice $device,
         private readonly array $circuits,
         private readonly string $driverName,
     ) {
+        if ($circuits === []) {
+            throw InvalidCircuitException::emptyBatch();
+        }
+
         foreach ($circuits as $circuit) {
             $pinnedDriver = $circuit->driverName();
 

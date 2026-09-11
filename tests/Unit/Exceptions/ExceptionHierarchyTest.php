@@ -133,6 +133,13 @@ it('no measurement returns meaningful message', function (): void {
     expect($exception->getMessage())->not->toBeEmpty();
 });
 
+it('empty batch returns meaningful message', function (): void {
+    $exception = InvalidCircuitException::emptyBatch();
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())->toContain('Quantum::batch() needs at least one circuit');
+});
+
 // -------------------------------------------------------------------------
 // InvalidDriverConfigException
 // -------------------------------------------------------------------------

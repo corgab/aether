@@ -147,10 +147,14 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * @param  CircuitBuilder[]  $circuits
      *
-     * @throws InvalidCircuitException
+     * @throws InvalidCircuitException When the batch is empty or a circuit fails validation.
      */
     public function executeBatch(array $circuits): BatchResult
     {
+        if ($circuits === []) {
+            throw InvalidCircuitException::emptyBatch();
+        }
+
         $this->preflightSynchronous();
         $this->validateCircuits(array_values($circuits));
 

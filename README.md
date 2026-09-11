@@ -129,6 +129,7 @@ $batch[0]->probabilities();
 ```
 
 * **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
+* **Empty batch**: `Quantum::batch([])` throws `InvalidCircuitException` immediately. A list filtered down to nothing is almost always a mistake, and running it would only trigger an empty execution to return no results.
 * **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
 * **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
 * **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver marked `synchronous_safe: false` throws, exactly like a single `->run()`.

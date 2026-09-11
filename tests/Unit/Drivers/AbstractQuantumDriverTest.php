@@ -464,6 +464,13 @@ it('treats an empty-string max_qubits (a blank env var) as no ceiling', function
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
+it('refuses an empty batch without spawning the bridge', function () {
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $this->driver->executeBatch([]))
+        ->toThrow(InvalidCircuitException::class, 'at least one circuit');
+});
+
 it('throws InvalidCircuitException on executeBatch when any circuit exceeds max_qubits', function () {
     $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
     {
