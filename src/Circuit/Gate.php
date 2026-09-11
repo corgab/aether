@@ -384,7 +384,7 @@ final readonly class Gate
         $angles = [];
 
         foreach ($shape->qubitKeys() as $key) {
-            if (! array_key_exists($key, $definition)) {
+            if (! isset($definition[$key])) {
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
@@ -392,7 +392,7 @@ final readonly class Gate
         }
 
         foreach ($shape->angleKeys() as $key) {
-            if (! array_key_exists($key, $definition)) {
+            if (! isset($definition[$key])) {
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
