@@ -153,11 +153,22 @@ class PythonBridge implements PythonExecutor
         }
 
         $bytes = '';
+        $chunks = str_split($bitstring, 32);
 
-        foreach (str_split($bitstring, self::BITS_PER_BYTE) as $chunk) {
-            // The guard above makes every chunk exactly 8 binary digits; the
-            // mask only narrows the type to chr()'s 0-255 range.
-            $bytes .= chr(((int) bindec($chunk)) & 0xFF);
+        /** @var string $last We know array_pop returns a string here since str_split on a non-empty string gives an array of strings */
+        $last = array_pop($chunks);
+
+        foreach ($chunks as $chunk) {
+            // Process 32 bits (4 bytes) at a time for better performance.
+            // pack('N') converts an unsigned 32-bit int into big-endian byte order.
+            $bytes .= pack('N', bindec($chunk));
+        }
+
+        // The remaining bits (if any) are processed 8 bits at a time.
+        // PHPstan knows $last is not empty due to the regex check above.
+        foreach (str_split($last, self::BITS_PER_BYTE) as $chunk) {
+            // The guard above makes every chunk exactly 8 binary digits.
+            $bytes .= chr((int) bindec($chunk));
         }
 
         return $bytes;
