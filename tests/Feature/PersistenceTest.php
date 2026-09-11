@@ -99,7 +99,7 @@ it('records the scheduling failure on the persisted task without retrying', func
     });
 
     $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($this->manager);
+    $job->handle($this->manager, app(QuantumTaskRecorder::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
 
@@ -122,7 +122,7 @@ it('clears a recorded scheduling failure once the task completes', function () {
     });
 
     $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($this->manager);
+    $job->handle($this->manager, app(QuantumTaskRecorder::class));
 
     expect(QuantumTask::query()->firstOrFail()->failed_at)->not->toBeNull();
 

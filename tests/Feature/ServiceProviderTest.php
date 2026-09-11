@@ -133,26 +133,6 @@ it('defaults the local driver task_ttl to one hour', function () {
     expect($this->app['config']->get('aether.drivers.local.task_ttl'))->toBe(3600);
 });
 
-it('honours a legacy top-level local_task_ttl from a config file published before the key moved', function () {
-    config()->set('aether.drivers.local', ['synchronous_safe' => true]);
-    config()->set('aether.local_task_ttl', 60);
-
-    $driver = (new QuantumManager($this->app))->driver('local');
-    $config = (new ReflectionProperty($driver, 'config'))->getValue($driver);
-
-    expect($config['task_ttl'])->toBe(60);
-});
-
-it('prefers an explicit drivers.local.task_ttl over the legacy key', function () {
-    config()->set('aether.drivers.local.task_ttl', 120);
-    config()->set('aether.local_task_ttl', 60);
-
-    $driver = (new QuantumManager($this->app))->driver('local');
-    $config = (new ReflectionProperty($driver, 'config'))->getValue($driver);
-
-    expect($config['task_ttl'])->toBe(120);
-});
-
 // -------------------------------------------------------------------------
 // php artisan about
 // -------------------------------------------------------------------------

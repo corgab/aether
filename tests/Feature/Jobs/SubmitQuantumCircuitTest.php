@@ -75,7 +75,7 @@ it('fails without retrying when the poll job cannot be queued after submission',
     $job = (new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))
         ->withFakeQueueInteractions();
 
-    $job->handle($manager);
+    $job->handle($manager, app(QuantumTaskRecorder::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
     $job->assertNotReleased();
@@ -98,7 +98,7 @@ it('throws the scheduling failure when handled outside a queue worker', function
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    expect(fn () => $job->handle($manager))
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))
         ->toThrow(QuantumExecutionException::class, 'could not be queued');
 
     expect($device->submittedCircuits)->toHaveCount(1);
@@ -117,7 +117,7 @@ it('reports the scheduling failure when failing the job under a worker', functio
     $manager->extend('fake-async', fn () => $device);
 
     $job = (new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async'))->withFakeQueueInteractions();
-    $job->handle($manager);
+    $job->handle($manager, app(QuantumTaskRecorder::class));
 
     $job->assertFailedWith(QuantumExecutionException::class);
     Exceptions::assertReported(QuantumExecutionException::class);
@@ -137,7 +137,7 @@ it('rethrows instead of failing silently when running on the sync connection', f
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
     $job->setJob(new SyncJob(app(), '{}', 'sync', 'default'));
 
-    expect(fn () => $job->handle($manager))
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))
         ->toThrow(QuantumExecutionException::class, 'poll job blew up inline');
     expect($device->submittedCircuits)->toHaveCount(1);
 });
@@ -152,7 +152,7 @@ it('still retries when submission itself fails', function () {
 
     $job = new SubmitQuantumCircuit(['qubits' => 2, 'gates' => [], 'shots' => 100], 'fake-async');
 
-    expect(fn () => $job->handle($manager))->toThrow(RuntimeException::class, 'submission failed');
+    expect(fn () => $job->handle($manager, app(QuantumTaskRecorder::class)))->toThrow(RuntimeException::class, 'submission failed');
 
     expect($device->submittedCircuits)->toHaveCount(0);
 
