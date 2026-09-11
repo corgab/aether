@@ -40,19 +40,19 @@ beforeEach(function () {
 
 it('implements QuantumDevice interface', function (string $driverClass) {
     $driver = ($this->createDriver)($driverClass);
-    
+
     expect($driver)->toBeInstanceOf(QuantumDevice::class);
 })->with('concrete_drivers');
 
 it('implements AsynchronousDevice interface', function (string $driverClass) {
     $driver = ($this->createDriver)($driverClass);
-    
+
     expect($driver)->toBeInstanceOf(AsynchronousDevice::class);
 })->with('concrete_drivers');
 
 it('returns correct byte length from generateEntropy', function (string $driverClass) {
     $driver = ($this->createDriver)($driverClass);
-    
+
     $this->bridge->method('execute')
         ->willReturn(['bits' => '1011001110100101']);
 
@@ -63,7 +63,7 @@ it('returns correct byte length from generateEntropy', function (string $driverC
 
 it('converts bitstring to raw bytes correctly', function (string $driverClass) {
     $driver = ($this->createDriver)($driverClass);
-    
+
     // '10110011' = 179 decimal = 0xB3
     // '10100101' = 165 decimal = 0xA5
     $this->bridge->method('execute')

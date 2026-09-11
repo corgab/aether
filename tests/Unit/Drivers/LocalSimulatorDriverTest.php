@@ -6,7 +6,6 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
-use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -57,7 +56,6 @@ afterEach(function () {
 // -------------------------------------------------------------------------
 // Contract
 // -------------------------------------------------------------------------
-
 
 // -------------------------------------------------------------------------
 // executeCircuit()
