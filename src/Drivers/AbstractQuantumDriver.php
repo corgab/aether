@@ -199,37 +199,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         $this->preflightSynchronous();
         $this->validateCircuits(array_values($circuits));
 
-        $payload = $this->payload([
-            'circuits' => array_map(static fn (CircuitBuilder $c): array => $c->toArray(), $circuits),
-        ]);
-
-        $response = $this->bridge->execute('batch.py', $payload, $this->config->toArray());
-
-        if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'batch.py',
-                'expected the "results" key to be present and hold an array.'
-            );
-        }
-
-        if (count($response['results']) !== count($circuits)) {
-            throw QuantumExecutionException::malformedResponse(
-                'batch.py',
-                'expected exactly '.count($circuits).' results, got '.count($response['results']).'.'
-            );
-        }
-
-        $circuitResults = [];
-        foreach ($response['results'] as $result) {
-            if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
-                throw QuantumExecutionException::malformedResponse(
-                    'batch.py',
-                    'expected each result to have a "counts" array.'
-                );
-            }
-
-            $circuitResults[] = new CircuitResult($result['counts']);
-        }
+        $definitions = array_map(static fn (CircuitBuilder $c): array => $c->toArray(), array_values($circuits));
+        $circuitResults = $this->runBatchDefinitions($definitions);
 
         // Announced only once the whole response has been validated, so a
         // malformed batch dispatches nothing — the same all-or-nothing
@@ -293,6 +264,52 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         }
 
         return new CircuitResult($response['counts']);
+    }
+
+    /**
+     * Send an already-validated array of circuit definitions to batch.py and
+     * parse the measurement counts it returns.
+     *
+     * @param  list<array<string, mixed>>  $definitions  The CircuitBuilder::toArray() shapes.
+     * @return list<CircuitResult>
+     *
+     * @throws QuantumExecutionException When the response is malformed.
+     */
+    private function runBatchDefinitions(array $definitions): array
+    {
+        $payload = $this->payload([
+            'circuits' => $definitions,
+        ]);
+
+        $response = $this->bridge->execute('batch.py', $payload, $this->config->toArray());
+
+        if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
+            throw QuantumExecutionException::malformedResponse(
+                'batch.py',
+                'expected the "results" key to be present and hold an array.'
+            );
+        }
+
+        if (count($response['results']) !== count($definitions)) {
+            throw QuantumExecutionException::malformedResponse(
+                'batch.py',
+                'expected exactly '.count($definitions).' results, got '.count($response['results']).'.'
+            );
+        }
+
+        $circuitResults = [];
+        foreach ($response['results'] as $result) {
+            if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
+                throw QuantumExecutionException::malformedResponse(
+                    'batch.py',
+                    'expected each result to have a "counts" array.'
+                );
+            }
+
+            $circuitResults[] = new CircuitResult($result['counts']);
+        }
+
+        return $circuitResults;
     }
 
     /**
