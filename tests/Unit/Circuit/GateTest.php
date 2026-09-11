@@ -403,6 +403,18 @@ it('fromArray throws missingGateParameter when an angle key is missing', functio
 });
 
 // -------------------------------------------------------------------------
+// isMeasurement()
+// -------------------------------------------------------------------------
+
+it('isMeasurement returns true for a measurement gate', function (): void {
+    expect(Gate::measure()->isMeasurement())->toBeTrue();
+});
+
+it('isMeasurement returns false for a non-measurement gate', function (): void {
+    expect(Gate::h(0)->isMeasurement())->toBeFalse();
+});
+
+// -------------------------------------------------------------------------
 // qubitIndices()
 // -------------------------------------------------------------------------
 
