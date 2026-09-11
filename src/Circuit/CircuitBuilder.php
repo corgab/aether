@@ -508,17 +508,33 @@ class CircuitBuilder
             }
 
             $qubits = $gate->qubitIndices();
-            $layer = 1;
+            $count = count($qubits);
 
-            foreach ($qubits as $qubit) {
-                $layer = max($layer, ($qubitLayers[$qubit] ?? 0) + 1);
+            if ($count === 1) {
+                $q = $qubits[0];
+                $layer = ($qubitLayers[$q] ?? 0) + 1;
+                $qubitLayers[$q] = $layer;
+            } elseif ($count === 2) {
+                $q0 = $qubits[0];
+                $q1 = $qubits[1];
+                $layer = max($qubitLayers[$q0] ?? 0, $qubitLayers[$q1] ?? 0) + 1;
+                $qubitLayers[$q0] = $layer;
+                $qubitLayers[$q1] = $layer;
+            } else {
+                $layer = 1;
+                foreach ($qubits as $qubit) {
+                    if (($l = ($qubitLayers[$qubit] ?? 0) + 1) > $layer) {
+                        $layer = $l;
+                    }
+                }
+                foreach ($qubits as $qubit) {
+                    $qubitLayers[$qubit] = $layer;
+                }
             }
 
-            foreach ($qubits as $qubit) {
-                $qubitLayers[$qubit] = $layer;
+            if ($layer > $depth) {
+                $depth = $layer;
             }
-
-            $depth = max($depth, $layer);
         }
 
         return $depth;
