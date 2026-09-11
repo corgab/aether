@@ -7,6 +7,8 @@ use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository as CacheRepository;
 
 dataset('concrete_drivers', [
     'local' => LocalSimulatorDriver::class,
@@ -27,7 +29,11 @@ beforeEach(function () {
 
     $this->createDriver = function (string $class) {
         if ($class === LocalSimulatorDriver::class) {
-            return new LocalSimulatorDriver($this->bridge, ['backend' => 'statevector_simulator']);
+            return new LocalSimulatorDriver(
+                $this->bridge,
+                ['backend' => 'statevector_simulator'],
+                new CacheRepository(new ArrayStore),
+            );
         }
 
         return new AwsBraketDriver($this->bridge, [
