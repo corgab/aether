@@ -2,7 +2,7 @@
 
 Laravel package for quantum computing via AWS Braket and local simulators.
 
-Build quantum circuits, generate hardware-grade entropy, and swap backends with a single config change — all with a fluent, Laravel-native API.
+Build quantum circuits, generate entropy from quantum measurements, and swap backends with a single config change — all with a fluent, Laravel-native API.
 
 ## Requirements
 
@@ -108,6 +108,8 @@ $bytes = $entropy->generate(256);    // 32 raw bytes
 $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
+
+> **Where the randomness comes from.** The bits are the measurement outcomes of qubits placed in superposition, so their quality is the device's. Only a real QPU measures genuinely random bits; the `local` simulator and the managed Braket simulators such as SV1 simulate the circuit classically, and their outcomes come from a pseudorandom number generator. Entropy generation is synchronous, and synchronous runs against a QPU are refused by the synchronous-safety rules, so as shipped `EntropyGenerator` can only reach simulators: treat everything it returns as pseudorandom, fine for development and statistical use, not for keys, tokens or nonces. Use your platform's CSPRNG (`random_bytes()`) for secrets until an asynchronous entropy path exists.
 
 Each call is one circuit run of `entropy_qubits` qubits (default `16`) and `ceil(bits / entropy_qubits)` shots. The [qubit ceiling](#qubit-ceiling) and, on the `aws` driver, the [cost ceiling](#cost-estimation) apply to it exactly as they do to `->run()` — a `generate()` call that would need more qubits or would cost more than configured throws before any Python subprocess is spawned. `integer()` may issue several 256-bit batches under the hood, so on `aws` budget `max_cost_per_run` accordingly. `AETHER_ENTROPY_QUBITS` (or `entropy_qubits` in config) controls the circuit's width.
 

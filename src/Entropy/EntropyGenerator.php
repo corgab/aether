@@ -9,6 +9,11 @@ use Aether\Exceptions\QuantumExecutionException;
 
 /**
  * High-level entropy generator backed by a quantum device.
+ *
+ * The quality of the output is the device's: a QPU measures genuinely
+ * random bits, a simulator (local or managed) draws them from a classical
+ * pseudorandom number generator. Only hardware-backed entropy is suitable
+ * for security-sensitive material such as keys, tokens and nonces.
  */
 class EntropyGenerator
 {

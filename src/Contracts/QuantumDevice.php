@@ -18,7 +18,14 @@ interface QuantumDevice
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult;
 
     /**
-     * Generate a cryptographically strong random bit-string of the requested length.
+     * Generate random bytes covering the requested bit count.
+     *
+     * The strength of the randomness is whatever the implementing backend
+     * measures, not a guarantee of this contract: real quantum hardware
+     * yields genuinely random bits, a simulated backend yields pseudorandom
+     * ones. Implementations must not present simulated bits as hardware
+     * entropy, and callers must rely only on hardware-backed implementations
+     * for keys, tokens and nonces.
      */
     public function generateEntropy(int $bits): string;
 }
