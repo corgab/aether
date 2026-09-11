@@ -14,6 +14,7 @@ use Aether\Exceptions\TaskFailedException;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\QuantumTaskRecorder;
+use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -90,38 +91,75 @@ class PollQuantumTask implements ShouldQueue
 
         $snapshot = $device->checkTask($this->taskArn);
 
-        // The recorder mirrors the backend status onto the quantum_tasks row
-        // (when persistence is on) and swallows database failures, so it can
-        // never fail the job or suppress the CircuitCompleted event below.
         if (! $snapshot->status->isTerminal()) {
-            $maxAttempts = $config->maxPollAttempts();
-
-            if ($this->attempts() >= $maxAttempts) {
-                $this->abandonTask(
-                    $events,
-                    $recorder,
-                    $driverName,
-                    $snapshot->status,
-                    QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts()),
-                );
-            }
-
-            $recorder->recordProgress($this->taskArn, $snapshot->status);
-            $this->release($config->pollInterval());
+            $this->handlePendingTask($snapshot, $events, $recorder, $config, $driverName);
 
             return;
         }
 
         if (! $snapshot->status->isSuccessful()) {
+            $this->handleFailedTask($snapshot, $events, $recorder, $driverName);
+        }
+
+        $this->handleCompletedTask($snapshot, $events, $recorder, $driverName);
+    }
+
+    /**
+     * Handle a task that is still pending.
+     */
+    private function handlePendingTask(
+        TaskSnapshot $snapshot,
+        Dispatcher $events,
+        QuantumTaskRecorder $recorder,
+        AetherConfig $config,
+        string $driverName
+    ): void {
+        // The recorder mirrors the backend status onto the quantum_tasks row
+        // (when persistence is on) and swallows database failures, so it can
+        // never fail the job or suppress the CircuitCompleted event below.
+        $maxAttempts = $config->maxPollAttempts();
+
+        if ($this->attempts() >= $maxAttempts) {
             $this->abandonTask(
                 $events,
                 $recorder,
                 $driverName,
                 $snapshot->status,
-                TaskFailedException::forTask($this->taskArn, $snapshot->status),
+                QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts()),
             );
         }
 
+        $recorder->recordProgress($this->taskArn, $snapshot->status);
+        $this->release($config->pollInterval());
+    }
+
+    /**
+     * Handle a task that has reached a failed terminal state.
+     */
+    private function handleFailedTask(
+        TaskSnapshot $snapshot,
+        Dispatcher $events,
+        QuantumTaskRecorder $recorder,
+        string $driverName
+    ): void {
+        $this->abandonTask(
+            $events,
+            $recorder,
+            $driverName,
+            $snapshot->status,
+            TaskFailedException::forTask($this->taskArn, $snapshot->status),
+        );
+    }
+
+    /**
+     * Handle a task that has reached a successful terminal state.
+     */
+    private function handleCompletedTask(
+        TaskSnapshot $snapshot,
+        Dispatcher $events,
+        QuantumTaskRecorder $recorder,
+        string $driverName
+    ): void {
         if ($snapshot->counts === null) {
             $this->abandonTask(
                 $events,
