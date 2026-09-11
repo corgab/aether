@@ -65,3 +65,15 @@ it('throws OutOfBoundsException for offsetGet', function () {
     $batch = new BatchResult([]);
     expect(fn () => $batch[1])->toThrow(OutOfBoundsException::class);
 });
+
+it('provides an iterator', function () {
+    $result1 = new CircuitResult(['00' => 500]);
+    $result2 = new CircuitResult(['11' => 500]);
+
+    $batch = new BatchResult([$result1, $result2]);
+
+    $iterator = $batch->getIterator();
+
+    expect($iterator)->toBeInstanceOf(ArrayIterator::class)
+        ->and($iterator->getArrayCopy())->toBe([$result1, $result2]);
+});
