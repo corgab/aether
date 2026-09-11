@@ -8,6 +8,9 @@ use InvalidArgumentException;
 
 /**
  * Shared shape validation for stubbed measurement counts.
+ * 
+ * Note: Stub validation deliberately throws native \InvalidArgumentException 
+ * for incorrect test-usage, mirroring Laravel's Http::fake().
  *
  * Used by both QuantumFake and ResultSequence so every entry point that
  * accepts a raw counts array (respondWith(), ResultSequence::push(),
