@@ -63,8 +63,6 @@ final class AetherConfig
 
     /**
      * Python executable used to run the bin/python scripts (`aether.python_path`).
-     *
-     * @deprecated Python support will be removed in the 100% PHP rewrite.
      */
     public function pythonPath(): string
     {
@@ -73,8 +71,6 @@ final class AetherConfig
 
     /**
      * Seconds a Python subprocess may run before it is killed (`aether.process_timeout`).
-     *
-     * @deprecated Python support will be removed in the 100% PHP rewrite.
      */
     public function processTimeout(): int
     {

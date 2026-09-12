@@ -152,6 +152,11 @@ Python tests live in `tests/python/` and test gate validation, circuit translati
 
 ### Architectural Conventions
 
+- **Strict Greenfield Policy (until v1.0.0)**:
+  Aether is in active pre-release development. All pull requests must adhere to a strict greenfield approach:
+  - **No legacy shims or fallbacks**: Do not support moved configuration keys or retain deprecated methods, traits, or classes.
+  - **Clean & strict signatures**: Never introduce artificial nullable arguments (`?Service $service = null`) or container fallback defaults (`$service ??= app(...)`) solely to appease legacy call sites. Use strict typing and direct Dependency Injection everywhere.
+  - **Ruthless refactoring**: Update all call sites directly rather than maintaining transitional compatibility layers.
 - **Drivers**: Driver classes extend `AbstractQuantumDriver` and use the `*Driver` suffix (e.g., `LocalSimulatorDriver`, `AwsBraketDriver`).
 - **Contracts**: Interfaces reside in `Aether\Contracts\` with semantic names and **without** a `Contract` suffix (e.g., `Contracts\QuantumDevice`, `Contracts\BatchableDevice`).
 - **Exceptions**: All domain exceptions extend `AetherException` and provide descriptive static factory methods (e.g., `InvalidCircuitException::missingQubits()`).
@@ -209,6 +214,7 @@ Before opening your pull request, please verify that:
 - [ ] All Python tests pass: `pytest tests/python/ -v`
 - [ ] Static analysis passes at Level 8: `composer analyse`
 - [ ] Code is formatted with Laravel Pint: `composer format`
+- [ ] Greenfield compliance: no backwards-compatibility shims, legacy config fallbacks, or artificial nullable arguments
 - [ ] New features or bug fixes include corresponding Pest and/or Python tests
 - [ ] Relevant documentation or docblocks have been added or updated
 

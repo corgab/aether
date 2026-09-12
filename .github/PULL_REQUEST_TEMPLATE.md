@@ -16,4 +16,5 @@ Closes #
 ---
 
 - [ ] I read [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) and followed the pre-flight checklist
+- [ ] Greenfield compliance: no backwards-compatibility shims, legacy config fallbacks, or artificial nullable arguments
 - [ ] Behaviour changes are reflected in `README.md` and `config/aether.php`
