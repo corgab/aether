@@ -152,6 +152,10 @@ Python tests live in `tests/python/` and test gate validation, circuit translati
 
 ### Architectural Conventions
 
+- **Strict Typing & Direct DI**:
+  - **No legacy shims or fallbacks**: Do not support moved configuration keys or retain speculative deprecated methods, traits, or classes.
+  - **Clean & strict signatures**: Never introduce artificial nullable arguments (`?Service $service = null`) or container fallback defaults (`$service ??= app(...)`) solely to appease hypothetical callers. Use strict typing and direct Dependency Injection everywhere.
+  - **Direct refactoring**: Update all call sites and tests directly rather than maintaining transitional compatibility layers.
 - **Drivers**: Driver classes extend `AbstractQuantumDriver` and use the `*Driver` suffix (e.g., `LocalSimulatorDriver`, `AwsBraketDriver`).
 - **Contracts**: Interfaces reside in `Aether\Contracts\` with semantic names and **without** a `Contract` suffix (e.g., `Contracts\QuantumDevice`, `Contracts\BatchableDevice`).
 - **Exceptions**: All domain exceptions extend `AetherException` and provide descriptive static factory methods (e.g., `InvalidCircuitException::missingQubits()`).
@@ -209,6 +213,7 @@ Before opening your pull request, please verify that:
 - [ ] All Python tests pass: `pytest tests/python/ -v`
 - [ ] Static analysis passes at Level 8: `composer analyse`
 - [ ] Code is formatted with Laravel Pint: `composer format`
+- [ ] Strict typing & direct DI: no artificial container fallbacks, backward-compatibility shims, or premature deprecations
 - [ ] New features or bug fixes include corresponding Pest and/or Python tests
 - [ ] Relevant documentation or docblocks have been added or updated
 

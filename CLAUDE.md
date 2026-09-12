@@ -45,6 +45,7 @@ Quantum (Facade)
 ## Conventions
 
 - **PSR-12** strict, `declare(strict_types=1)` in every PHP file
+- **Strict Typing & Direct DI:** Never introduce backward-compatibility shims, legacy config fallbacks, premature `@deprecated` tags, or artificial nullable arguments with container defaults (`?Service $service = null`, `$service ??= app(...)`) to accommodate hypothetical callers. Always use strict typing and direct Dependency Injection, refactoring all call sites directly.
 - **PHP 8.3+** features: readonly properties, named arguments, match expressions
 - **Laravel style naming:** Driver files use `*Driver` suffix (`LocalSimulatorDriver`, `AwsBraketDriver`). Contracts use semantic names without `Contract` suffix (`Contracts\QuantumDevice`).
 - **Tests use Pest PHP**, not raw PHPUnit classes. Use `it()` / `test()` with `expect()`.

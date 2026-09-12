@@ -101,8 +101,6 @@ readonly class DriverConfig
      * The raw array exactly as configured, for the `driver_config` payload key.
      *
      * @return array<string, mixed>
-     *
-     * @deprecated Passing the raw array is a transitional mechanism for the Python bridge.
      */
     public function toArray(): array
     {
