@@ -486,10 +486,15 @@ class CircuitBuilder
      */
     public function gateCount(): int
     {
-        return count(array_filter(
-            $this->gates,
-            static fn (Gate $gate): bool => ! $gate->isMeasurement(),
-        ));
+        $count = 0;
+
+        foreach ($this->gates as $gate) {
+            if (! $gate->isMeasurement()) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**
