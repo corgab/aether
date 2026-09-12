@@ -137,6 +137,12 @@ return [
             // InvalidDriverConfigException when the driver is resolved. Applies
             // to ->run(), ->dispatch(), Quantum::batch() and entropy generation alike.
             'max_qubits' => env('AETHER_MAX_QUBITS', 25),
+
+            // The cache store used to hold results for asynchronously
+            // submitted circuits (see "Local Task Retention" above). null
+            // uses the application's default cache store; the value must
+            // name a store defined in config/cache.php.
+            'cache_store' => env('AETHER_LOCAL_CACHE_STORE'),
         ],
 
         'aws' => [

@@ -7,10 +7,12 @@ namespace Aether\Tests\Feature\Jobs;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
+use Aether\Contracts\ValidatesDispatch;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use RuntimeException;
+use Throwable;
 
 /**
  * Test double for a driver that supports asynchronous execution.
@@ -19,7 +21,7 @@ use RuntimeException;
  * configurable snapshot so tests can drive the polling job through every
  * branch of its state machine.
  */
-final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
+final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice, ValidatesDispatch
 {
     /** @var CircuitBuilder[] */
     public array $submittedCircuits = [];
@@ -31,13 +33,16 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
 
     public TaskSnapshot $snapshotToReturn;
 
-    /**
-     * When true, submitCircuit() throws instead of recording the circuit and
-     * returning a task ARN, simulating a submission-time failure.
-     */
-    public bool $throwOnSubmit = false;
+    /** Throw this (or simulate submission-time failure) from submitCircuit() instead of returning an ARN. */
+    public bool|Throwable|null $throwOnSubmit = null;
 
-    public ?\Throwable $throwOnCheck = null;
+    public ?Throwable $throwOnCheck = null;
+
+    /** Throw this from validateDispatch(). */
+    public ?Throwable $throwOnValidate = null;
+
+    /** The queue connections validateDispatch() was called with. */
+    public array $validatedConnections = [];
 
     public function __construct()
     {
@@ -54,9 +59,22 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
         return str_repeat("\x00", (int) ceil($bits / 8));
     }
 
+    public function validateDispatch(?string $queueConnection = null): void
+    {
+        $this->validatedConnections[] = $queueConnection;
+
+        if ($this->throwOnValidate !== null) {
+            throw $this->throwOnValidate;
+        }
+    }
+
     public function submitCircuit(CircuitBuilder $circuit): string
     {
-        if ($this->throwOnSubmit) {
+        if ($this->throwOnSubmit instanceof Throwable) {
+            throw $this->throwOnSubmit;
+        }
+
+        if ($this->throwOnSubmit === true) {
             throw new RuntimeException('submission failed');
         }
 

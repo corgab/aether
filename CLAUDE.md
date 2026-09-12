@@ -61,10 +61,11 @@ Quantum (Facade)
 - **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before failing the job. Both belong to the job: `QuantumFake` only reports statuses, so a job run against it dispatches each event once.
 - **Entropy is requested in whole bytes:** AbstractQuantumDriver rounds the bit count up to the next multiple of 8, so every byte returned by EntropyGenerator::generate() is fully measured rather than zero-padded; PythonBridge::bitstringToBytes() rejects bit strings whose length is not a multiple of 8.
 - **Polling resilience:** PollQuantumTask lets transient checkTask() errors propagate (retried by the worker with poll_interval backoff, aether.max_poll_exceptions being a lifetime total per job); driver resolution/config/environment errors, malformed check.py responses and terminal task states fail the job at once via FailsWithoutRetry.
+- **Local async results:** `LocalSimulatorDriver` caches them in `drivers.local.cache_store` (default store when null) and refuses the process-local array store when the submission job runs on a non-sync connection, unless the store is named explicitly; an unresolvable or null store is refused at dispatch time.
 
 ## Config
 
-Published to `config/aether.php`. Key settings: `default` (driver name), `python_path` (Python executable), `drivers` (per-driver config with `synchronous_safe` flag).
+Published to `config/aether.php`. Key settings: `default` (driver name), `python_path` (Python executable), `drivers` (per-driver config with `synchronous_safe` flag, and, for `local`, `cache_store` — the cache store holding asynchronous results, defaulting to the app's default store).
 
 Package-level settings are read through `Config\AetherConfig` (a container singleton), never via `config('aether.*')` directly: it owns every top-level default (`DEFAULT_DRIVER = 'local'`, poll interval, attempts, local task TTL...) and returns typed values. Jobs get it by method injection in `handle()`; constructors, `tries()` and drivers resolve it with `app(AetherConfig::class)`. Per-driver options (`aether.drivers.*`) are the driver's own business.
 

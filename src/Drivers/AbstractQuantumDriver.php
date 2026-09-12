@@ -202,6 +202,17 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
+     * Read a string option from the driver config, trimmed, treating a
+     * missing, non-string or blank value as unset.
+     */
+    protected function configString(string $key): ?string
+    {
+        $value = $this->config->get($key);
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    /**
      * Guard against a circuit that requests more qubits than the driver's
      * configured `max_qubits` ceiling allows.
      * Statevector simulation memory doubles with every additional qubit, so

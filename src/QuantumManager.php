@@ -12,6 +12,7 @@ use Aether\Drivers\AwsBraketDriver;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Exceptions\DriverNotFoundException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Results\CircuitResult;
 use Aether\Testing\QuantumFake;
 use Aether\Testing\ResultSequence;
@@ -191,11 +192,27 @@ class QuantumManager extends Manager
      */
     protected function createLocalDriver(): LocalSimulatorDriver
     {
+        $config = $this->settings()->driver('local');
+        $store = $config['cache_store'] ?? null;
+
+        $cache = is_string($store) && trim($store) !== ''
+            ? $this->resolveCacheStore(trim($store))
+            : $this->container->make(CacheRepository::class);
+
         return new LocalSimulatorDriver(
             $this->createBridge(),
-            $this->settings()->driver('local'),
-            $this->container->make(CacheRepository::class),
+            $config,
+            $cache,
         );
+    }
+
+    private function resolveCacheStore(string $store): CacheRepository
+    {
+        try {
+            return $this->container->make('cache')->store($store);
+        } catch (\Throwable $e) {
+            throw InvalidDriverConfigException::unknownCacheStore('local', $store, $e);
+        }
     }
 
     /**

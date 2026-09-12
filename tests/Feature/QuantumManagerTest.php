@@ -10,6 +10,7 @@ use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\QuantumManager;
 
 it('resolves the default driver as LocalSimulatorDriver', function () {
@@ -166,4 +167,20 @@ it('pins the resolved default driver name when no driver is requested', function
     $manager = app(QuantumManager::class);
 
     expect($manager->circuit()->driverName())->toBe('local');
+});
+
+it('resolves the local driver with a custom cache store when configured', function () {
+    config()->set('cache.stores.custom_array', ['driver' => 'array']);
+    config()->set('aether.drivers.local.cache_store', 'custom_array');
+
+    $manager = app(QuantumManager::class);
+    expect($manager->driver('local'))->toBeInstanceOf(LocalSimulatorDriver::class);
+});
+
+it('throws InvalidDriverConfigException when the configured cache store cannot be resolved', function () {
+    config()->set('aether.drivers.local.cache_store', 'nonexistent_store');
+
+    $manager = app(QuantumManager::class);
+    expect(fn () => $manager->driver('local'))
+        ->toThrow(InvalidDriverConfigException::class, 'cannot resolve cache store [nonexistent_store]');
 });
