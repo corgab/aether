@@ -20,9 +20,9 @@ use Illuminate\Support\Facades\Facade;
  *
  * @method static string getDefaultDriver()
  * @method static QuantumDevice driver(string|\UnitEnum|null $driver = null)
- * @method static CircuitBuilder circuit(?string $driver = null)
- * @method static BatchBuilder batch(array<array-key, CircuitBuilder> $circuits, ?string $driver = null)
- * @method static EntropyGenerator entropy(?string $driver = null)
+ * @method static CircuitBuilder circuit(string|\UnitEnum|null $driver = null)
+ * @method static BatchBuilder batch(array<array-key, CircuitBuilder> $circuits, string|\UnitEnum|null $driver = null)
+ * @method static EntropyGenerator entropy(string|\UnitEnum|null $driver = null)
  * @method static \Aether\Bridge\PythonBridge bridge()
  * @method static void extend(string $name, Closure $callback)
  * @method static QuantumFake fake(array<string, int>|CircuitResult|Closure(CircuitBuilder): (array<string, int>|CircuitResult|null)|ResultSequence|null $stub = null)

@@ -42,20 +42,27 @@ class QuantumManager extends Manager
      * Resolve the given driver, or the default when no name is provided.
      * Returns the fake instance when testing.
      *
+     * @param  string|UnitEnum|null  $driver
+     *
      * @throws DriverNotFoundException When no built-in or custom driver matches the name.
      */
     public function driver($driver = null)
     {
+        $name = $this->driverAlias($driver);
+
         if ($this->fakeInstance !== null) {
-            return $this->fakeInstance->resolvedAs($this->driverAlias($driver));
+            return $this->fakeInstance->resolvedAs($name);
         }
 
-        return parent::driver($driver);
+        return parent::driver($name);
     }
 
     /**
      * The string alias for a driver argument, which Manager also accepts as an
-     * enum; the fake reports this on the events it dispatches.
+     * enum. The one place in the manager that knows how an absent name
+     * resolves to the default: the fake reports it on the events it
+     * dispatches, and driver(), circuit(), batch(), and entropy() pin or
+     * resolve it.
      */
     private function driverAlias(string|UnitEnum|null $driver): string
     {
@@ -74,11 +81,13 @@ class QuantumManager extends Manager
      * dispatched to the queue executes on the same backend it was built for,
      * even if the default driver changes before the job runs.
      */
-    public function circuit(?string $driver = null): CircuitBuilder
+    public function circuit(string|UnitEnum|null $driver = null): CircuitBuilder
     {
+        $name = $this->driverAlias($driver);
+
         return new CircuitBuilder(
-            $this->driver($driver),
-            $driver ?? $this->getDefaultDriver(),
+            $this->driver($name),
+            $name,
         );
     }
 
@@ -87,19 +96,21 @@ class QuantumManager extends Manager
      *
      * @param  array<array-key, CircuitBuilder>  $circuits
      */
-    public function batch(array $circuits, ?string $driver = null): BatchBuilder
+    public function batch(array $circuits, string|UnitEnum|null $driver = null): BatchBuilder
     {
+        $name = $this->driverAlias($driver);
+
         return new BatchBuilder(
-            $this->driver($driver),
+            $this->driver($name),
             array_values($circuits),
-            $driver ?? $this->getDefaultDriver(),
+            $name,
         );
     }
 
     /**
      * Create an EntropyGenerator backed by the given (or default) driver.
      */
-    public function entropy(?string $driver = null): EntropyGenerator
+    public function entropy(string|UnitEnum|null $driver = null): EntropyGenerator
     {
         return new EntropyGenerator($this->driver($driver));
     }

@@ -114,7 +114,7 @@ class PollQuantumTask implements ShouldQueue
 
         // Resolving an unregistered driver is a failure no retry will cure.
         try {
-            $device = $manager->driver($this->driver);
+            $device = $manager->driver($driverName);
         } catch (DriverNotFoundException $e) {
             $this->abandonTask($events, $recorder, $driverName, null, $e);
 

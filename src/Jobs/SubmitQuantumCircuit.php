@@ -70,7 +70,7 @@ class SubmitQuantumCircuit implements ShouldQueue
         $driverName = $this->driver ?? $config->defaultDriver();
 
         try {
-            $device = $manager->driver($this->driver);
+            $device = $manager->driver($driverName);
         } catch (DriverNotFoundException $e) {
             $this->failWithoutRetry($e);
 

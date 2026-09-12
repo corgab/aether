@@ -162,11 +162,20 @@ it('names the driver on circuits it builds so dispatched jobs target the same ba
 });
 
 it('pins the resolved default driver name when no driver is requested', function () {
-    config()->set('aether.default', 'local');
+    config()->set('aether.default', 'aws');
 
     $manager = app(QuantumManager::class);
 
-    expect($manager->circuit()->driverName())->toBe('local');
+    expect($manager->circuit()->driverName())->toBe('aws');
+});
+
+it('pins the resolved default driver name on batches when no driver is requested', function () {
+    config()->set('aether.default', 'aws');
+
+    $manager = app(QuantumManager::class);
+    $batch = $manager->batch([$manager->circuit()->qubits(1)->h(0)->measure()]);
+
+    expect($batch->driverName())->toBe('aws');
 });
 
 it('resolves the local driver with a custom cache store when configured', function () {
@@ -183,4 +192,34 @@ it('throws InvalidDriverConfigException when the configured cache store cannot b
     $manager = app(QuantumManager::class);
     expect(fn () => $manager->driver('local'))
         ->toThrow(InvalidDriverConfigException::class, 'cannot resolve cache store [nonexistent_store]');
+});
+
+enum TestQuantumDriverEnum: string
+{
+    case Aws = 'aws';
+    case Local = 'local';
+}
+
+enum TestUnitQuantumDriverEnum
+{
+    case local;
+}
+
+it('resolves backed and unit enums when creating circuits, batches, entropy, and drivers', function () {
+    $manager = app(QuantumManager::class);
+
+    expect($manager->driver(TestQuantumDriverEnum::Local))->toBeInstanceOf(LocalSimulatorDriver::class);
+    expect($manager->driver(TestUnitQuantumDriverEnum::local))->toBeInstanceOf(LocalSimulatorDriver::class);
+
+    $circuit = $manager->circuit(TestQuantumDriverEnum::Aws);
+    expect($circuit->driverName())->toBe('aws');
+
+    $circuitUnit = $manager->circuit(TestUnitQuantumDriverEnum::local);
+    expect($circuitUnit->driverName())->toBe('local');
+
+    $batch = $manager->batch([$manager->circuit('aws')->qubits(1)->h(0)->measure()], TestQuantumDriverEnum::Aws);
+    expect($batch->driverName())->toBe('aws');
+
+    $entropy = $manager->entropy(TestQuantumDriverEnum::Local);
+    expect($entropy)->toBeInstanceOf(EntropyGenerator::class);
 });

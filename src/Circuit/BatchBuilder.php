@@ -56,4 +56,12 @@ class BatchBuilder
 
         return $this->device->executeBatch($this->circuits);
     }
+
+    /**
+     * Get the name of the driver this batch is pinned to.
+     */
+    public function driverName(): string
+    {
+        return $this->driverName;
+    }
 }
