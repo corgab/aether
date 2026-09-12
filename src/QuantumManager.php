@@ -40,6 +40,8 @@ class QuantumManager extends Manager
     /**
      * Resolve the given driver, or the default when no name is provided.
      * Returns the fake instance when testing.
+     *
+     * @throws DriverNotFoundException When no built-in or custom driver matches the name.
      */
     public function driver($driver = null)
     {
@@ -138,6 +140,8 @@ class QuantumManager extends Manager
 
     /**
      * Resolve a driver by name, throwing DriverNotFoundException for unknown drivers.
+     *
+     * @throws DriverNotFoundException
      */
     protected function createDriver($driver)
     {

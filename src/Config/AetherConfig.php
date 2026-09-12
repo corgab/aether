@@ -30,6 +30,8 @@ final class AetherConfig
 
     public const DEFAULT_MAX_POLL_ATTEMPTS = 720;
 
+    public const DEFAULT_MAX_POLL_EXCEPTIONS = 5;
+
     public function __construct(
         private readonly Repository $config,
     ) {}
@@ -101,6 +103,14 @@ final class AetherConfig
     public function maxPollAttempts(): int
     {
         return $this->integer('aether.max_poll_attempts', self::DEFAULT_MAX_POLL_ATTEMPTS);
+    }
+
+    /**
+     * Maximum transient exceptions allowed for a polling job (`aether.max_poll_exceptions`).
+     */
+    public function maxPollExceptions(): int
+    {
+        return $this->integer('aether.max_poll_exceptions', self::DEFAULT_MAX_POLL_EXCEPTIONS);
     }
 
     /**

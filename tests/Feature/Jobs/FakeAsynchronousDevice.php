@@ -37,6 +37,8 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
      */
     public bool $throwOnSubmit = false;
 
+    public ?\Throwable $throwOnCheck = null;
+
     public function __construct()
     {
         $this->snapshotToReturn = new TaskSnapshot(TaskStatus::Completed, ['00' => 5, '11' => 5]);
@@ -66,6 +68,10 @@ final class FakeAsynchronousDevice implements AsynchronousDevice, QuantumDevice
     public function checkTask(string $taskArn): TaskSnapshot
     {
         $this->checkedTaskArns[] = $taskArn;
+
+        if ($this->throwOnCheck !== null) {
+            throw $this->throwOnCheck;
+        }
 
         return $this->snapshotToReturn;
     }

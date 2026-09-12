@@ -52,7 +52,7 @@ class QuantumTaskRecorder
      *
      * @param  array<string, int>|null  $counts
      */
-    public function recordProgress(string $taskArn, TaskStatus $status, ?array $counts = null, ?string $error = null): void
+    public function recordProgress(string $taskArn, ?TaskStatus $status = null, ?array $counts = null, ?string $error = null): void
     {
         $this->write(static function () use ($taskArn, $status, $counts, $error): void {
             $task = QuantumTask::query()->where('task_arn', $taskArn)->first();
@@ -61,7 +61,9 @@ class QuantumTaskRecorder
                 return;
             }
 
-            $task->status = $status;
+            if ($status !== null) {
+                $task->status = $status;
+            }
 
             if ($counts !== null) {
                 $task->counts = $counts;
@@ -75,6 +77,24 @@ class QuantumTaskRecorder
                 $task->failed_at = now();
             }
 
+            $task->save();
+        });
+    }
+
+    /**
+     * Record a failure on an existing task row only if no error was recorded yet.
+     */
+    public function recordFailureIfEmpty(string $taskArn, string $error): void
+    {
+        $this->write(static function () use ($taskArn, $error): void {
+            $task = QuantumTask::query()->where('task_arn', $taskArn)->first();
+
+            if ($task === null || $task->error !== null) {
+                return;
+            }
+
+            $task->error = $error;
+            $task->failed_at = now();
             $task->save();
         });
     }

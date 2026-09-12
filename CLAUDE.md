@@ -58,8 +58,9 @@ Quantum (Facade)
 - **Ceilings cover entropy:** generateEntropy() describes its circuit as a CircuitBuilder and runs validateCircuits(), so max_qubits and max_cost_per_run apply to Quantum::entropy() too.
 - **Task persistence goes through `Tasks\QuantumTaskRecorder`:** both jobs call `recordSubmission()` / `recordProgress()`; the recorder alone checks `aether.persist_tasks` and reports-and-swallows database failures, so a job never repeats that guard or try/catch.
 - **Entropy strength is the device's:** only a QPU yields genuinely random bits; the local and managed simulators are pseudorandom. Docblocks and README must never call simulator entropy cryptographically strong.
-- **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before throwing on failure. Both belong to the job: `QuantumFake` only reports statuses, so a job run against it dispatches each event once.
+- **Both outcomes have an event:** `PollQuantumTask` dispatches `CircuitCompleted` on success and `CircuitFailed` (driver, circuit, task ARN, last status, reason) right before failing the job. Both belong to the job: `QuantumFake` only reports statuses, so a job run against it dispatches each event once.
 - **Entropy is requested in whole bytes:** AbstractQuantumDriver rounds the bit count up to the next multiple of 8, so every byte returned by EntropyGenerator::generate() is fully measured rather than zero-padded; PythonBridge::bitstringToBytes() rejects bit strings whose length is not a multiple of 8.
+- **Polling resilience:** PollQuantumTask lets transient checkTask() errors propagate (retried by the worker with poll_interval backoff, aether.max_poll_exceptions being a lifetime total per job); driver resolution/config/environment errors, malformed check.py responses and terminal task states fail the job at once via FailsWithoutRetry.
 
 ## Config
 

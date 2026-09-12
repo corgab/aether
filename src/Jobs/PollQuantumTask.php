@@ -9,8 +9,12 @@ use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitCompleted;
 use Aether\Events\CircuitFailed;
+use Aether\Exceptions\DriverNotFoundException;
+use Aether\Exceptions\InvalidDriverConfigException;
+use Aether\Exceptions\MalformedResponseException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
+use Aether\Jobs\Concerns\FailsWithoutRetry;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\QuantumTaskRecorder;
@@ -30,23 +34,39 @@ use Throwable;
  * task with no counts) fires {@see CircuitFailed} and then raises
  * {@see TaskFailedException} or {@see QuantumExecutionException}.
  *
- * The high attempt allowance exists purely to budget the polling loop, so
- * genuine failures are capped separately by {@see $maxExceptions}.
+ * The high attempt allowance exists purely to budget the polling loop.
+ * Genuine failures fall into two classes: deliberate terminal outcomes and
+ * configuration/environment errors fail the job outright via
+ * {@see FailsWithoutRetry}, while everything else (a Python subprocess
+ * error, a timeout, AWS throttling, a cache hiccup) is transient and is
+ * left to propagate so the worker retries it, capped by {@see $maxExceptions}
+ * with backoff().
  */
 class PollQuantumTask implements ShouldQueue
 {
+    use FailsWithoutRetry;
     use Queueable;
 
     /**
-     * The maximum number of unhandled exceptions before failing the job.
+     * The maximum number of unhandled (transient) exceptions before failing
+     * the job.
      *
      * Polling re-queues the job through release(), which does not increment
      * the exception count, so every attempt budgeted by tries() stays
-     * available for the loop. A thrown exception, by contrast, always signals
-     * a genuine failure and must fail the job outright instead of being
-     * retried hundreds of times with no backoff.
+     * available for the loop. A transient exception thrown from checkTask(),
+     * by contrast, is retried by the worker with backoff(); Laravel counts
+     * those exceptions per job for its whole lifetime (the counter is not
+     * reset by a later successful poll), so this is a total budget across
+     * the poll, not a per-incident one.
+     *
+     * Laravel's queue payload builder only reads this as a plain property
+     * (Illuminate\Queue\Queue::createObjectPayload() via
+     * ReadsClassAttributes::getAttributeValue(), which never checks
+     * method_exists() for maxExceptions the way it does for tries()/
+     * backoff()), so it is set here in the constructor rather than exposed
+     * as a maxExceptions() method.
      */
-    public int $maxExceptions = 1;
+    public int $maxExceptions;
 
     /**
      * Create a new job instance.
@@ -60,9 +80,9 @@ class PollQuantumTask implements ShouldQueue
         public readonly array $circuit,
         public readonly ?string $driver = null,
     ) {
-        // Constructors get no method injection, so the queue name is resolved
-        // from the container by hand; tries() below is in the same position.
-        $this->onQueue(app(AetherConfig::class)->queue());
+        $config = app(AetherConfig::class);
+        $this->onQueue($config->queue());
+        $this->maxExceptions = $config->maxPollExceptions();
     }
 
     /**
@@ -77,18 +97,53 @@ class PollQuantumTask implements ShouldQueue
     }
 
     /**
+     * Determine the number of seconds to wait before retrying a transient
+     * exception, matching the delay used between ordinary polls.
+     */
+    public function backoff(): int
+    {
+        return app(AetherConfig::class)->pollInterval();
+    }
+
+    /**
      * Execute the job.
      */
     public function handle(QuantumManager $manager, Dispatcher $events, QuantumTaskRecorder $recorder, AetherConfig $config): void
     {
         $driverName = $this->driver ?? $config->defaultDriver();
-        $device = $manager->driver($this->driver);
 
-        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
-            throw QuantumExecutionException::asynchronousUnsupported($driverName);
+        // Resolving an unregistered driver is a failure no retry will cure.
+        try {
+            $device = $manager->driver($this->driver);
+        } catch (DriverNotFoundException $e) {
+            $this->abandonTask($events, $recorder, $driverName, null, $e);
+
+            return;
         }
 
-        $snapshot = $device->checkTask($this->taskArn);
+        if (! $device instanceof AsynchronousDevice || ! $device instanceof QuantumDevice) {
+            $this->abandonTask(
+                $events,
+                $recorder,
+                $driverName,
+                null,
+                QuantumExecutionException::asynchronousUnsupported($driverName),
+            );
+
+            return;
+        }
+
+        // Likewise for the poll itself: a missing config key, a missing Python
+        // binary, or a response the driver cannot read fail at once. Anything
+        // else is transient and left to propagate so the worker retries it
+        // with backoff().
+        try {
+            $snapshot = $device->checkTask($this->taskArn);
+        } catch (InvalidDriverConfigException|MalformedResponseException $e) {
+            $this->abandonTask($events, $recorder, $driverName, null, $e);
+
+            return;
+        }
 
         // The recorder mirrors the backend status onto the quantum_tasks row
         // (when persistence is on) and swallows database failures, so it can
@@ -104,10 +159,12 @@ class PollQuantumTask implements ShouldQueue
                     $snapshot->status,
                     QuantumExecutionException::pollingExhausted($this->taskArn, $this->attempts()),
                 );
+
+                return;
             }
 
             $recorder->recordProgress($this->taskArn, $snapshot->status);
-            $this->release($config->pollInterval());
+            $this->release($this->backoff());
 
             return;
         }
@@ -120,6 +177,8 @@ class PollQuantumTask implements ShouldQueue
                 $snapshot->status,
                 TaskFailedException::forTask($this->taskArn, $snapshot->status),
             );
+
+            return;
         }
 
         if ($snapshot->counts === null) {
@@ -133,6 +192,8 @@ class PollQuantumTask implements ShouldQueue
                     "task [{$this->taskArn}] completed but returned no measurement counts."
                 ),
             );
+
+            return;
         }
 
         $recorder->recordProgress($this->taskArn, $snapshot->status, $snapshot->counts);
@@ -146,22 +207,31 @@ class PollQuantumTask implements ShouldQueue
     }
 
     /**
-     * Record a task that ended without a result, announce it, and fail the job.
+     * Final failure hook, invoked by the worker once the job is failed for
+     * good — including after a transient exception has been retried
+     * `aether.max_poll_exceptions` times.
      *
-     * CircuitFailed is the counterpart of CircuitCompleted: it is dispatched
-     * before the exception so application code can react to the failure
-     * (notify, refund, retry elsewhere) without reading failed_jobs. The
-     * exception still propagates so the job is failed and recorded as usual;
-     * a listener that throws is reported and swallowed, so it can never
-     * replace the task failure as the reason the job failed.
+     * Idempotent with the recorder calls already made by the deliberate
+     * failure paths: only writes when the row has no error recorded
+     * yet, so a transient failure that exhausts its budget after one of
+     * those paths already ran does not clobber the original message.
+     */
+    public function failed(Throwable $exception): void
+    {
+        app(QuantumTaskRecorder::class)->recordFailureIfEmpty($this->taskArn, $exception->getMessage());
+    }
+
+    /**
+     * Record a task that ended without a result, announce it via CircuitFailed,
+     * and fail the job without retry.
      */
     private function abandonTask(
         Dispatcher $events,
         QuantumTaskRecorder $recorder,
         string $driverName,
-        TaskStatus $status,
+        ?TaskStatus $status,
         Throwable $exception,
-    ): never {
+    ): void {
         $recorder->recordProgress($this->taskArn, $status, null, $exception->getMessage());
 
         try {
@@ -169,13 +239,13 @@ class PollQuantumTask implements ShouldQueue
                 $driverName,
                 $this->circuit,
                 $this->taskArn,
-                $status,
+                $status ?? TaskStatus::Failed,
                 $exception->getMessage(),
             ));
         } catch (Throwable $listenerFailure) {
             report($listenerFailure);
         }
 
-        throw $exception;
+        $this->failWithoutRetry($exception);
     }
 }

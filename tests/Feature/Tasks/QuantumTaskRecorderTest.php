@@ -117,6 +117,37 @@ it('leaves a task that was never recorded alone', function () {
     $this->assertDatabaseCount('quantum_tasks', 0);
 });
 
+it('leaves the status untouched when recordProgress is called with null status', function () {
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
+
+    $this->recorder->recordProgress('arn:1', null, null, 'driver config missing');
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Created)
+        ->and($task->error)->toBe('driver config missing')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
+it('records failure via recordFailureIfEmpty only when no error is recorded yet', function () {
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
+
+    $this->recorder->recordFailureIfEmpty('arn:1', 'first error');
+    $task = QuantumTask::query()->firstOrFail();
+    expect($task->error)->toBe('first error')
+        ->and($task->failed_at)->not->toBeNull();
+
+    $this->recorder->recordFailureIfEmpty('arn:1', 'second error');
+    $task->refresh();
+    expect($task->error)->toBe('first error');
+});
+
+it('ignores recordFailureIfEmpty when task does not exist', function () {
+    $this->recorder->recordFailureIfEmpty('arn:nonexistent', 'error');
+
+    $this->assertDatabaseCount('quantum_tasks', 0);
+});
+
 // -------------------------------------------------------------------------
 // Failure handling
 // -------------------------------------------------------------------------
