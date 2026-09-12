@@ -52,7 +52,7 @@ Quantum (Facade)
 - **Exceptions** all extend `AetherException` with static factory methods (`::fromPythonError()`, `::forDriver()`, etc.)
 - **Driver config is typed:** `AbstractQuantumDriver` builds a `Config\DriverConfig` (`AwsDriverConfig` for aws) once in its constructor; invalid values throw `InvalidDriverConfigException` there, blank means default. Read options via `$this->config->maxQubits` / `->get('key')`, never `$this->config['key']`. The raw array still goes to Python as `driver_config`.
 - **PythonBridge** only passes non-null env vars to preserve boto3 credential chain (IAM Roles).
-- **QPU safety:** Drivers with `synchronous_safe: false` throw on `->run()` to prevent HTTP timeouts.
+- **QPU safety:** synchronous_safe is tri-state; null (default) refuses ->run() when device_arn contains device/qpu/, true allows, false refuses. Async paths are never blocked.
 - **EntropyGenerator::integer()** uses rejection sampling on a 256-bit batch buffer — never modulo.
 - **No double submission:** SubmitQuantumCircuit retries only before submitCircuit() returns; a post-submission failure fails the job (or rethrows when not under a worker) instead of letting a retryable exception escape, so a queued retry can never create a second billable task.
 - **Ceilings cover entropy:** generateEntropy() describes its circuit as a CircuitBuilder and runs validateCircuits(), so max_qubits and max_cost_per_run apply to Quantum::entropy() too.

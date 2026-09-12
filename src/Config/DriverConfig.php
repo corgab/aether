@@ -42,9 +42,10 @@ readonly class DriverConfig
     public int $entropyQubits;
 
     /**
-     * Whether a synchronous ->run() is allowed on this driver.
+     * Whether a synchronous ->run() is allowed on this driver, or null to
+     * derive from the driver's device ARN.
      */
-    public bool $synchronousSafe;
+    public ?bool $synchronousSafe;
 
     /**
      * @param  string  $driver  Driver identifier, used in exception messages.
@@ -66,7 +67,7 @@ readonly class DriverConfig
             ? self::DEFAULT_ENTROPY_QUBITS
             : $entropyQubits;
 
-        $this->synchronousSafe = $this->boolean('synchronous_safe', $this->get('synchronous_safe')) ?? true;
+        $this->synchronousSafe = $this->boolean('synchronous_safe', $this->get('synchronous_safe'));
     }
 
     /**

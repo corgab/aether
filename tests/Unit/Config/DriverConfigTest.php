@@ -15,7 +15,7 @@ it('applies the documented defaults to an empty array', function () {
     expect($config->driver)->toBe('local')
         ->and($config->maxQubits)->toBeNull()
         ->and($config->entropyQubits)->toBe(DriverConfig::DEFAULT_ENTROPY_QUBITS)
-        ->and($config->synchronousSafe)->toBeTrue()
+        ->and($config->synchronousSafe)->toBeNull()
         ->and($config->toArray())->toBe([]);
 });
 
@@ -28,7 +28,7 @@ it('treats null and blank strings as unset', function (mixed $blank) {
 
     expect($config->maxQubits)->toBeNull()
         ->and($config->entropyQubits)->toBe(16)
-        ->and($config->synchronousSafe)->toBeTrue();
+        ->and($config->synchronousSafe)->toBeNull();
 })->with(['null' => [null], 'empty string' => [''], 'whitespace' => ['   ']]);
 
 // -------------------------------------------------------------------------

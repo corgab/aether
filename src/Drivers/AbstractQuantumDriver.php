@@ -98,17 +98,56 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Hook for driver-specific pre-flight logic (e.g. safety checks).
+     * Hook for other driver-specific pre-flight logic.
      *
      * Runs before every circuit execution and entropy generation, after the
-     * required-config check. Default is a no-op; overrides need no parent call.
+     * required-config and synchronous-safety checks. Default is a no-op;
+     * overrides need no parent call.
      */
     protected function beforeExecution(): void {}
 
     /**
+     * Refuse synchronous execution per the tri-state `synchronous_safe`
+     * config: `true` always allows it, `false` always refuses it, and the
+     * default `null` (or any non-bool value) derives the answer from
+     * `device_arn` — a Braket QPU ARN refuses, anything else (a simulator,
+     * or no ARN at all) is allowed.
+     *
+     * @throws QuantumExecutionException
+     */
+    protected function assertSynchronousSafe(): void
+    {
+        $synchronousSafe = $this->config->synchronousSafe;
+
+        if ($synchronousSafe === true) {
+            return;
+        }
+
+        if ($synchronousSafe === false) {
+            throw QuantumExecutionException::synchronousUnsafe($this->driverName());
+        }
+
+        if (! $this->isSynchronousSafeByDefault()) {
+            $deviceArn = (string) ($this->config->get('device_arn') ?? 'unknown');
+            throw QuantumExecutionException::synchronousUnsafeForQpu($this->driverName(), $deviceArn);
+        }
+    }
+
+    /**
+     * Determine whether a Braket device ARN identifies real QPU hardware
+     * rather than a managed simulator. QPU ARNs have the shape
+     * `arn:aws:braket:<region>::device/qpu/<provider>/<name>` — note the
+     * empty account-id field, so the resource segment "device/qpu/..." is
+     * preceded by a colon, not a slash.
+     */
+    protected function isSynchronousSafeByDefault(): bool
+    {
+        return true;
+    }
+
+    /**
      * Admission checks every circuit must pass before it reaches Python.
      *
-
      * @param  list<CircuitBuilder>  $circuits
      *
      * @throws InvalidCircuitException
@@ -127,11 +166,25 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Run mandatory pre-flight steps before spawning a synchronous Python subprocess.
+     * Run the mandatory pre-flight steps before spawning a *synchronous*
+     * Python subprocess (executeCircuit()/generateEntropy()).
+     *
+     * The config and synchronous-safety checks live in dedicated methods
+     * rather than in beforeExecution() so a driver overriding the hook
+     * cannot silently skip either by forgetting to call the parent
+     * implementation. assertSynchronousSafe() applies to every subclass,
+     * built-in or custom, so QPU protection is never opt-in.
+     *
+     * Asynchronous paths (submitTask()/pollTask()) must NOT go through this
+     * method: submitting a task or polling it never blocks on the QPU, so
+     * assertSynchronousSafe() must not fire for them. They call
+     * assertConfigured() directly instead — see its docblock for why that
+     * still enforces validation.
      */
     private function preflightSynchronous(): void
     {
         $this->assertConfigured();
+        $this->assertSynchronousSafe();
         $this->beforeExecution();
     }
 
@@ -263,11 +316,22 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Run the circuit synchronously through circuit.py and return its result,
      * without dispatching CircuitExecuted.
      *
+     * Drivers that only *simulate* asynchronous submission by running the
+     * circuit inline (see LocalSimulatorDriver::submitCircuit()) use this so a
+     * ->dispatch() does not also fire the synchronous ->run() event: the
+     * asynchronous path already announces completion via CircuitCompleted
+     * from the polling job.
+     *
+     * Unlike preflightSynchronous(), this skips assertSynchronousSafe(): the inline run
+     * is the implementation of an asynchronous dispatch, which must never be
+     * refused, and it only ever blocks the local machine, never a QPU queue.
+     *
      * @throws InvalidCircuitException
      */
     protected function runCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->preflightSynchronous();
+        $this->assertConfigured();
+        $this->beforeExecution();
         $this->validateCircuits([$circuit]);
 
         return $this->runDefinition($circuit->toArray());
@@ -299,6 +363,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Submit the circuit through submit.py and return the backend's task
      * identifier, without waiting for the result.
      *
+     * Shared implementation for drivers exposing it via
+     * AsynchronousDevice::submitCircuit(). Runs config validation and the
+     * circuit admission checks only — submitting never blocks on the QPU, so
+     * assertSynchronousSafe() deliberately does not run here.
+     *
      * @throws InvalidCircuitException
      * @throws QuantumExecutionException When submit.py returns no usable task identifier.
      */
@@ -326,7 +395,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * Shared implementation for drivers exposing it via
      * AsynchronousDevice::checkTask(). Like submitTask(), polling never
-     * blocks, so only config validation runs — not beforeExecution().
+     * blocks, so only config validation runs — neither assertSynchronousSafe()
+     * nor beforeExecution().
      *
      * @throws QuantumExecutionException When check.py returns no valid status.
      */

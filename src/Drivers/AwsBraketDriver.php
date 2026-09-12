@@ -11,7 +11,6 @@ use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
-use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskSnapshot;
 
@@ -34,6 +33,22 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     public function __construct(PythonExecutor $bridge, array $config)
     {
         parent::__construct($bridge, self::normalizeBucket($config));
+    }
+
+    /**
+     * A Braket device ARN always has an empty region field (or us-east-1) and an
+     * empty account-id field, so the resource segment "device/qpu/..." is
+     * preceded by a colon, not a slash.
+     */
+    protected function isSynchronousSafeByDefault(): bool
+    {
+        $deviceArn = $this->config->deviceArn;
+
+        if (is_string($deviceArn) && str_contains($deviceArn, 'device/qpu/')) {
+            return false;
+        }
+
+        return true;
     }
 
     protected function driverName(): string
@@ -81,13 +96,6 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
         }
 
         return $config;
-    }
-
-    protected function beforeExecution(): void
-    {
-        if (! $this->config->synchronousSafe) {
-            throw QuantumExecutionException::synchronousUnsafe('aws');
-        }
     }
 
     /**

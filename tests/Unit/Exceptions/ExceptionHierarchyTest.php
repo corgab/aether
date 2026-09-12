@@ -64,6 +64,18 @@ it('polling not scheduled includes arn, driver and previous message, and preserv
     expect($exception->getPrevious())->toBe($previous);
 });
 
+it('synchronous unsafe for qpu includes driver name and device arn', function (): void {
+    $exception = QuantumExecutionException::synchronousUnsafeForQpu(
+        'braket',
+        'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1'
+    );
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain('arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1');
+});
+
 // -------------------------------------------------------------------------
 // PythonEnvironmentException
 // -------------------------------------------------------------------------
