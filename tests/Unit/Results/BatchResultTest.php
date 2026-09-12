@@ -35,12 +35,14 @@ it('implements array access and iterable', function () {
     expect($batch[1])->toBe($result2);
     expect(isset($batch[0]))->toBeTrue();
     expect(isset($batch[2]))->toBeFalse();
+    expect($batch->offsetExists(-1))->toBeFalse();
 
     $iterated = [];
     foreach ($batch as $key => $val) {
         $iterated[$key] = $val;
     }
     expect($iterated)->toBe([$result1, $result2]);
+    expect($batch->getIterator())->toBeInstanceOf(ArrayIterator::class);
 });
 
 it('throws on array mutation', function () {
