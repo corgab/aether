@@ -18,6 +18,42 @@ use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
+
+/**
+ * Base driver with shared circuit execution and entropy generation logic.
+ *
+ * @template TConfig of DriverConfig
+ */
+abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
+{
+    private const BITS_PER_BYTE = 8;
+
+    use DispatchesLifecycleEvents;
+
+    /**
+     * Typed driver options, built once from the raw array by makeConfig().
+     *
+     * @var TConfig
+     */
+    protected readonly DriverConfig $config;
+
+    /**
+     * @param  array<string, mixed>  $config  The raw `aether.drivers.<name>` array.
+     *
+     * @throws InvalidDriverConfigException When an option has a value of the wrong shape.
+     */
+    public function __construct() {
+        $this->config = $this->makeConfig($config);
+    }
+
+    /**
+     * Return the driver identifier.
+     *
+     * Called from the base constructor (through makeConfig()) before the
+     * subclass constructor body runs, so it must not depend on state a
+     * subclass sets after parent::__construct(): return a literal or a
+     * promoted constructor parameter.
+     */
     abstract protected function driverName(): string;
 
     /**
@@ -150,7 +186,7 @@ use Aether\Tasks\TaskStatus;
 
     /**
      * Ensure every required config key is present and non-empty, failing fast
-     * with a clear message before any quantum backend is spawned.
+     * with a clear message before the backend is invoked.
      */
     protected function assertConfigured(): void
     {
@@ -230,6 +266,44 @@ use Aether\Tasks\TaskStatus;
     }
 
     /**
+     * Run the circuit synchronously through execution and return its result,
+     * without dispatching CircuitExecuted.
+     *
+     * Drivers that only *simulate* asynchronous submission by running the
+     * circuit inline (see LocalSimulatorDriver::submitCircuit()) use this so a
+     * ->dispatch() does not also fire the synchronous ->run() event: the
+     * asynchronous path already announces completion via CircuitCompleted
+     * from the polling job.
+     *
+     * Unlike preflightSynchronous(), this skips assertSynchronousSafe(): the inline run
+     * is the implementation of an asynchronous dispatch, which must never be
+     * refused, and it only ever blocks the local machine, never a QPU queue.
+     *
+     * @throws InvalidCircuitException
+     */
+    protected function runCircuit(CircuitBuilder $circuit): CircuitResult
+    {
+        $this->assertConfigured();
+        $this->beforeExecution();
+        $this->validateCircuits([$circuit]);
+
+        return $this->runDefinition($circuit->toArray());
+    }
+
+    /**
+     * Send an already-validated circuit definition to execution and parse
+     * the measurement counts it returns.
+     *
+     * @param  array<string, mixed>  $definition  The CircuitBuilder::toArray() shape.
+     *
+     * @throws QuantumExecutionException When the response carries no usable counts.
+     */
+    private function runDefinition(array $definition): CircuitResult
+    {
+        throw new \RuntimeException('Not implemented');
+    }
+
+    /**
      * Send an already-validated array of circuit definitions to execution and
      * parse the measurement counts it returns.
      *
@@ -240,39 +314,7 @@ use Aether\Tasks\TaskStatus;
      */
     private function runBatchDefinitions(array $definitions): array
     {
-        $payload = $this->payload([
-            'circuits' => $definitions,
-        ]);
-
-        $response = // execute('execution', $payload, $this->config->toArray());
-
-        if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'execution',
-                'expected the "results" key to be present and hold an array.'
-            );
-        }
-
-        if (count($response['results']) !== count($definitions)) {
-            throw QuantumExecutionException::malformedResponse(
-                'execution',
-                'expected exactly '.count($definitions).' results, got '.count($response['results']).'.'
-            );
-        }
-
-        $circuitResults = [];
-        foreach ($response['results'] as $result) {
-            if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
-                throw QuantumExecutionException::malformedResponse(
-                    'execution',
-                    'expected each result to have a "counts" array.'
-                );
-            }
-
-            $circuitResults[] = new CircuitResult($result['counts']);
-        }
-
-        return $circuitResults;
+        throw new \RuntimeException('Not implemented');
     }
 
     /**
@@ -292,7 +334,7 @@ use Aether\Tasks\TaskStatus;
         $this->assertConfigured();
         $this->validateCircuits([$circuit]);
 
-        $response = // execute('submission', $this->payload($circuit->toArray()), $this->config->toArray());
+        $response = $this->bridge->execute('submission', $this->payload($circuit->toArray()), $this->config->toArray());
 
         $taskArn = $response['task_arn'] ?? null;
 
@@ -320,7 +362,7 @@ use Aether\Tasks\TaskStatus;
     {
         $this->assertConfigured();
 
-        $response = // execute('status check', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
+        $response = $this->bridge->execute('status check', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
 
         $status = $response['status'] ?? null;
 
@@ -363,55 +405,5 @@ use Aether\Tasks\TaskStatus;
     public function generateEntropy(int $bits): string
     {
         throw new \RuntimeException('Not implemented');
-    }
-
-        $this->preflightSynchronous();
-
-        $qubits = $this->config->entropyQubits;
-
-        // Fetch whole bytes: a final chunk shorter than 8 bits would be
-        // zero-padded into a byte whose high bits are never random.
-        $bitsToFetch = (int) ceil($bits / self::BITS_PER_BYTE) * self::BITS_PER_BYTE;
-        $shots = (int) ceil($bitsToFetch / $qubits);
-
-        try {
-            $this->validateCircuits([$this->entropyCircuit($qubits, $shots)]);
-        } catch (InvalidCircuitException $e) {
-            throw InvalidCircuitException::entropyRejected($bits, $qubits, $shots, $e);
-        }
-
-        $payload = $this->payload([
-            'qubits' => $qubits,
-            'shots' => $shots,
-        ]);
-
-        $response = // execute('entropy generation', $payload, $this->config->toArray());
-
-        if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'entropy generation',
-                'expected the "bits" key to be present and hold a string.'
-            );
-        }
-
-        if (preg_match('/^[01]*$/D', $response['bits']) !== 1) {
-            throw QuantumExecutionException::malformedResponse(
-                'entropy generation',
-                'expected the "bits" value to contain only 0 and 1 digits.'
-            );
-        }
-
-        if (strlen($response['bits']) < $bitsToFetch) {
-            throw QuantumExecutionException::malformedResponse(
-                'entropy generation',
-                "expected at least {$bitsToFetch} bits in the response, got ".strlen($response['bits']).'.'
-            );
-        }
-
-        $bitstring = substr($response['bits'], 0, $bitsToFetch);
-
-        $this->dispatchEvent(new EntropyGenerated($this->driverName(), $bits));
-
-        return $this->bridge->bitstringToBytes($bitstring);
     }
 }
