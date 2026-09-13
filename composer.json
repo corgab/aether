@@ -26,12 +26,13 @@
         "illuminate/events": "^13.0",
         "illuminate/queue": "^13.0",
         "illuminate/support": "^13.0",
-        "symfony/process": "^7.0"
+        "symfony/process": "^7.0|^8.0",
+        "aws/aws-sdk-php": "^3.395"
     },
     "require-dev": {
         "orchestra/testbench": "^10.0|^11.0",
-        "phpunit/phpunit": "^11.0|^12.0",
-        "pestphp/pest": "^3.0|^4.0",
+        "phpunit/phpunit": "^12.0|^13.0",
+        "pestphp/pest": "^4.0|^5.0",
         "larastan/larastan": "^3.0",
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.0"
