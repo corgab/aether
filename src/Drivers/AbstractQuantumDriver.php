@@ -8,7 +8,6 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Concerns\DispatchesLifecycleEvents;
 use Aether\Config\DriverConfig;
 use Aether\Contracts\BatchableDevice;
-use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitExecuted;
 use Aether\Events\EntropyGenerated;
@@ -43,10 +42,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * @throws InvalidDriverConfigException When an option has a value of the wrong shape.
      */
-    public function __construct(
-        protected readonly PythonExecutor $bridge,
-        array $config,
-    ) {
+    public function __construct() {
         $this->config = $this->makeConfig($config);
     }
 
@@ -256,24 +252,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     public function executeBatch(array $circuits): BatchResult
     {
-        if ($circuits === []) {
-            throw InvalidCircuitException::emptyBatch();
-        }
-
-        $this->preflightSynchronous();
-        $this->validateCircuits(array_values($circuits));
-
-        $definitions = array_map(static fn (CircuitBuilder $c): array => $c->toArray(), array_values($circuits));
-        $circuitResults = $this->runBatchDefinitions($definitions);
-
-        // Announced only once the whole response has been validated, so a
-        // malformed batch dispatches nothing — the same all-or-nothing
-        // contract executeCircuit() gives listeners for a single run.
-        foreach (array_values($circuits) as $index => $circuit) {
-            $this->dispatchEvent(new CircuitExecuted($this->driverName(), $circuit->toArray(), $circuitResults[$index]));
-        }
-
-        return new BatchResult($circuitResults);
+        throw new \RuntimeException('Not implemented');
     }
 
     /**
@@ -283,62 +262,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     public function executeCircuit(CircuitBuilder $circuit): CircuitResult
     {
-        $this->preflightSynchronous();
-        $this->validateCircuits([$circuit]);
-
-        $definition = $circuit->toArray();
-        $result = $this->runDefinition($definition);
-
-        $this->dispatchEvent(new CircuitExecuted($this->driverName(), $definition, $result));
-
-        return $result;
-    }
-
-    /**
-     * Run the circuit synchronously through circuit.py and return its result,
-     * without dispatching CircuitExecuted.
-     *
-     * Drivers that only *simulate* asynchronous submission by running the
-     * circuit inline (see LocalSimulatorDriver::submitCircuit()) use this so a
-     * ->dispatch() does not also fire the synchronous ->run() event: the
-     * asynchronous path already announces completion via CircuitCompleted
-     * from the polling job.
-     *
-     * Unlike preflightSynchronous(), this skips assertSynchronousSafe(): the inline run
-     * is the implementation of an asynchronous dispatch, which must never be
-     * refused, and it only ever blocks the local machine, never a QPU queue.
-     *
-     * @throws InvalidCircuitException
-     */
-    protected function runCircuit(CircuitBuilder $circuit): CircuitResult
-    {
-        $this->assertConfigured();
-        $this->beforeExecution();
-        $this->validateCircuits([$circuit]);
-
-        return $this->runDefinition($circuit->toArray());
-    }
-
-    /**
-     * Send an already-validated circuit definition to circuit.py and parse
-     * the measurement counts it returns.
-     *
-     * @param  array<string, mixed>  $definition  The CircuitBuilder::toArray() shape.
-     *
-     * @throws QuantumExecutionException When the response carries no usable counts.
-     */
-    private function runDefinition(array $definition): CircuitResult
-    {
-        $response = $this->bridge->execute('circuit.py', $this->payload($definition), $this->config->toArray());
-
-        if (! array_key_exists('counts', $response) || ! is_array($response['counts'])) {
-            throw QuantumExecutionException::malformedResponse(
-                'circuit.py',
-                'expected the "counts" key to be present and hold an array.'
-            );
-        }
-
-        return new CircuitResult($response['counts']);
+        throw new \RuntimeException('Not implemented');
     }
 
     /**

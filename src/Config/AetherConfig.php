@@ -22,9 +22,7 @@ final class AetherConfig
 {
     public const DEFAULT_DRIVER = 'local';
 
-    public const DEFAULT_PYTHON_PATH = 'python3';
 
-    public const DEFAULT_PROCESS_TIMEOUT = 300;
 
     public const DEFAULT_POLL_INTERVAL = 5;
 
@@ -64,18 +62,10 @@ final class AetherConfig
     /**
      * Python executable used to run the bin/python scripts (`aether.python_path`).
      */
-    public function pythonPath(): string
-    {
-        return $this->string('aether.python_path') ?? self::DEFAULT_PYTHON_PATH;
-    }
 
     /**
      * Seconds a Python subprocess may run before it is killed (`aether.process_timeout`).
      */
-    public function processTimeout(): int
-    {
-        return $this->integer('aether.process_timeout', self::DEFAULT_PROCESS_TIMEOUT);
-    }
 
     /**
      * Queue the asynchronous jobs run on, or null for the default queue (`aether.queue`).

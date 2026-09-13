@@ -19,33 +19,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Python Executable Path
-    |--------------------------------------------------------------------------
-    |
-    | The path to the Python executable used to run quantum scripts. This
-    | allows support for virtual environments, custom installs, or
-    | Windows systems where `python3` may not be available.
-    |
-    */
-
-    'python_path' => env('AETHER_PYTHON_PATH', 'python3'),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Python Process Timeout
-    |--------------------------------------------------------------------------
-    |
-    | The maximum number of seconds a Python subprocess is allowed to run
-    | before it is killed. Increase this if you run circuits with a large
-    | number of shots or qubits that take longer than the default to
-    | complete.
-    |
-    */
-
-    'process_timeout' => (int) env('AETHER_PROCESS_TIMEOUT', 300),
-
-    /*
-    |--------------------------------------------------------------------------
     | Asynchronous Execution
     |--------------------------------------------------------------------------
     |

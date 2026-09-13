@@ -59,7 +59,6 @@ class AetherServiceProvider extends ServiceProvider
 
             return [
                 'Default Driver' => $config->defaultDriver(),
-                'Python Path' => $config->pythonPath(),
                 'Process Timeout' => $config->processTimeout().'s',
             ];
         });

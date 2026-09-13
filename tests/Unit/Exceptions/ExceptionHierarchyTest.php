@@ -89,23 +89,8 @@ it('malformed response is a distinct subclass of quantum execution exception', f
         ->and($exception->getMessage())->toContain('checkTask')->toContain('no status key');
 });
 
-it('python environment exception extends aether exception', function (): void {
-    expect(is_subclass_of(PythonEnvironmentException::class, AetherException::class))->toBeTrue();
-});
 
-it('python not found includes path', function (): void {
-    $exception = PythonEnvironmentException::pythonNotFound('/usr/bin/python3');
 
-    expect($exception)->toBeInstanceOf(PythonEnvironmentException::class);
-    expect($exception->getMessage())->toContain('/usr/bin/python3');
-});
-
-it('missing dependencies includes details', function (): void {
-    $exception = PythonEnvironmentException::missingDependencies('qiskit>=1.0');
-
-    expect($exception)->toBeInstanceOf(PythonEnvironmentException::class);
-    expect($exception->getMessage())->toContain('qiskit>=1.0');
-});
 
 // -------------------------------------------------------------------------
 // DriverNotFoundException

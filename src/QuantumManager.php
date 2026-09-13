@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Aether;
 
-use Aether\Bridge\PythonBridge;
 use Aether\Circuit\BatchBuilder;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Config\AetherConfig;
@@ -134,21 +133,7 @@ class QuantumManager extends Manager
         return $fake;
     }
 
-    /**
-     * Create a PythonBridge configured from the package configuration.
-     *
-     * Public so custom drivers registered through extend() can reuse the
-     * same bridge wiring as the built-in drivers:
-     *
-     *     Quantum::extend('ionq', fn () => new IonqDriver(
-     *         Quantum::bridge(),
-     *         app(AetherConfig::class)->driver('ionq'),
-     *     ));
-     */
-    public function bridge(): PythonBridge
-    {
-        return $this->createBridge();
-    }
+    
 
     /**
      * Resolve a driver by name, throwing DriverNotFoundException for unknown drivers.
@@ -211,9 +196,7 @@ class QuantumManager extends Manager
             : $this->container->make(CacheRepository::class);
 
         return new LocalSimulatorDriver(
-            $this->createBridge(),
             $config,
-            $cache,
         );
     }
 
@@ -232,24 +215,11 @@ class QuantumManager extends Manager
     protected function createAwsDriver(): AwsBraketDriver
     {
         return new AwsBraketDriver(
-            $this->createBridge(),
             $this->settings()->driver('aws'),
         );
     }
 
-    /**
-     * Create a PythonBridge configured with the python_path from config.
-     */
-    private function createBridge(): PythonBridge
-    {
-        $settings = $this->settings();
-
-        return new PythonBridge(
-            $settings->pythonPath(),
-            $settings->processTimeout(),
-        );
-    }
-
+    
     /**
      * The typed package settings.
      *

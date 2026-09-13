@@ -7,7 +7,6 @@ namespace Aether\Drivers;
 use Aether\Circuit\CircuitBuilder;
 use Aether\Config\DriverConfig;
 use Aether\Contracts\AsynchronousDevice;
-use Aether\Contracts\PythonExecutor;
 use Aether\Contracts\ValidatesDispatch;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
@@ -15,7 +14,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
-use Illuminate\Contracts\Cache\Repository as CacheRepository;
+
 use Illuminate\Support\Str;
 
 /**
@@ -70,12 +69,8 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      *
      * @param  array<string, mixed>  $config
      */
-    public function __construct(
-        PythonExecutor $bridge,
-        array $config,
-        private readonly CacheRepository $cache,
-    ) {
-        parent::__construct($bridge, $config);
+    public function __construct(protected readonly array $config) {
+        parent::__construct();
     }
 
     protected function driverName(): string

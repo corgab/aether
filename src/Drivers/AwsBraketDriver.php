@@ -8,7 +8,6 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Config\AwsDriverConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
-use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Results\CostEstimate;
@@ -30,7 +29,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      *
      * @param  array<string, mixed>  $config
      */
-    public function __construct(PythonExecutor $bridge, array $config)
+    public function __construct(protected readonly array $config)
     {
         parent::__construct($bridge, self::normalizeBucket($config));
     }
