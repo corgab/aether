@@ -95,6 +95,23 @@ $builder->gateCount(); // 2 — number of gates, excluding measurement
 $builder->depth();     // 2 — number of sequential layers, excluding measurement
 ```
 
+### OpenQASM 3.0 (Roadmap)
+
+While Aether embraces a fluent, Laravel-style PHP API for building circuits programmatically, we are tracking native OpenQASM 3.0 support for a future release (Phase 3 of the backend rewrite). 
+
+The goal is to allow executing standard `.qasm` scripts directly without needing to translate them into PHP builder methods manually. The proposed API will parse the OpenQASM string and seamlessly compile it into the internal `CircuitBuilder` representation:
+
+```php
+use Aether\Facades\Quantum;
+
+// Load an existing OpenQASM 3.0 algorithm
+$qasm = file_get_contents('algorithm.qasm');
+
+// Compile and run the circuit on the default driver
+$result = Quantum::fromQasm($qasm)->run();
+```
+
+This ensures Aether remains primarily a PHP-first fluent tool for Laravel developers, while still offering robust interoperability for researchers and external quantum tools that export standard QASM.
 ### Entropy Generation
 
 ```php
