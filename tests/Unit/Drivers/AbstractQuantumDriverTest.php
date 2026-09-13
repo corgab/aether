@@ -120,9 +120,9 @@ it('defaults to 16 qubits when entropy_qubits not in config', function () {
 });
 
 it('exposes assertConfigured() to subclasses for the asynchronous path', function () {
-    // A driver whose async methods only need config validation, not the
-    // synchronous-safety hook, must be able to call assertConfigured()
-    // directly without going through the private preflight()/beforeExecution().
+    // A driver whose async methods only need config validation, not
+    // assertSynchronousSafe(), must be able to call assertConfigured()
+    // directly without going through the private preflightSynchronous().
     $driver = new class($this->bridge, []) extends AbstractQuantumDriver
     {
         protected function driverName(): string
@@ -179,6 +179,29 @@ it('calls beforeExecution hook', function () {
 });
 
 // -------------------------------------------------------------------------
+// Tri-state synchronous_safe / device_arn (base-class safety net)
+// -------------------------------------------------------------------------
+
+it('allows executeCircuit against a QPU device ARN when synchronous_safe is explicitly true', function () {
+    $driver = new class($this->bridge, ['device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'synchronous_safe' => true]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'custom';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    $result = $driver->executeCircuit($circuit);
+
+    expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+// -------------------------------------------------------------------------
 // Malformed circuit.py responses
 // -------------------------------------------------------------------------
 
@@ -232,6 +255,48 @@ it('throws when entropy.py returns fewer bits than requested', function () {
 
     $this->driver->generateEntropy(16);
 })->throws(QuantumExecutionException::class);
+
+it('rounds a bit count up to whole bytes before asking the device', function (int $bits, int $qubits, int $shots, int $fetched) {
+    $bridge = $this->createMock(PythonExecutor::class);
+    $bridge->expects($this->once())
+        ->method('execute')
+        ->with('entropy.py', $this->callback(fn (array $p): bool => $p['qubits'] === $qubits && $p['shots'] === $shots), $this->anything())
+        ->willReturn(['bits' => str_repeat('1', $shots * $qubits)]);
+    $bridge->expects($this->once())
+        ->method('bitstringToBytes')
+        ->with(str_repeat('1', $fetched))
+        ->willReturn(str_repeat("\xff", intdiv($fetched, 8)));
+
+    $driver = new class($bridge, ['entropy_qubits' => $qubits]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    expect($driver->generateEntropy($bits))->toBe(str_repeat("\xff", intdiv($fetched, 8)));
+})->with([
+    '12 bits on 16 qubits' => [12, 16, 1, 16],
+    '9 bits on 4 qubits' => [9, 4, 4, 16],
+    '17 bits on 16 qubits' => [17, 16, 2, 24],
+    '16 bits on 16 qubits' => [16, 16, 1, 16],
+]);
+
+it('rejects entropy.py output that is not made of binary digits', function () {
+    $this->bridge->method('execute')->willReturn(['bits' => 'abcdefgh']);
+
+    expect(fn () => $this->driver->generateEntropy(8))
+        ->toThrow(QuantumExecutionException::class, 'only 0 and 1 digits');
+});
+
+it('requires the device to return the rounded-up bit count', function () {
+    // 12 requested bits need 16 measured bits; 12 is no longer enough.
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 12)]);
+
+    expect(fn () => $this->driver->generateEntropy(12))
+        ->toThrow(QuantumExecutionException::class, 'expected at least 16 bits');
+});
 
 // -------------------------------------------------------------------------
 // entropy_qubits clamping
@@ -341,6 +406,45 @@ it('throws when batch.py results count does not match circuits count', function 
     // Pass 2 circuits, but mock returns 1 result
     $this->driver->executeBatch([$circuit, $circuit]);
 })->throws(QuantumExecutionException::class, 'exactly 2 results, got 1');
+
+// -------------------------------------------------------------------------
+// Typed config
+// -------------------------------------------------------------------------
+
+it('rejects a non-integer max_qubits when the driver is constructed', function () {
+    expect(fn () => new class($this->bridge, ['max_qubits' => 'abc']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    })->toThrow(InvalidDriverConfigException::class, 'Driver [test] has an invalid value for [max_qubits]');
+});
+
+it('still sends the raw config array to Python, untyped keys included', function () {
+    $driver = new class($this->bridge, ['max_qubits' => '10', 'python_provider' => 'providers.custom']) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with(
+            'circuit.py',
+            $this->callback(fn (array $p) => $p['driver_config'] === ['max_qubits' => '10', 'python_provider' => 'providers.custom']),
+            ['max_qubits' => '10', 'python_provider' => 'providers.custom']
+        )
+        ->willReturn(['counts' => ['0' => 1000]]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 1000]);
+    $circuit->method('qubitCount')->willReturn(1);
+
+    $driver->executeCircuit($circuit);
+});
 
 // -------------------------------------------------------------------------
 // max_qubits ceiling
@@ -464,6 +568,13 @@ it('treats an empty-string max_qubits (a blank env var) as no ceiling', function
     expect($result)->toBeInstanceOf(CircuitResult::class);
 });
 
+it('refuses an empty batch without spawning the bridge', function () {
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $this->driver->executeBatch([]))
+        ->toThrow(InvalidCircuitException::class, 'at least one circuit');
+});
+
 it('throws InvalidCircuitException on executeBatch when any circuit exceeds max_qubits', function () {
     $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
     {
@@ -495,4 +606,70 @@ it('does not enforce a ceiling on executeBatch when max_qubits is absent', funct
     $result = $this->driver->executeBatch([$circuit]);
 
     expect($result)->toBeInstanceOf(BatchResult::class);
+});
+
+it('throws InvalidCircuitException on generateEntropy when entropy_qubits exceeds max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 8, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16-qubit circuit')
+            ->toContain('max_qubits ceiling of 8')
+            ->toContain('entropy_qubits');
+        expect($e->getPrevious())->toBeInstanceOf(InvalidCircuitException::class);
+    }
+});
+
+it('rejects a non-positive bit count before touching the bridge', function () {
+    $this->bridge->expects($this->never())->method('execute');
+
+    expect(fn () => $this->driver->generateEntropy(0))
+        ->toThrow(QuantumExecutionException::class, 'must be a positive integer');
+});
+
+it('keeps the ceiling messages free of entropy hints for ordinary circuits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 5]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(6);
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->not->toContain('entropy');
+    }
+});
+
+it('allows generateEntropy when entropy_qubits is within max_qubits', function () {
+    $driver = new class($this->bridge, ['max_qubits' => 16, 'entropy_qubits' => 16]) extends AbstractQuantumDriver
+    {
+        protected function driverName(): string
+        {
+            return 'test';
+        }
+    };
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 16)]);
+
+    $bytes = $driver->generateEntropy(8);
+
+    expect(strlen($bytes))->toBe(1);
 });

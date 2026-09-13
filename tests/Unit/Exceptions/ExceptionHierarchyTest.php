@@ -6,6 +6,7 @@ use Aether\Exceptions\AetherException;
 use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
+use Aether\Exceptions\MalformedResponseException;
 use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
@@ -47,9 +48,46 @@ it('synchronous unsafe includes driver name', function (): void {
     expect($exception->getMessage())->toContain('braket');
 });
 
+it('polling not scheduled includes arn, driver and previous message, and preserves the previous exception', function (): void {
+    $previous = new RuntimeException('queue down');
+
+    $exception = QuantumExecutionException::pollingNotScheduled(
+        'arn:aws:braket:us-east-1:123456789012:quantum-task/fake',
+        'aws',
+        $previous
+    );
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception->getMessage())
+        ->toContain('arn:aws:braket:us-east-1:123456789012:quantum-task/fake')
+        ->toContain('aws')
+        ->toContain('queue down');
+    expect($exception->getPrevious())->toBe($previous);
+});
+
+it('synchronous unsafe for qpu includes driver name and device arn', function (): void {
+    $exception = QuantumExecutionException::synchronousUnsafeForQpu(
+        'braket',
+        'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1'
+    );
+
+    expect($exception)->toBeInstanceOf(QuantumExecutionException::class);
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain('arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1');
+});
+
 // -------------------------------------------------------------------------
 // PythonEnvironmentException
 // -------------------------------------------------------------------------
+
+it('malformed response is a distinct subclass of quantum execution exception', function (): void {
+    $exception = QuantumExecutionException::malformedResponse('checkTask', 'no status key');
+
+    expect($exception)->toBeInstanceOf(MalformedResponseException::class)
+        ->and($exception)->toBeInstanceOf(QuantumExecutionException::class)
+        ->and($exception->getMessage())->toContain('checkTask')->toContain('no status key');
+});
 
 it('python environment exception extends aether exception', function (): void {
     expect(is_subclass_of(PythonEnvironmentException::class, AetherException::class))->toBeTrue();
@@ -77,11 +115,30 @@ it('driver not found exception extends aether exception', function (): void {
     expect(is_subclass_of(DriverNotFoundException::class, AetherException::class))->toBeTrue();
 });
 
-it('for driver includes driver name', function (): void {
+it('for driver includes driver name and points at registration, not at the default setting', function (): void {
     $exception = DriverNotFoundException::forDriver('braket');
 
     expect($exception)->toBeInstanceOf(DriverNotFoundException::class);
-    expect($exception->getMessage())->toContain('braket');
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain("Quantum::extend('braket'")
+        ->not->toContain('aether.default');
+});
+
+it('for driver lists the registered drivers when given', function (): void {
+    $exception = DriverNotFoundException::forDriver('ionk', ['local', 'aws', 'ionq']);
+
+    expect($exception->getMessage())->toContain("Registered drivers: 'local', 'aws', 'ionq'.");
+});
+
+it('for default driver points at the aether.default setting', function (): void {
+    $exception = DriverNotFoundException::forDefaultDriver('braket');
+
+    expect($exception)->toBeInstanceOf(DriverNotFoundException::class);
+    expect($exception->getMessage())
+        ->toContain('braket')
+        ->toContain('aether.default')
+        ->toContain('AETHER_DRIVER');
 });
 
 // -------------------------------------------------------------------------
@@ -116,6 +173,52 @@ it('no measurement returns meaningful message', function (): void {
     expect($exception->getMessage())->not->toBeEmpty();
 });
 
+it('empty batch returns meaningful message', function (): void {
+    $exception = InvalidCircuitException::emptyBatch();
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())->toContain('Quantum::batch() needs at least one circuit');
+});
+
+it('invalid qubit index includes gate and value', function (): void {
+    $exception = InvalidCircuitException::invalidQubitIndex('H', 'a');
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('Gate H')
+        ->toContain('integer qubit indices')
+        ->toContain("'a'");
+});
+
+it('invalid angle includes gate and value', function (): void {
+    $exception = InvalidCircuitException::invalidAngle('RX', 'a');
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('RX')
+        ->toContain('expected number')
+        ->toContain("'a'");
+});
+
+it('repeated measurement target includes qubit', function (): void {
+    $exception = InvalidCircuitException::repeatedMeasurementTarget(0);
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('Qubit 0')
+        ->toContain('more than once');
+});
+
+it('qubit already measured includes gate and qubit', function (): void {
+    $exception = InvalidCircuitException::qubitAlreadyMeasured('H', 0);
+
+    expect($exception)->toBeInstanceOf(InvalidCircuitException::class);
+    expect($exception->getMessage())
+        ->toContain('H')
+        ->toContain('qubit 0')
+        ->toContain('already been measured');
+});
+
 // -------------------------------------------------------------------------
 // InvalidDriverConfigException
 // -------------------------------------------------------------------------
@@ -132,4 +235,38 @@ it('missing keys includes driver name and every missing key', function (): void 
         ->toContain('aws')
         ->toContain('region')
         ->toContain('device_arn');
+});
+
+it('unknown cache store names the driver, the store and the env var', function (): void {
+    $previous = new InvalidArgumentException('Cache store [reddis] is not defined.');
+    $exception = InvalidDriverConfigException::unknownCacheStore('local', 'reddis', $previous);
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getPrevious())->toBe($previous);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('[reddis]')
+        ->toContain('is not defined')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
+});
+
+it('discarding cache store names the driver, the store and the env var', function (): void {
+    $exception = InvalidDriverConfigException::discardingCacheStore('local', 'void');
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('[void]')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
+});
+
+it('process local cache store includes driver name, queue driver and the env var', function (): void {
+    $exception = InvalidDriverConfigException::processLocalCacheStore('local', 'redis');
+
+    expect($exception)->toBeInstanceOf(InvalidDriverConfigException::class);
+    expect($exception)->toBeInstanceOf(AetherException::class);
+    expect($exception->getMessage())
+        ->toContain('local')
+        ->toContain('redis')
+        ->toContain('AETHER_LOCAL_CACHE_STORE');
 });

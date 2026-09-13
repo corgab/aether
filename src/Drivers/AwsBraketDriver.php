@@ -5,42 +5,102 @@ declare(strict_types=1);
 namespace Aether\Drivers;
 
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AwsDriverConfig;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
+use Aether\Contracts\PythonExecutor;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
-use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\CostEstimate;
 use Aether\Tasks\TaskSnapshot;
 
 /**
  * Quantum driver for AWS Braket QPU and managed simulators.
+ *
+ * @extends AbstractQuantumDriver<AwsDriverConfig>
  */
 class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevice, EstimatesCost
 {
+    /**
+     * Normalizes the bucket once, before the (readonly) config array is ever
+     * stored, so every path — synchronous or asynchronous — sees the same
+     * shape. Doing this later, by writing into $this->config from a method,
+     * cannot work: $config is declared readonly on AbstractQuantumDriver, and
+     * only that class's own constructor may ever assign it.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function __construct(PythonExecutor $bridge, array $config)
+    {
+        parent::__construct($bridge, self::normalizeBucket($config));
+    }
+
+    /**
+     * A Braket device ARN always has an empty region field (or us-east-1) and an
+     * empty account-id field, so the resource segment "device/qpu/..." is
+     * preceded by a colon, not a slash.
+     */
+    protected function isSynchronousSafeByDefault(): bool
+    {
+        $deviceArn = $this->config->deviceArn;
+
+        if (is_string($deviceArn) && str_contains($deviceArn, 'device/qpu/')) {
+            return false;
+        }
+
+        return true;
+    }
+
     protected function driverName(): string
     {
         return 'aws';
     }
 
     /**
+     * @param  array<string, mixed>  $values
+     */
+    protected function makeConfig(array $values): AwsDriverConfig
+    {
+        return new AwsDriverConfig($this->driverName(), $values);
+    }
+
+    /**
+     * The S3 bucket is optional: without one the Braket SDK writes results to
+     * its default bucket, amazon-braket-<region>-<account>, which it creates on
+     * first use (so the credentials need s3:CreateBucket).
+     *
      * @return list<string>
      */
     protected function requiredConfig(): array
     {
-        return ['region', 'device_arn', 'bucket'];
+        return ['region', 'device_arn'];
     }
 
-    protected function beforeExecution(): void
+    /**
+     * Trim the configured bucket, or drop the key entirely once it is blank
+     * (absent, null, or whitespace-only — what env() yields for
+     * `AETHER_S3_BUCKET=`), so the Python side's `"bucket" not in config`
+     * check is the single place that decides whether one was given.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private static function normalizeBucket(array $config): array
     {
-        if (($this->config['synchronous_safe'] ?? true) === false) {
-            throw QuantumExecutionException::synchronousUnsafe('aws');
+        $bucket = trim((string) ($config['bucket'] ?? ''));
+
+        if ($bucket === '') {
+            unset($config['bucket']);
+        } else {
+            $config['bucket'] = $bucket;
         }
+
+        return $config;
     }
 
     /**
      * Add the cost ceiling to the shared admission checks, so it holds on
-     * ->run(), Quantum::batch() and ->dispatch() alike.
+     * ->run(), Quantum::batch(), ->dispatch() and Quantum::entropy() alike.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
@@ -73,18 +133,12 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     public function estimateCost(int $shots, int $tasks = 1): CostEstimate
     {
-        $pricing = $this->config['pricing'] ?? [];
-
-        $perTaskRate = (float) ($pricing['per_task'] ?? 0.0);
-        $perShotRate = (float) ($pricing['per_shot'] ?? 0.0);
-        $currency = (string) ($pricing['currency'] ?? 'USD');
-
-        $taskCost = $perTaskRate * $tasks;
-        $shotCost = $perShotRate * $shots;
+        $taskCost = ($this->config->perTaskRate ?? 0.0) * $tasks;
+        $shotCost = ($this->config->perShotRate ?? 0.0) * $shots;
 
         return new CostEstimate(
             amount: $taskCost + $shotCost,
-            currency: $currency,
+            currency: $this->config->currency,
             shots: $shots,
             breakdown: [
                 'per_task' => $taskCost,
@@ -97,13 +151,13 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      * Guard against a run — one circuit, or a whole batch — whose estimated
      * cost exceeds the driver's configured `max_cost_per_run` ceiling.
      *
-     * A blank `max_cost_per_run` (absent, null, or an empty string — what
-     * env() yields for `AETHER_AWS_MAX_COST=`) means unlimited — the default,
-     * so existing configs keep working unchanged. A configured ceiling with
-     * no `pricing` rates would silently never trip (every estimate would be
-     * 0.00), so that combination fails fast as a misconfiguration instead.
-     * Shots are only summed across $circuits once a ceiling is actually
-     * configured, mirroring the qubit-ceiling guard's lazy evaluation.
+     * A blank `max_cost_per_run` means unlimited (AwsDriverConfig leaves
+     * $maxCostPerRun null) — the default, so existing configs keep working
+     * unchanged. A configured ceiling with no `pricing` rates would silently
+     * never trip (every estimate would be 0.00), so that combination fails
+     * fast as a misconfiguration instead. Shots are only summed across
+     * $circuits once a ceiling is actually configured, mirroring the
+     * qubit-ceiling guard's lazy evaluation.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
@@ -112,20 +166,16 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     private function assertWithinCostCeiling(array $circuits): void
     {
-        $ceiling = $this->config['max_cost_per_run'] ?? null;
+        $ceiling = $this->config->maxCostPerRun;
 
-        if (blank($ceiling)) {
+        if ($ceiling === null) {
             return;
         }
 
-        $pricing = $this->config['pricing'] ?? [];
-        $missing = array_filter(
-            ['pricing.per_task', 'pricing.per_shot'],
-            static fn (string $key): bool => blank($pricing[substr($key, strlen('pricing.'))] ?? null),
-        );
+        $missing = $this->config->missingRates();
 
         if ($missing !== []) {
-            throw InvalidDriverConfigException::missingKeys($this->driverName(), array_values($missing));
+            throw InvalidDriverConfigException::missingKeys($this->driverName(), $missing);
         }
 
         $shots = array_sum(array_map(
@@ -135,8 +185,8 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
 
         $estimate = $this->estimateCost($shots, count($circuits));
 
-        if ($estimate->amount > (float) $ceiling) {
-            throw InvalidCircuitException::costCeilingExceeded($estimate, (float) $ceiling);
+        if ($estimate->amount > $ceiling) {
+            throw InvalidCircuitException::costCeilingExceeded($estimate, $ceiling);
         }
     }
 }

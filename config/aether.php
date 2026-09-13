@@ -57,6 +57,17 @@ return [
     | polling job gives up (the default allows one hour at five-second
     | intervals, which comfortably covers real QPU queue times).
     |
+    | A transient polling error — a failed check.py run, a network blip —
+    | is retried after "poll_interval" seconds. "max_poll_exceptions" is
+    | the total number of such errors tolerated over the whole life of the
+    | polling job (Laravel counts them per job and does not reset the count
+    | after a successful poll); once exceeded the job fails for good.
+    | Configuration/environment errors (a missing driver key, a missing
+    | Python binary or dependency, an unregistered driver), an unreadable
+    | check.py response and a task that finishes as failed or cancelled
+    | fail the job immediately instead, since retrying them can never
+    | succeed.
+    |
     */
 
     'queue' => env('AETHER_QUEUE'),
@@ -65,19 +76,7 @@ return [
 
     'max_poll_attempts' => (int) env('AETHER_MAX_POLL_ATTEMPTS', 720),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Local Task Retention
-    |--------------------------------------------------------------------------
-    |
-    | The local simulator has no real task queue, so asynchronously submitted
-    | circuits are executed immediately and their results are cached under a
-    | synthetic task identifier. This is how long, in seconds, those results
-    | stay available to the polling job.
-    |
-    */
-
-    'local_task_ttl' => (int) env('AETHER_LOCAL_TASK_TTL', 3600),
+    'max_poll_exceptions' => (int) env('AETHER_MAX_POLL_EXCEPTIONS', 5),
 
     /*
     |--------------------------------------------------------------------------
@@ -100,7 +99,7 @@ return [
     |
     | Here you may configure each quantum computing driver. The "local"
     | driver uses the Braket local simulator (no AWS costs). The "aws"
-    | driver connects to AWS Braket for real quantum hardware.
+    | driver connects to AWS Braket for QPUs and managed simulators (the default device_arn is the SV1 simulator).
     |
     | Any driver may declare an optional "python_provider" key pointing at a
     | Python provider module — either a filesystem path to a ".py" file or
@@ -115,24 +114,56 @@ return [
     'drivers' => [
 
         'local' => [
-            'synchronous_safe' => true,
-            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+            // null derives safety from device_arn; the local simulator has
+            // no device_arn at all, so it is always safe to run synchronously.
+            'synchronous_safe' => null,
+            // The number of qubits (random bits) produced per shot of the
+            // entropy circuit. Must fit within max_qubits below.
+            'entropy_qubits' => env('AETHER_ENTROPY_QUBITS', 16),
+
+            // The local simulator has no real task queue: a dispatched circuit
+            // runs immediately and its result is cached under a synthetic task
+            // identifier. This is how long, in seconds, that result stays
+            // available to the polling job.
+            'task_ttl' => (int) env('AETHER_LOCAL_TASK_TTL', 3600),
 
             // The local simulator keeps a full statevector in memory: a dense
             // vector of 2^n complex128 amplitudes, 16 bytes each, so memory
             // use doubles with every additional qubit. The default of 25
             // caps that at 2^25 x 16 bytes ~= 512 MB. Raise it only once
             // you've confirmed the host has memory to spare, or set it to
-            // null to remove the ceiling entirely.
+            // null to remove the ceiling entirely. A positive integer, or
+            // null/blank for no ceiling; anything else throws
+            // InvalidDriverConfigException when the driver is resolved. Applies
+            // to ->run(), ->dispatch(), Quantum::batch() and entropy generation alike.
             'max_qubits' => env('AETHER_MAX_QUBITS', 25),
+
+            // The cache store used to hold results for asynchronously
+            // submitted circuits (see "Local Task Retention" above). null
+            // uses the application's default cache store; the value must
+            // name a store defined in config/cache.php.
+            'cache_store' => env('AETHER_LOCAL_CACHE_STORE'),
         ],
 
         'aws' => [
             'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            // Optional. Results go to s3://<bucket>/results when set; when unset or
+            // blank the Braket SDK uses its default bucket (amazon-braket-<region>-<account>),
+            // which it creates on first use and therefore needs s3:CreateBucket for.
             'bucket' => env('AETHER_S3_BUCKET'),
             'device_arn' => env('AETHER_DEVICE_ARN', 'arn:aws:braket:::device/quantum-simulator/amazon/sv1'),
-            'synchronous_safe' => true,
-            'entropy_qubits' => (int) env('AETHER_ENTROPY_QUBITS', 16),
+            // Tri-state: true always allows a synchronous ->run(), false
+            // always refuses it, and null (the default) derives the answer
+            // from device_arn above — a Braket QPU ARN (one containing
+            // "device/qpu/", e.g. arn:aws:braket:us-east-1::device/qpu/ionq/
+            // Aria-1) refuses, since hardware tasks can queue for minutes or
+            // hours; a managed simulator ARN (e.g. SV1 above) is allowed.
+            'synchronous_safe' => null,
+            // The number of qubits (random bits) produced per shot of the
+            // entropy circuit. Must fit within max_qubits below; each
+            // generate() call is one task whose estimated cost is checked
+            // against max_cost_per_run.
+            'entropy_qubits' => env('AETHER_ENTROPY_QUBITS', 16),
 
             // No ceiling here: Braket enforces its own per-device qubit
             // limits, so this package does not duplicate or guess at those.
@@ -144,18 +175,23 @@ return [
             // (e.g. SV1) bill per-minute instead, but the task+shot model
             // is what estimateCost() covers; treat simulator estimates as
             // a rough proxy, not an exact figure. Override via env/config
-            // without a package release.
+            // without a package release. The rates are strictly validated (not silently cast to 0)
+            // when the driver is resolved: a non-numeric or negative value
+            // throws InvalidDriverConfigException instead of pricing at 0.
             'pricing' => [
-                'per_task' => (float) env('AETHER_AWS_PRICE_PER_TASK', 0.30),
-                'per_shot' => (float) env('AETHER_AWS_PRICE_PER_SHOT', 0.00035),
+                'per_task' => env('AETHER_AWS_PRICE_PER_TASK', 0.30),
+                'per_shot' => env('AETHER_AWS_PRICE_PER_SHOT', 0.00035),
                 'currency' => env('AETHER_AWS_PRICE_CURRENCY', 'USD'),
             ],
 
-            // When set, ->run(), ->dispatch() and Quantum::batch() reject a
-            // run whose estimated cost exceeds this amount — for a batch, the
-            // total of all its circuits — before any AWS call is made. null
-            // (default) means unlimited. Requires the pricing rates above:
-            // a ceiling with no rates fails fast instead of never tripping.
+            // When set, ->run(), ->dispatch(), Quantum::batch() and entropy
+            // generation reject a run whose estimated cost exceeds this
+            // amount — for a batch, the total of all its circuits — before
+            // any AWS call is made. null (default) means unlimited. Requires
+            // the pricing rates above: a ceiling with no rates fails fast
+            // instead of never tripping. A non-negative number, or null/blank
+            // for no ceiling; anything else throws InvalidDriverConfigException
+            // when the driver is resolved.
             'max_cost_per_run' => env('AETHER_AWS_MAX_COST'),
         ],
 

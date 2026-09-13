@@ -21,12 +21,24 @@ class QuantumExecutionException extends AetherException
     }
 
     /**
-     * Create an exception for drivers that do not support synchronous execution.
+     * Create an exception for a driver explicitly configured to refuse
+     * synchronous execution via `synchronous_safe => false`.
      */
     public static function synchronousUnsafe(string $driver): self
     {
         return new self(
-            "Driver [{$driver}] does not support synchronous execution. Use dispatch() or queue() instead."
+            "Driver [{$driver}] is configured with synchronous_safe => false and refuses to run synchronously. Use dispatch() or queue() instead."
+        );
+    }
+
+    /**
+     * Create an exception for a driver refusing synchronous execution
+     * because its `device_arn` is a Braket QPU (as opposed to a simulator).
+     */
+    public static function synchronousUnsafeForQpu(string $driver, string $deviceArn): self
+    {
+        return new self(
+            "Driver [{$driver}] refuses to run synchronously against QPU device [{$deviceArn}]: hardware tasks can queue for minutes or hours. Use dispatch() or queue() instead, or set synchronous_safe => true in the driver config to allow it."
         );
     }
 
@@ -42,14 +54,14 @@ class QuantumExecutionException extends AetherException
     }
 
     /**
-     * Create an exception when a Python script returns a response that does
+     * Create an exception when the quantum backend returns a response that does
      * not match the shape expected by the driver (missing key, wrong type,
      * or otherwise unusable).
      */
-    public static function malformedResponse(string $script, string $reason): self
+    public static function malformedResponse(string $context, string $reason): MalformedResponseException
     {
-        return new self(
-            "Python script [{$script}] returned a malformed response: {$reason}"
+        return new MalformedResponseException(
+            "The quantum backend returned a malformed response during [{$context}]: {$reason}"
         );
     }
 
@@ -91,6 +103,41 @@ class QuantumExecutionException extends AetherException
     {
         return new self(
             "Driver [{$driver}] does not support cost estimation. Implement Aether\Contracts\EstimatesCost to enable CircuitBuilder::estimateCost()."
+        );
+    }
+
+    /**
+     * Create an exception when a task has already been submitted but the
+     * follow-up polling job could not be queued.
+     *
+     * The remote task already exists at this point, so the submission job
+     * must fail outright rather than retry: retrying would call
+     * submitCircuit() again and create a second billable task.
+     */
+    public static function pollingNotScheduled(string $taskArn, string $driver, \Throwable $previous): self
+    {
+        $message = "Quantum task [{$taskArn}] was submitted on driver [{$driver}] but its polling job could not be queued: {$previous->getMessage()}. The task is not being tracked; poll it manually or dispatch Aether\\Jobs\\PollQuantumTask for this ARN. The submission was not retried, to avoid creating a second billable task.";
+
+        return new self($message, 0, $previous);
+    }
+
+    /**
+     * Create an exception for an invalid requested bit count.
+     */
+    public static function invalidEntropyBitCount(int $bits): self
+    {
+        return new self(
+            "Requested bit count ({$bits}) must be a positive integer."
+        );
+    }
+
+    /**
+     * Create an exception for an invalid range.
+     */
+    public static function invalidEntropyRange(int $min, int $max): self
+    {
+        return new self(
+            "Minimum value ({$min}) must not exceed maximum value ({$max})."
         );
     }
 }

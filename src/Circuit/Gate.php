@@ -22,14 +22,6 @@ final readonly class Gate
     /**
      * Build a gate of any type from positional qubit indices and angles.
      *
-     * The parameter layout comes from GateType::shape(): qubit indices are
-     * matched to the shape's qubit keys and angles to its angle keys, in wire
-     * order, so this is the one place that knows how a gate's arguments map
-     * onto its wire representation. Every named factory below is a typed
-     * one-line wrapper around it, and fromArray() rebuilds gates through it.
-     * A Measure type delegates to measure(): its qubits are the targets, and
-     * none means "measure all".
-     *
      * @param  int[]  $qubits  Qubit indices in the shape's wire order.
      * @param  array<float|Angle>  $angles  Angles in the shape's wire order.
      *
@@ -294,11 +286,6 @@ final readonly class Gate
      * - Pass an int to measure a single qubit.
      * - Pass a non-empty array to measure the specified qubits.
      *
-     * The empty-targets guard lives here rather than in CircuitBuilder so
-     * every construction path — the fluent measure(), fromArray() on a
-     * queued definition, or a fragment appended from another builder —
-     * rejects a measurement that would measure nothing.
-     *
      * @param  int|int[]|null  $targets
      *
      * @throws InvalidCircuitException
@@ -312,18 +299,63 @@ final readonly class Gate
         $resolved = match (true) {
             $targets === null => null,
             is_int($targets) => [$targets],
-            default => $targets,
+            default => self::integerIndices('measure', $targets),
         };
 
         return new self('measure', ['targets' => $resolved]);
     }
 
     /**
+     * Require an angle to be numeric.
+     *
+     * @throws InvalidCircuitException
+     */
+    private static function numericAngle(string $gate, mixed $value): int|float
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            throw InvalidCircuitException::invalidAngle(strtoupper($gate), $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Require a qubit index to be an integer.
+     *
+     * PHP cannot type array elements or a serialized definition's values, so
+     * a stray string or float would otherwise reach the int-typed range check
+     * as a TypeError, or be cast to qubit 0 when a queued definition is rebuilt.
+     *
+     * @throws InvalidCircuitException
+     */
+    private static function integerIndex(string $gate, mixed $value): int
+    {
+        if (! is_int($value)) {
+            throw InvalidCircuitException::invalidQubitIndex(strtoupper($gate), $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Require every value to be an integer qubit index and return them as a list.
+     *
+     * @param  array<mixed>  $values
+     * @return list<int>
+     *
+     * @throws InvalidCircuitException
+     */
+    private static function integerIndices(string $gate, array $values): array
+    {
+        return array_values(array_map(static fn (mixed $value): int => self::integerIndex($gate, $value), $values));
+    }
+
+    /**
      * Rebuild a Gate from the flat array shape produced by toArray().
      *
      * Dispatches generically on GateType/GateShape metadata instead of a
-     * per-type match arm: qubit-index keys are cast to int and angle keys to
-     * float, in wire order, then make() lays them out and normalises angles.
+     * per-type match arm: qubit-index keys must already be integers, angle
+     * keys are checked numeric, in wire order, then make() lays them out and normalises angles.
      *
      * @param  array<string, mixed>  $definition
      *
@@ -356,7 +388,7 @@ final readonly class Gate
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $qubits[] = (int) $definition[$key];
+            $qubits[] = self::integerIndex($type, $definition[$key]);
         }
 
         foreach ($shape->angleKeys() as $key) {
@@ -364,7 +396,7 @@ final readonly class Gate
                 throw InvalidCircuitException::missingGateParameter($type, $key);
             }
 
-            $angles[] = (float) $definition[$key];
+            $angles[] = self::numericAngle($type, $definition[$key]);
         }
 
         return self::make($gateType, $qubits, $angles);
@@ -396,7 +428,7 @@ final readonly class Gate
 
         $keys = GateType::from($this->type)->shape()->qubitKeys();
 
-        return array_map(fn (string $key): int => (int) $this->params[$key], $keys);
+        return array_map(fn (string $key): int => $this->params[$key], $keys);
     }
 
     /**
@@ -420,11 +452,15 @@ final readonly class Gate
     {
         $targets = $definition['targets'] ?? null;
 
-        if (! is_array($targets)) {
+        if ($targets === null) {
             return null;
         }
 
-        return array_map(static fn (mixed $target): int => (int) $target, $targets);
+        if (! is_array($targets)) {
+            throw InvalidCircuitException::invalidQubitIndex('MEASURE', $targets);
+        }
+
+        return self::integerIndices('measure', $targets);
     }
 
     /**

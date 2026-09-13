@@ -138,12 +138,10 @@ class TestProviderRunOptions:
 
         assert provider_run_options(provider, {"tag": "abc"}) == {"tag": "abc"}
 
-    def test_aws_run_options_without_bucket_raises(self):
-        with pytest.raises(
-            ValueError,
-            match=r"^Driver 'aws' requires a non-empty 'bucket' in driver_config\.$",
-        ):
-            provider_run_options(aws_provider, {})
+    def test_aws_run_options_without_bucket_lets_the_sdk_pick_its_default(self):
+        assert provider_run_options(aws_provider, {}) == {}
+
+
 
     def test_aws_run_options_returns_the_s3_destination_folder(self):
         options = provider_run_options(aws_provider, {"bucket": "my-bucket"})

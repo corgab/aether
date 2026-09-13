@@ -4,15 +4,54 @@ declare(strict_types=1);
 
 use Aether\AetherServiceProvider;
 use Aether\Circuit\CircuitBuilder;
+use Aether\Config\AetherConfig;
 use Aether\Contracts\QuantumDevice;
+use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Entropy\EntropyGenerator;
 use Aether\Facades\Quantum;
 use Aether\QuantumManager;
+use Illuminate\Cache\NullStore;
+use Illuminate\Cache\Repository as CacheRepository;
+use Illuminate\Config\Repository;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Repository as CacheRepositoryContract;
 use Illuminate\Support\Facades\Artisan;
 
 // -------------------------------------------------------------------------
 // Service container registration
 // -------------------------------------------------------------------------
+
+it('registers AetherConfig as a singleton in the container', function () {
+    $first = $this->app->make(AetherConfig::class);
+    $second = $this->app->make(AetherConfig::class);
+
+    expect($first)->toBeInstanceOf(AetherConfig::class)
+        ->and($first)->toBe($second);
+});
+
+it('builds drivers on a bare container that only binds config', function () {
+    $container = new Container;
+    $container->instance('config', new Repository(['aether' => ['python_path' => 'python3', 'drivers' => ['local' => []]]]));
+    $container->instance(
+        CacheRepositoryContract::class,
+        new CacheRepository(new NullStore),
+    );
+
+    $manager = new QuantumManager($container);
+
+    expect($manager->getDefaultDriver())->toBe('local')
+        ->and($manager->driver('local'))->toBeInstanceOf(LocalSimulatorDriver::class);
+});
+
+it('resolves the default driver through AetherConfig', function () {
+    config()->set('aether.default', '');
+
+    expect(app(QuantumManager::class)->getDefaultDriver())->toBe('local');
+
+    config()->set('aether.default', 'aws');
+
+    expect(app(QuantumManager::class)->getDefaultDriver())->toBe('aws');
+});
 
 it('registers QuantumManager as a singleton in the container', function () {
     $first = $this->app->make(QuantumManager::class);
@@ -43,6 +82,12 @@ it('makes the aether.drivers config available', function () {
     expect($drivers)->toBeArray()
         ->and($drivers)->toHaveKey('local')
         ->and($drivers)->toHaveKey('aws');
+});
+
+it('defaults aether.max_poll_exceptions to 5', function () {
+    $maxPollExceptions = $this->app['config']->get('aether.max_poll_exceptions');
+
+    expect($maxPollExceptions)->toBe(5);
 });
 
 // -------------------------------------------------------------------------
@@ -123,6 +168,23 @@ it('defaults the aws driver pricing rates', function () {
 
 it('defaults the aws driver max_cost_per_run to null', function () {
     expect($this->app['config']->get('aether.drivers.aws.max_cost_per_run'))->toBeNull();
+});
+
+// -------------------------------------------------------------------------
+// local task_ttl
+// -------------------------------------------------------------------------
+
+it('defaults the local driver task_ttl to one hour', function () {
+    expect($this->app['config']->get('aether.drivers.local.task_ttl'))->toBe(3600);
+});
+
+// -------------------------------------------------------------------------
+// synchronous_safe config
+// -------------------------------------------------------------------------
+
+it('defaults synchronous_safe to null for both drivers', function () {
+    expect($this->app['config']->get('aether.drivers.local.synchronous_safe'))->toBeNull();
+    expect($this->app['config']->get('aether.drivers.aws.synchronous_safe'))->toBeNull();
 });
 
 // -------------------------------------------------------------------------

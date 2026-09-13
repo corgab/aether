@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aether;
 
+use Aether\Config\AetherConfig;
 use Aether\Contracts\QuantumDevice;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Console\AboutCommand;
 use Illuminate\Support\ServiceProvider;
 
@@ -19,6 +21,10 @@ class AetherServiceProvider extends ServiceProvider
             __DIR__.'/../config/aether.php',
             'aether'
         );
+
+        $this->app->singleton(AetherConfig::class, function ($app): AetherConfig {
+            return new AetherConfig($app->make(Repository::class));
+        });
 
         $this->app->singleton(QuantumManager::class, function ($app): QuantumManager {
             return new QuantumManager($app);
@@ -48,10 +54,14 @@ class AetherServiceProvider extends ServiceProvider
             $this->commands([Commands\AetherInstallCommand::class]);
         }
 
-        AboutCommand::add('Aether', fn (): array => [
-            'Default Driver' => config('aether.default', 'local'),
-            'Python Path' => config('aether.python_path', 'python3'),
-            'Process Timeout' => config('aether.process_timeout', 300).'s',
-        ]);
+        AboutCommand::add('Aether', function (): array {
+            $config = $this->app->make(AetherConfig::class);
+
+            return [
+                'Default Driver' => $config->defaultDriver(),
+                'Python Path' => $config->pythonPath(),
+                'Process Timeout' => $config->processTimeout().'s',
+            ];
+        });
     }
 }

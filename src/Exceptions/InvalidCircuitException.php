@@ -76,12 +76,64 @@ class InvalidCircuitException extends AetherException
     }
 
     /**
+     * Create an exception for a gate parameter that is not an integer qubit index.
+     */
+    public static function invalidQubitIndex(string $gate, mixed $value): self
+    {
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
+
+        return new self(
+            "Gate {$gate} expects integer qubit indices, got {$given}."
+        );
+    }
+
+    /**
+     * Create an exception for a measure() call that lists the same qubit twice.
+     */
+    public static function repeatedMeasurementTarget(int $qubit): self
+    {
+        return new self(
+            "Qubit {$qubit} is listed more than once in the same measure() call; each qubit can be measured once."
+        );
+    }
+
+    /**
+     * Create an exception for an instruction applied to a qubit that was already measured.
+     */
+    public static function qubitAlreadyMeasured(string $gate, int $qubit): self
+    {
+        return new self(
+            "Cannot apply {$gate} to qubit {$qubit}: it has already been measured. Quantum circuits cannot apply gates or measurements to a measured qubit, so move the measurement to the end of the circuit."
+        );
+    }
+
+    /**
      * Create an exception for a measurement operation with an empty target list.
      */
     public static function emptyMeasurementTargets(): self
     {
         return new self(
             'The measure() targets array cannot be empty. Pass null to measure all qubits, an int for a single qubit, or a non-empty array of qubit indices.'
+        );
+    }
+
+    /**
+     * Create an exception for a serialized circuit whose gate list is not an array.
+     */
+    public static function malformedGateList(mixed $gates): self
+    {
+        return new self(
+            'The gates of a serialized circuit must be an array, '.get_debug_type($gates).' given.'
+        );
+    }
+
+    /**
+     * Create an exception for a serialized gate entry that is not an array.
+     */
+    public static function malformedGate(mixed $gate): self
+    {
+        return new self(
+            'Each gate in a serialized circuit must be an array, '.get_debug_type($gate).' given.'
         );
     }
 
@@ -93,6 +145,16 @@ class InvalidCircuitException extends AetherException
     {
         return new self(
             "Unknown gate type [{$type}] encountered while rebuilding a circuit from its array definition."
+        );
+    }
+
+    /**
+     * Create an exception for a batch that contains no circuits.
+     */
+    public static function emptyBatch(): self
+    {
+        return new self(
+            'Quantum::batch() needs at least one circuit. An empty batch has nothing to run and would only trigger an empty execution to return no results.'
         );
     }
 
@@ -110,6 +172,13 @@ class InvalidCircuitException extends AetherException
      * Create an exception for a gate definition missing a required parameter
      * key while being rebuilt from its array shape (see Gate::fromArray()).
      */
+    public static function invalidAngle(string $gate, mixed $value): self
+    {
+        $given = is_scalar($value) ? var_export($value, true) : get_debug_type($value);
+
+        return new self("Invalid angle parameter for {$gate} gate: expected number, {$given} given.");
+    }
+
     public static function missingGateParameter(string $type, string $key): self
     {
         return new self(
@@ -153,6 +222,26 @@ class InvalidCircuitException extends AetherException
             "Estimated cost of {$estimate} exceeds the configured max_cost_per_run ceiling of ".
             CostEstimate::formatAmount($ceiling, $estimate->currency).'. Raise the `max_cost_per_run` entry in the '.
             'driver\'s config (e.g. the AETHER_AWS_MAX_COST env var), or reduce the shot/task count, before retrying.'
+        );
+    }
+
+    /**
+     * Create an exception for an entropy request that the driver's admission
+     * checks (qubit or cost ceiling) rejected, wrapping the underlying
+     * ceiling exception so the entropy-specific remedy is spelled out: the
+     * circuit width comes from `entropy_qubits`, the shot count from the
+     * requested bits.
+     */
+    public static function entropyRejected(int $bits, int $qubits, int $shots, self $previous): self
+    {
+        return new self(
+            "Entropy generation of {$bits} bit(s), a {$qubits}-qubit circuit run for {$shots} shot(s), was rejected: ".
+            $previous->getMessage().
+            ' For entropy generation, set `entropy_qubits` to a positive value that fits `max_qubits`, and '.
+            'request fewer bits per call to lower the estimated cost (each call is one task with '.
+            'ceil(bits / entropy_qubits) shots).',
+            0,
+            $previous,
         );
     }
 

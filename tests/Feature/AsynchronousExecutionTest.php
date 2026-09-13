@@ -2,15 +2,19 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Contracts\PythonExecutor;
 use Aether\Drivers\LocalSimulatorDriver;
 use Aether\Events\CircuitCompleted;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Facades\Quantum;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\QuantumManager;
 use Aether\Results\CircuitResult;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskStatus;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
@@ -35,6 +39,32 @@ it('dispatches a circuit as a queued submission job carrying the pinned driver',
     });
 });
 
+it('does not judge the cache store by the default queue connection at dispatch time', function () {
+    Queue::fake();
+    config([
+        'cache.default' => 'array',
+        'queue.default' => 'redis',
+        'queue.connections.redis.driver' => 'redis',
+    ]);
+
+    Quantum::circuit('local')->qubits(1)->h(0)->measure()->dispatch();
+
+    Queue::assertPushed(SubmitQuantumCircuit::class);
+});
+
+it('refuses to dispatch on the local driver when the default store discards writes', function () {
+    Queue::fake();
+    config([
+        'cache.stores.void' => ['driver' => 'null'],
+        'cache.default' => 'void',
+    ]);
+
+    expect(fn () => Quantum::circuit('local')->qubits(1)->h(0)->measure()->dispatch())
+        ->toThrow(InvalidDriverConfigException::class, 'cache store [void]');
+
+    Queue::assertNothingPushed();
+});
+
 it('runs the whole asynchronous flow on the local driver and emits the result', function () {
     Event::fake([CircuitCompleted::class]);
     Bus::fake([PollQuantumTask::class]);
@@ -45,13 +75,13 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     $bridge = $this->createMock(PythonExecutor::class);
     $bridge->method('execute')->willReturn(['counts' => ['0' => 48, '1' => 52]]);
 
-    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, []));
+    Quantum::extend('local', fn (): LocalSimulatorDriver => new LocalSimulatorDriver($bridge, [], app(CacheRepository::class)));
     Quantum::forgetDrivers();
 
     $circuit = Quantum::circuit('local')->qubits(1)->h(0)->measure()->shots(100);
 
     // Stage one: the submission job hands the task off to the backend.
-    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class));
+    (new SubmitQuantumCircuit($circuit->toArray(), 'local'))->handle(app(QuantumManager::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
     $arn = null;
 
@@ -65,6 +95,8 @@ it('runs the whole asynchronous flow on the local driver and emits the result', 
     (new PollQuantumTask($arn, $circuit->toArray(), 'local'))->handle(
         app(QuantumManager::class),
         app(Dispatcher::class),
+        app(QuantumTaskRecorder::class),
+        app(AetherConfig::class),
     );
 
     Event::assertDispatched(CircuitCompleted::class, function (CircuitCompleted $event) use ($arn): bool {

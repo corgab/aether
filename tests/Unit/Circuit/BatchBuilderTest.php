@@ -38,6 +38,15 @@ it('validates every circuit before executing anything', function () {
     $device->assertCircuitNotRan();
 });
 
+it('rejects an empty batch before touching the device', function () {
+    $device = new QuantumFake;
+
+    expect(fn () => new BatchBuilder($device, [], 'local'))
+        ->toThrow(InvalidCircuitException::class, 'at least one circuit');
+
+    $device->assertBatchNotRan();
+});
+
 it('rejects a circuit without qubits', function () {
     $device = new QuantumFake;
 

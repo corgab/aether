@@ -2,7 +2,7 @@
 
 Laravel package for quantum computing via AWS Braket and local simulators.
 
-Build quantum circuits, generate hardware-grade entropy, and swap backends with a single config change — all with a fluent, Laravel-native API.
+Build quantum circuits, generate entropy from quantum measurements, and swap backends with a single config change — all with a fluent, Laravel-native API.
 
 ## Requirements
 
@@ -45,11 +45,11 @@ For AWS Braket:
 ```env
 AETHER_DRIVER=aws
 AWS_DEFAULT_REGION=us-east-1
-AETHER_S3_BUCKET=your-bucket
+AETHER_S3_BUCKET=            # optional; leave blank to use Braket's default bucket
 AETHER_DEVICE_ARN=arn:aws:braket:::device/quantum-simulator/amazon/sv1
 ```
 
-`AETHER_S3_BUCKET` is required by the `aws` driver, together with the region and the device ARN: a missing or empty value throws an `InvalidDriverConfigException` on every call. Braket writes the task results to `s3://<bucket>/results`.
+The `aws` driver needs the region and the device ARN; a missing or empty value for either throws an `InvalidDriverConfigException` on every call. `AETHER_S3_BUCKET` is optional: when set, Braket writes the task results to `s3://<bucket>/results`; when unset or blank, the SDK uses its own default bucket (`amazon-braket-<region>-<account-id>`), creating it on first use. That fallback needs `s3:CreateBucket` on the calling credentials in addition to the Braket and S3 object permissions; with a locked-down role, create the bucket yourself and set `AETHER_S3_BUCKET`.
 
 See [Choosing a Driver](#choosing-a-driver) for a comparison of the available backends.
 
@@ -59,7 +59,7 @@ See [Choosing a Driver](#choosing-a-driver) for a comparison of the available ba
 
 | | `local` | `aws` + SV1 | `aws` + QPU |
 |---|---|---|---|
-| Sync `->run()` | yes | yes | no — `synchronous_safe: false` |
+| Sync `->run()` | yes | yes | no — refused automatically for QPU ARNs (see [Synchronous Safety](#synchronous-safety)) |
 | Async `->dispatch()` | yes (inline) | yes | yes, requires queue worker |
 | Limits | `max_qubits` (25 ≈ 512 MB) | Braket device limits | device qubits + queue time |
 | Guards | qubit ceiling | `max_cost_per_run` (rough) | `max_cost_per_run` |
@@ -109,6 +109,14 @@ $hex = $entropy->hex(128);           // 32-char hex string
 $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 ```
 
+`generate()` accepts any positive bit count and returns `ceil($bits / 8)` raw bytes. When the count is not a multiple of 8, the driver rounds it up before asking the backend (e.g. `generate(12)` measures 16 bits and returns 2 bytes), so every returned byte is fully random rather than zero-padded.
+
+> **Where the randomness comes from.** The bits are the measurement outcomes of qubits placed in superposition, so their quality is the device's. Only a real QPU measures genuinely random bits; the `local` simulator and the managed Braket simulators such as SV1 simulate the circuit classically, and their outcomes come from a pseudorandom number generator. Entropy generation is synchronous, and synchronous runs against a QPU are refused by the synchronous-safety rules, so as shipped `EntropyGenerator` can only reach simulators: treat everything it returns as pseudorandom, fine for development and statistical use, not for keys, tokens or nonces. Use your platform's CSPRNG (`random_bytes()`) for secrets until an asynchronous entropy path exists.
+
+`integer($min, $max)` accepts any bounds whose span fits in the system's maximum integer size, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
+
+Each call is one circuit run of `entropy_qubits` qubits (default `16`) and `ceil(bits / entropy_qubits)` shots. The [qubit ceiling](#qubit-ceiling) and, on the `aws` driver, the [cost ceiling](#cost-estimation) apply to it exactly as they do to `->run()` — a `generate()` call that would need more qubits or would cost more than configured throws before any Python subprocess is spawned. `integer()` may issue several 256-bit batches under the hood, so on `aws` budget `max_cost_per_run` accordingly. `AETHER_ENTROPY_QUBITS` (or `entropy_qubits` in config) controls the circuit's width.
+
 ### Batch Execution
 
 Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.
@@ -127,9 +135,10 @@ $batch[0]->probabilities();
 ```
 
 * **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
+* **Empty batch**: `Quantum::batch([])` throws `InvalidCircuitException` immediately. A list filtered down to nothing is almost always a mistake, and running it would only trigger an empty execution to return no results.
 * **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
 * **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
-* **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver marked `synchronous_safe: false` throws, exactly like a single `->run()`.
+* **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver that refuses synchronous execution, whether by `synchronous_safe: false` or by a QPU device ARN, throws, exactly like a single `->run()`.
 * **Contracts**: batch-capable drivers implement `Aether\Contracts\BatchableDevice`; `Quantum::batch()` on a driver that does not throws `QuantumExecutionException::batchUnsupported`. The core `Aether\Contracts\QuantumDevice` contract is unchanged, so third-party drivers keep working.
 
 ### Asynchronous Execution
@@ -173,13 +182,22 @@ Tune the polling in `config/aether.php`:
 AETHER_QUEUE=quantum
 AETHER_POLL_INTERVAL=5
 AETHER_MAX_POLL_ATTEMPTS=720
+AETHER_MAX_POLL_EXCEPTIONS=5
+AETHER_LOCAL_TASK_TTL=3600         # seconds a local simulator result stays cached for the polling job
+AETHER_LOCAL_CACHE_STORE=          # cache store for local simulator results; blank uses the app's default store
 ```
 
-`PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver is unaffected, since its tasks are already terminal on the first poll.
+`PollQuantumTask` re-checks the task with Laravel's job `release()`, waiting `AETHER_POLL_INTERVAL` seconds between attempts, so asynchronous AWS execution needs a real queue connection with a running worker (`php artisan queue:work`). The `sync` connection is not supported: there `release()` is a no-op, so polling stops silently after the first non-terminal check — no event, no error. The local driver works on `sync` too, since its tasks are already terminal on the first poll.
 
-A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both land in `failed_jobs` with the task ARN in the message, so you can inspect the task in the AWS console. The job declares `$maxExceptions = 1`, so any exception fails it immediately without retries — the re-check loop is driven by `release()`, not by queue retries.
+A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both fail the job immediately — the re-check loop is driven by `release()`, not by queue retries, so these deliberate outcomes never get another attempt. Right before failing, the job dispatches `Aether\Events\CircuitFailed` with the driver, the circuit, the task ARN, the last status the backend reported and the reason, so application code can react to the failure (notify a user, refund a credit, resubmit elsewhere) with a listener instead of reading `failed_jobs`. A task reported as `CANCELLING` is still in flight, though — the job keeps polling it like any other non-terminal state until Braket reports `CANCELLED`.
 
-The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id, so you can develop the full asynchronous flow without touching AWS.
+A transient error instead — a failed `check.py` run, an AWS throttle, a cache hiccup — is left for the worker to retry after `AETHER_POLL_INTERVAL` seconds. `AETHER_MAX_POLL_EXCEPTIONS` (default 5) is the total number of such errors tolerated over the whole life of the polling job, not per incident: Laravel counts them per job and a later successful poll does not reset the count, so raise it for devices with long queues on a flaky connection. Configuration or environment errors (a missing driver key, a missing Python binary or dependency, an unregistered driver) and an unreadable `check.py` response always fail immediately, since retrying them can never succeed. Every failure lands in `failed_jobs` with the task ARN or error in the message, so you can inspect the task in the AWS console; when [task persistence](#task-persistence) is enabled, the failure is also recorded on the task's `quantum_tasks` row.
+
+`SubmitQuantumCircuit` itself retries up to three times, but only for failures before a remote task exists — a submission that never reaches the backend is safe to retry. Once the circuit has been submitted, a failure to queue `PollQuantumTask` (e.g. the queue connection is down) fails the submission job immediately instead of retrying, so a queued retry never creates a second billable task. That failure lands in `failed_jobs` as a `QuantumExecutionException` naming the ARN; with `persist_tasks` on, the row for that task also records the error. The task itself still exists on the backend and is simply untracked — dispatch `PollQuantumTask` yourself with that ARN to pick up polling manually.
+
+The local simulator supports `->dispatch()` too — it executes immediately and caches the result under a synthetic `local:` task id for `drivers.local.task_ttl` seconds (`AETHER_LOCAL_TASK_TTL`, one hour by default), so you can develop the full asynchronous flow without touching AWS.
+
+**Cache store**: the local simulator has no real remote task, so the result of a `->dispatch()`'d circuit is kept in the cache until the polling job reads it back. That cache store must be shared by every process and every host that runs the queue jobs — the submission job and the polling job can land in different worker processes, on different servers, or in a worker and a web process. The `array` store is process-local, so it only works when the queue connection is `sync` or when a single long-running worker handles both jobs; otherwise the poll always misses and the task is reported as failed. The polling job runs on the queue connection the submission was dispatched on (`->dispatch()->onConnection(...)`), or on the default connection, so the whole flow lives where you put it. To avoid this trap, the submission job refuses to run on the default `array` store when that connection is anything other than `sync`, failing immediately instead of consuming its retries and pointing you at `drivers.local.cache_store` (`AETHER_LOCAL_CACHE_STORE`) — set it to a store shared by all your workers (`database`, `redis`, `memcached`, `dynamodb`; `file` only when every worker runs on the same host), or set it to `array` explicitly to accept the single-process limitation. A `cache_store` naming an undefined store, and the `null` store (nothing written to it can ever be read back), are refused already at `->dispatch()`, before anything is queued. The same fail-fast applies to a circuit rejected by the qubit or cost ceilings and to a driver without asynchronous support.
 
 #### Task Persistence
 
@@ -234,7 +252,7 @@ A provider module may define four module-level hooks; only the first is required
 | `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
 | `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
 | `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
-| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
+| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLING\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
 
 `config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
 
@@ -254,17 +272,18 @@ Wire it up with a driver registered through `Quantum::extend()` — `Quantum::br
     'ionq' => [
         'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
         'python_provider' => base_path('app/quantum/ionq_provider.py'),
-        'synchronous_safe' => false,
     ],
 ],
 ```
+
+The base driver already refuses `->run()` against this `device_arn` (it contains `device/qpu/`), so `synchronous_safe` only needs setting to `true` if you want to override that.
 
 ```php
 use Aether\Facades\Quantum;
 
 Quantum::extend('ionq', fn () => new IonqDriver(
     Quantum::bridge(),
-    config('aether.drivers.ionq'),
+    app(\Aether\Config\AetherConfig::class)->driver('ionq'),
 ));
 ```
 
@@ -323,6 +342,10 @@ $result = Quantum::circuit()
 
 Appending a fragment that requires more qubits than the circuit has throws an `InvalidCircuitException`.
 
+Qubit indices must be integers: `measure()` accepts `null` (every qubit), an `int`, or a non-empty array of integers, and every gate method takes `int` indices. A string or a float inside a `measure()` array throws an `InvalidCircuitException` instead of a `TypeError`, and a queued definition carrying a non-integer index for any gate is rejected when it is rebuilt rather than silently cast to qubit 0.
+
+Measurement is final: listing a qubit twice in one `measure()` call, measuring a qubit a second time, or applying any gate to a qubit after it was measured throws an `InvalidCircuitException` while the circuit is being built, before any Python process is spawned. Put `measure()` last, or measure only the qubits you are done with. A fragment's own measurements do not count, since `append()` drops them: only the parent's measurements constrain what follows.
+
 ### Adding a Gate
 
 Gate knowledge lives in a single metadata layer on each side of the bridge: the `GateType` / `GateShape` enums in `src/Circuit/` (PHP) and the `GATE_PARAMS` table in `bin/python/common.py` (Python). Adding a gate touches exactly five places:
@@ -344,13 +367,15 @@ Aether dispatches events at each execution choke point, so application code can 
 | `CircuitExecuted` | A circuit finishes executing synchronously (`->run()`, or once per circuit of a `Quantum::batch()->run()`) | `driver` (`string`), `circuit` (the `toArray()` definition), `result` (`CircuitResult`) |
 | `EntropyGenerated` | A device generates entropy (`EntropyGenerator::generate()`/`hex()`/`integer()`) | `driver` (`string`), `bits` (`int`, the requested bit count) |
 | `CircuitCompleted` | An asynchronously dispatched task (`->dispatch()`) reaches a terminal state | `driver` (`string`), `circuit`, `result` (`CircuitResult`), `taskArn` (`?string`) — see [Asynchronous Execution](#asynchronous-execution) |
+| `CircuitFailed` | An asynchronously dispatched task ends without a result: the backend reports `FAILED`/`CANCELLED`, the polling budget is exhausted, or the task completes without counts | `driver` (`string`), `circuit`, `taskArn` (`string`), `status` (`TaskStatus`, the last status read), `reason` (`string`, the exception message) |
 
 `EntropyGenerated` deliberately never carries the generated bytes: entropy typically feeds tokens, keys or nonces, so exposing the value to every registered listener would defeat the point of keeping it secret. Capture `EntropyGenerator::generate()`/`hex()`/`integer()`'s return value directly if you need the material itself.
 
-None of these events fire when execution fails — a malformed response or a driver exception is raised before the event is dispatched.
+`CircuitExecuted` and `EntropyGenerated` never fire when synchronous execution fails — a malformed response or a driver exception is raised before the event is dispatched. Asynchronous failures are announced by `CircuitFailed`, which is dispatched right before the polling job throws, so both outcomes of a `->dispatch()` have an event.
 
 ```php
 use Aether\Events\CircuitExecuted;
+use Aether\Events\CircuitFailed;
 use Aether\Events\EntropyGenerated;
 use Illuminate\Support\Facades\Event;
 
@@ -363,9 +388,15 @@ Event::listen(function (EntropyGenerated $event) {
     $event->bits;    // 256
     $event->driver;  // 'aws'
 });
+
+Event::listen(function (CircuitFailed $event) {
+    $event->taskArn;         // 'arn:aws:braket:...'
+    $event->status->value;   // 'FAILED', 'CANCELLED', or the last non-terminal status
+    $event->reason;          // 'Quantum task [...] terminated with status [FAILED].'
+});
 ```
 
-`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked. `CircuitExecuted` fires only for synchronous execution (`->run()` and `Quantum::batch()->run()`): a local `->dispatch()` runs the simulator inline but announces itself through `CircuitCompleted` alone, like the `aws` driver.
+`Quantum::fake()` dispatches `CircuitExecuted` and `EntropyGenerated` too, mirroring the real drivers, so `Event::fake()` assertions on application code keep working the same way whether or not the backend itself is faked. `CircuitExecuted` fires only for synchronous execution (`->run()` and `Quantum::batch()->run()`): a local `->dispatch()` runs the simulator inline but announces itself through `CircuitCompleted` alone, like the `aws` driver. `CircuitCompleted` and `CircuitFailed` belong to the polling job, not to the device, so the fake does not dispatch them itself: a job run against `Quantum::fake()->respondWithTaskStatus(TaskStatus::Failed)` produces exactly one `CircuitFailed`.
 
 ## Testing
 
@@ -450,7 +481,15 @@ composer test
 
 ## Synchronous Safety
 
-Set `synchronous_safe` to `false` in your driver config to prevent accidental synchronous calls that would block your HTTP request:
+`synchronous_safe` is tri-state, checked by every driver that extends `AbstractQuantumDriver`:
+
+* `null` (the shipped default) — derived from `device_arn`. A Braket QPU ARN (one containing `device/qpu/`, e.g. `arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1`) refuses `->run()`; a managed simulator ARN, or no ARN at all, is allowed.
+* `true` — always allows synchronous execution, overriding the ARN check.
+* `false` — always refuses synchronous execution, regardless of the device.
+
+Boolean-like strings (`"true"`, `"false"`, `"1"`, `"0"`) are accepted; anything else throws `InvalidDriverConfigException`. The local driver's `->dispatch()` runs the simulator inline and is never refused: the flag only governs `->run()`, `Quantum::batch()->run()` and entropy generation.
+
+> **Upgrading:** `mergeConfigFrom()` merges only the top level, so a `config/aether.php` published before this change still carries `'synchronous_safe' => true` for the `aws` driver and keeps allowing synchronous runs against a QPU. Change that value to `null` to opt into the ARN-based default.
 
 ```php
 // config/aether.php
@@ -460,11 +499,11 @@ Set `synchronous_safe` to `false` in your driver config to prevent accidental sy
 ],
 ```
 
-This will throw a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission is never blocked by this flag — that is the path the flag is steering you toward.
+Either refusal throws a `QuantumExecutionException` on direct calls to `->run()`, forcing you to use `->dispatch()` instead. Asynchronous submission (`->dispatch()`, `submitCircuit()`, `checkTask()`) is never blocked by this check — that is the path it is steering you toward.
 
 ## Qubit Ceiling
 
-The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling on every `->run()`, `->dispatch()`, and `Quantum::batch()` call:
+The local simulator keeps a full statevector in memory, and that memory doubles with every additional qubit. To guard against accidentally exhausting host memory, the `local` driver enforces a `max_qubits` ceiling on every `->run()`, `->dispatch()`, `Quantum::batch()`, and entropy generation call:
 
 ```php
 // config/aether.php
@@ -474,7 +513,7 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()` and `Quantum::batch()` alike.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The value must be a positive integer: anything else (`AETHER_MAX_QUBITS=abc`) throws an `InvalidDriverConfigException` as soon as the driver is resolved, rather than silently becoming a ceiling of zero. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
 
 ## Cost Estimation
 
@@ -515,8 +554,14 @@ Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit 
 ],
 ```
 
-The guard runs on `->run()`, `->dispatch()`, and `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend). It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping.
+The guard runs on `->run()`, `->dispatch()`, `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend), and entropy generation. It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping, and so does a ceiling or rate that is not a non-negative number.
+
+Every option the PHP layer reads (`max_qubits`, `entropy_qubits`, `synchronous_safe`, and for `aws` the `pricing` rates and `max_cost_per_run`) is validated once, when the driver is resolved, through a typed `Aether\Config\DriverConfig` value object (`AwsDriverConfig` for the `aws` driver). Custom drivers extending `AbstractQuantumDriver` read the shared options from `$this->config->maxQubits` and friends, and any key of their own through `$this->config->get('key')`; the raw array still reaches the Python provider untouched as `driver_config`. The object is built inside the base constructor, so `driverName()` must not depend on state your own constructor sets after calling `parent::__construct()`.
+
+## Contributing
+
+Bug reports, feature ideas and pull requests are welcome. Start from [CONTRIBUTING.md](CONTRIBUTING.md) for the fork workflow, the coding standards and the checks to run before opening a pull request. Security problems go through the private process in [SECURITY.md](SECURITY.md), never through public issues.
 
 ## License
 
-MIT
+Aether is open-source software licensed under the [MIT License](LICENSE).

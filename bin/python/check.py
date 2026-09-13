@@ -24,8 +24,9 @@ or, once the task has finished::
     {"status": "COMPLETED", "counts": {"00": 503, "11": 497}}
 
 Status values must be one of ``CREATED``, ``QUEUED``, ``RUNNING``,
-``COMPLETED``, ``FAILED``, ``CANCELLED`` (the PHP ``TaskStatus`` enum); the
-aws provider passes them through verbatim from Braket.
+``COMPLETED``, ``FAILED``, ``CANCELLING``, ``CANCELLED`` (the PHP
+``TaskStatus`` enum); the aws provider passes them through verbatim from
+Braket.
 
 On error the script writes ``{"error": "<message>"}`` to stderr and exits
 with code 1.

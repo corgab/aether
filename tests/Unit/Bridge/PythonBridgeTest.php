@@ -180,6 +180,18 @@ it('throws QuantumExecutionException when output is a JSON scalar, not an object
 // bitstringToBytes()
 // -------------------------------------------------------------------------
 
+it('rejects a bit string that does not hold whole bytes', function (string $bitstring) {
+    $bridge = new PythonBridge('python3');
+
+    expect(fn () => $bridge->bitstringToBytes($bitstring))
+        ->toThrow(InvalidArgumentException::class, 'multiple of 8');
+})->with([
+    'short final chunk' => ['110011001010'],
+    'empty' => [''],
+    'non-binary digit' => ['0000000a'],
+    'trailing newline' => ["1111111\n"],
+]);
+
 it('converts a binary digit string into raw bytes', function () {
     $bridge = new PythonBridge('python3');
 

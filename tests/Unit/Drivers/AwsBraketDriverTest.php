@@ -6,7 +6,6 @@ use Aether\Circuit\CircuitBuilder;
 use Aether\Contracts\AsynchronousDevice;
 use Aether\Contracts\EstimatesCost;
 use Aether\Contracts\PythonExecutor;
-use Aether\Contracts\QuantumDevice;
 use Aether\Drivers\AwsBraketDriver;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
@@ -47,12 +46,6 @@ beforeEach(function () {
 // -------------------------------------------------------------------------
 // Contract
 // -------------------------------------------------------------------------
-
-it('implements QuantumDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(QuantumDevice::class);
-});
 
 // -------------------------------------------------------------------------
 // executeCircuit()
@@ -106,8 +99,9 @@ it('throws QuantumExecutionException when synchronous_safe is false on executeCi
     }
 });
 
-it('works when synchronous_safe defaults to true on executeCircuit', function () {
-    // Config without 'synchronous_safe' key — should default to true (safe)
+it('derives safety from a simulator device_arn when synchronous_safe is absent', function () {
+    // Config without 'synchronous_safe' key — defaults to null, which derives
+    // safety from device_arn; this simulator ARN is always safe.
     $config = ['region' => 'us-east-1', 'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', 'bucket' => 'test-bucket'];
     $driver = new AwsBraketDriver($this->bridge, $config);
 
@@ -119,6 +113,76 @@ it('works when synchronous_safe defaults to true on executeCircuit', function ()
     $result = $driver->executeCircuit($circuit);
 
     expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('decides synchronous execution from synchronous_safe and the device ARN', function (?bool $synchronousSafe, string $deviceArn, ?string $refusal) {
+    $config = array_merge($this->config, [
+        'device_arn' => $deviceArn,
+        'synchronous_safe' => $synchronousSafe,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+
+    if ($refusal === null) {
+        $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+        $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+        expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
+
+        return;
+    }
+
+    $circuit->expects($this->never())->method('toArray');
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->executeCircuit($circuit);
+        $this->fail('Expected QuantumExecutionException was not thrown.');
+    } catch (QuantumExecutionException $e) {
+        expect($e->getMessage())->toContain('[aws]');
+
+        if ($refusal === 'qpu') {
+            expect($e->getMessage())->toContain('QPU device')->toContain($deviceArn);
+        } else {
+            expect($e->getMessage())->toContain('synchronous_safe => false');
+        }
+    }
+})->with([
+    'null flag, simulator ARN is safe' => [null, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', null],
+    'null flag, QPU ARN refuses' => [null, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'qpu'],
+    'true flag, simulator ARN is safe' => [true, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', null],
+    'true flag, QPU ARN is overridden safe' => [true, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', null],
+    'false flag, simulator ARN still refuses' => [false, 'arn:aws:braket:::device/quantum-simulator/amazon/sv1', 'flag'],
+    'false flag, QPU ARN refuses' => [false, 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1', 'flag'],
+]);
+
+it('accepts boolean-like strings for synchronous_safe', function (string $value, bool $shouldRefuse) {
+    $driver = new AwsBraketDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => $value]));
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+    $this->bridge->method('execute')->willReturn(['counts' => ['0' => 100]]);
+
+    if ($shouldRefuse) {
+        expect(fn () => $driver->executeCircuit($circuit))
+            ->toThrow(QuantumExecutionException::class, 'synchronous_safe => false');
+
+        return;
+    }
+
+    expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
+})->with([
+    '"false" refuses' => ['false', true],
+    '"0" refuses' => ['0', true],
+    '"true" allows' => ['true', false],
+    '"1" allows' => ['1', false],
+    'empty string derives from the simulator ARN' => ['', false],
+]);
+
+it('rejects a synchronous_safe value that is not boolean-like', function () {
+    expect(fn () => new AwsBraketDriver($this->bridge, array_merge($this->config, ['synchronous_safe' => 'maybe'])))
+        ->toThrow(InvalidDriverConfigException::class, 'invalid value for [synchronous_safe]');
 });
 
 // -------------------------------------------------------------------------
@@ -142,17 +206,6 @@ it('delegates generateEntropy to bridge with aws driver', function () {
     expect($entropy)->toBeString();
 });
 
-it('returns correct byte length from generateEntropy', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    $this->bridge->method('execute')
-        ->willReturn(['bits' => '1011001110100101']);
-
-    $entropy = $driver->generateEntropy(16);
-
-    expect(strlen($entropy))->toBe(2);
-});
-
 it('throws QuantumExecutionException when synchronous_safe is false on generateEntropy', function () {
     $config = array_merge($this->config, ['synchronous_safe' => false]);
     $driver = new AwsBraketDriver($this->bridge, $config);
@@ -168,6 +221,25 @@ it('throws QuantumExecutionException when synchronous_safe is false on generateE
     }
 });
 
+it('refuses executeBatch and generateEntropy against a QPU device by default', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->expects($this->never())->method('toArray');
+
+    expect(fn () => $driver->executeBatch([$circuit]))
+        ->toThrow(QuantumExecutionException::class, 'aws');
+
+    expect(fn () => $driver->generateEntropy(16))
+        ->toThrow(QuantumExecutionException::class, 'aws');
+});
+
 it('converts bitstring to raw bytes correctly in generateEntropy', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
 
@@ -180,7 +252,6 @@ it('converts bitstring to raw bytes correctly in generateEntropy', function () {
 
     expect($entropy)->toBe(chr(0xB3).chr(0xA5));
 });
-
 // -------------------------------------------------------------------------
 // Config validation (fail fast, before Python)
 // -------------------------------------------------------------------------
@@ -221,9 +292,34 @@ it('lists every missing required key in the exception message', function () {
     } catch (InvalidDriverConfigException $e) {
         expect($e->getMessage())->toContain('region');
         expect($e->getMessage())->toContain('device_arn');
-        expect($e->getMessage())->toContain('bucket');
+        expect($e->getMessage())->not->toContain('bucket');
     }
 });
+
+it('runs without a bucket and leaves the S3 destination to the SDK default', function (array $bucket) {
+    // config/aether.php yields null when AETHER_S3_BUCKET is unset and '' when the line is blank.
+    $driver = new AwsBraketDriver($this->bridge, [
+        'region' => 'us-east-1',
+        'device_arn' => 'arn:aws:braket:::device/quantum-simulator/amazon/sv1',
+        ...$bucket,
+    ]);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('qubitCount')->willReturn(1);
+    $circuit->method('shotCount')->willReturn(10);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 10]);
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with('circuit.py', $this->anything(), $this->anything())
+        ->willReturn(['counts' => ['0' => 10]]);
+
+    expect($driver->executeCircuit($circuit))->toBeInstanceOf(CircuitResult::class);
+})->with([
+    'key absent' => [[]],
+    'null from an unset env var' => [['bucket' => null]],
+    'empty string from a blank env line' => [['bucket' => '']],
+]);
 
 it('validates config on generateEntropy as well as executeCircuit', function () {
     $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1', 'bucket' => 'test-bucket']);
@@ -237,12 +333,6 @@ it('validates config on generateEntropy as well as executeCircuit', function () 
 // -------------------------------------------------------------------------
 // AsynchronousDevice: submitCircuit()
 // -------------------------------------------------------------------------
-
-it('implements AsynchronousDevice interface', function () {
-    $driver = new AwsBraketDriver($this->bridge, $this->config);
-
-    expect($driver)->toBeInstanceOf(AsynchronousDevice::class);
-});
 
 it('submits the circuit and returns the task arn', function () {
     $driver = new AwsBraketDriver($this->bridge, $this->config);
@@ -296,6 +386,26 @@ it('submitCircuit succeeds even when synchronous_safe is false', function () {
 
     expect(fn () => $driver->executeCircuit($circuit2))
         ->toThrow(QuantumExecutionException::class);
+});
+
+it('submitCircuit succeeds against a QPU device when synchronous_safe is null', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $circuit = $this->createMock(CircuitBuilder::class);
+    $circuit->method('toArray')->willReturn(['qubits' => 1, 'gates' => [], 'shots' => 100]);
+
+    $this->bridge->expects($this->once())
+        ->method('execute')
+        ->with('submit.py', $this->anything(), $config)
+        ->willReturn(['task_arn' => 'arn:aws:braket:us-east-1:123456789012:quantum-task/qpu']);
+
+    $taskArn = $driver->submitCircuit($circuit);
+
+    expect($taskArn)->toBe('arn:aws:braket:us-east-1:123456789012:quantum-task/qpu');
 });
 
 it('throws InvalidDriverConfigException on submitCircuit when required config is missing', function () {
@@ -378,6 +488,20 @@ it('checkTask succeeds even when synchronous_safe is false', function () {
     expect($snapshot->status)->toBe(TaskStatus::Running);
 });
 
+it('checkTask succeeds against a QPU device when synchronous_safe is null', function () {
+    $config = array_merge($this->config, [
+        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
+        'synchronous_safe' => null,
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->method('execute')->willReturn(['status' => 'RUNNING']);
+
+    $snapshot = $driver->checkTask('arn:...');
+
+    expect($snapshot->status)->toBe(TaskStatus::Running);
+});
+
 it('throws InvalidDriverConfigException on checkTask when required config is missing', function () {
     $driver = new AwsBraketDriver($this->bridge, ['region' => 'us-east-1', 'bucket' => 'test-bucket']);
 
@@ -401,6 +525,7 @@ it('maps each Braket state to the right TaskStatus', function (string $braketSta
     ['RUNNING', TaskStatus::Running],
     ['COMPLETED', TaskStatus::Completed],
     ['FAILED', TaskStatus::Failed],
+    ['CANCELLING', TaskStatus::Cancelling],
     ['CANCELLED', TaskStatus::Cancelled],
 ]);
 
@@ -533,6 +658,34 @@ it('falls back to zero-cost rates when pricing config is absent', function () {
 
     expect($estimate->amount)->toBe(0.0);
     expect($estimate->currency)->toBe('USD');
+});
+
+// -------------------------------------------------------------------------
+// Typed config
+// -------------------------------------------------------------------------
+
+it('rejects a non-numeric max_cost_per_run when the driver is constructed', function () {
+    expect(fn () => new AwsBraketDriver($this->bridge, array_merge($this->config, ['max_cost_per_run' => 'abc'])))
+        ->toThrow(InvalidDriverConfigException::class, 'Driver [aws] has an invalid value for [max_cost_per_run]');
+});
+
+it('rejects a negative pricing rate when the driver is constructed', function () {
+    $config = array_merge($this->config, ['pricing' => ['per_task' => -0.30, 'per_shot' => 0.00035]]);
+
+    expect(fn () => new AwsBraketDriver($this->bridge, $config))
+        ->toThrow(InvalidDriverConfigException::class, 'invalid value for [pricing.per_task]');
+});
+
+it('reads the rates env() hands over as strings', function () {
+    $config = array_merge($this->config, [
+        'pricing' => ['per_task' => '0.30', 'per_shot' => '0.00035', 'currency' => 'EUR'],
+    ]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $estimate = $driver->estimateCost(1000);
+
+    expect($estimate->amount)->toEqualWithDelta(0.65, 1e-9)
+        ->and($estimate->currency)->toBe('EUR');
 });
 
 // -------------------------------------------------------------------------
@@ -692,4 +845,43 @@ it('does not enforce a cost ceiling when max_cost_per_run is null', function () 
     $result = $driver->executeCircuit($circuit);
 
     expect($result)->toBeInstanceOf(CircuitResult::class);
+});
+
+it('does not enforce a cost ceiling on generateEntropy by default', function () {
+    $driver = new AwsBraketDriver($this->bridge, $this->config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
+});
+
+it('throws InvalidCircuitException on generateEntropy when the estimated cost exceeds max_cost_per_run', function () {
+    // Default entropy_qubits (16) -> 16 shots for 256 bits: 0.30 + 16 * 0.00035 = 0.3056 > 0.25
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.25]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->expects($this->never())->method('execute');
+
+    try {
+        $driver->generateEntropy(256);
+        $this->fail('Expected InvalidCircuitException was not thrown.');
+    } catch (InvalidCircuitException $e) {
+        expect($e->getMessage())->toContain('Entropy generation of 256 bit(s)')
+            ->toContain('16 shot(s)')
+            ->toContain('max_cost_per_run')
+            ->toContain('fewer bits per call');
+    }
+});
+
+it('allows generateEntropy when the estimated cost is within max_cost_per_run', function () {
+    $config = array_merge($this->config, ['max_cost_per_run' => 0.50]);
+    $driver = new AwsBraketDriver($this->bridge, $config);
+
+    $this->bridge->method('execute')->willReturn(['bits' => str_repeat('1', 256)]);
+
+    $bytes = $driver->generateEntropy(256);
+
+    expect(strlen($bytes))->toBe(32);
 });

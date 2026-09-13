@@ -9,19 +9,17 @@ use Aether\Exceptions\QuantumExecutionException;
 
 /**
  * High-level entropy generator backed by a quantum device.
+ *
+ * The quality of the output is the device's: a QPU measures genuinely
+ * random bits, a simulator (local or managed) draws them from a classical
+ * pseudorandom number generator. Only hardware-backed entropy is suitable
+ * for security-sensitive material such as keys, tokens and nonces.
  */
 class EntropyGenerator
 {
     /**
      * Hard ceiling on the number of 256-bit entropy batches fetched while
      * rejection sampling before giving up.
-     *
-     * This is a safety net, not a tuning knob: a correct entropy source accepts
-     * within the first batch with overwhelming probability (the per-chunk
-     * rejection rate is always below 50%), so reaching this bound means the
-     * source is degenerate. The value is deliberately large enough never to
-     * false-trip on a healthy source while still guaranteeing integer()
-     * terminates.
      */
     private const MAX_ENTROPY_BATCHES = 1000;
 
@@ -29,13 +27,15 @@ class EntropyGenerator
 
     /**
      * Generate raw entropy bytes.
+     *
+     * Returns ceil($bits / 8) bytes. A bit count that is not a multiple of 8
+     * is rounded up before it reaches the device, so every returned byte is
+     * fully measured rather than zero-padded.
      */
     public function generate(int $bits): string
     {
         if ($bits < 1) {
-            throw new \InvalidArgumentException(
-                "Requested bit count ({$bits}) must be a positive integer."
-            );
+            throw QuantumExecutionException::invalidEntropyBitCount($bits);
         }
 
         return $this->device->generateEntropy($bits);
@@ -51,12 +51,24 @@ class EntropyGenerator
 
     /**
      * Generate an unbiased random integer in [$min, $max] using rejection sampling.
+     *
+     * Any bounds are accepted as long as $max - $min fits in a signed 64-bit
+     * integer, so integer(0, PHP_INT_MAX) works while
+     * integer(PHP_INT_MIN, PHP_INT_MAX) is rejected.
      */
     public function integer(int $min, int $max): int
     {
         if ($min > $max) {
+            throw QuantumExecutionException::invalidEntropyRange($min, $max);
+        }
+
+        // A span wider than PHP_INT_MAX would overflow the subtraction and
+        // need a 64-bit chunk, which bindec() can only return as a float.
+        // With a non-negative $min the span cannot overflow; otherwise
+        // PHP_INT_MAX + $min is the largest $max that still fits.
+        if ($min < 0 && $max > PHP_INT_MAX + $min) {
             throw new \InvalidArgumentException(
-                "Minimum value ({$min}) must not exceed maximum value ({$max})."
+                "The span between {$min} and {$max} exceeds PHP_INT_MAX; request a range that fits in the system's maximum integer size (PHP_INT_MAX)."
             );
         }
 
@@ -67,8 +79,9 @@ class EntropyGenerator
             return $min;
         }
 
-        $bitsNeeded = (int) ceil(log($range + 1, 2));
-        $mask = (1 << $bitsNeeded) - 1;
+        // decbin() gives the exact bit length; ceil(log(range + 1, 2)) loses
+        // precision above 2^53 and under-counts for ranges such as 2^62.
+        $bitsNeeded = strlen(decbin($range));
 
         // A correct entropy source accepts on the first batch with overwhelming
         // probability; the cap is a safety net against a degenerate source that
@@ -82,7 +95,8 @@ class EntropyGenerator
                 $chunk = substr($bitstring, $offset, $bitsNeeded);
                 $offset += $bitsNeeded;
 
-                $value = (int) bindec($chunk) & $mask;
+                // The chunk is exactly $bitsNeeded digits, so no mask is needed.
+                $value = (int) bindec($chunk);
 
                 if ($value <= $range) {
                     return $min + $value;
@@ -100,12 +114,13 @@ class EntropyGenerator
      */
     private function bytesToBitstring(string $bytes): string
     {
-        $bits = '';
+        static $hexToBits = [
+            '0' => '0000', '1' => '0001', '2' => '0010', '3' => '0011',
+            '4' => '0100', '5' => '0101', '6' => '0110', '7' => '0111',
+            '8' => '1000', '9' => '1001', 'a' => '1010', 'b' => '1011',
+            'c' => '1100', 'd' => '1101', 'e' => '1110', 'f' => '1111',
+        ];
 
-        for ($i = 0, $len = strlen($bytes); $i < $len; $i++) {
-            $bits .= str_pad(decbin(ord($bytes[$i])), 8, '0', STR_PAD_LEFT);
-        }
-
-        return $bits;
+        return strtr(bin2hex($bytes), $hexToBits);
     }
 }

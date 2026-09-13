@@ -2,24 +2,29 @@
 
 declare(strict_types=1);
 
+use Aether\Config\AetherConfig;
 use Aether\Events\CircuitCompleted;
+use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Exceptions\TaskFailedException;
 use Aether\Jobs\PollQuantumTask;
 use Aether\Jobs\SubmitQuantumCircuit;
 use Aether\Models\QuantumTask;
 use Aether\QuantumManager;
+use Aether\Tasks\QuantumTaskRecorder;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Aether\Tests\Feature\Jobs\FakeAsynchronousDevice;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
+// End-to-end coverage of the jobs driving QuantumTaskRecorder: what each job
+// records and when. The persistence rules themselves (the persist_tasks gate,
+// report-and-swallow) are pinned in tests/Feature/Tasks/QuantumTaskRecorderTest.
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
@@ -39,7 +44,7 @@ beforeEach(function () {
     // Submit through the real job, then hand back the poll job it queued so
     // each test can drive the polling state machine directly.
     $this->submit = function (): PollQuantumTask {
-        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager);
+        (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
 
         $pollJob = null;
         Queue::assertPushed(PollQuantumTask::class, function (PollQuantumTask $job) use (&$pollJob) {
@@ -51,7 +56,7 @@ beforeEach(function () {
         return $pollJob;
     };
 
-    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class));
+    $this->poll = fn (PollQuantumTask $job) => $job->handle($this->manager, app(Dispatcher::class), app(QuantumTaskRecorder::class), app(AetherConfig::class));
 });
 
 // -------------------------------------------------------------------------
@@ -77,16 +82,10 @@ it('records the submitted task with its circuit, driver and shots', function () 
         ->and($task->error)->toBeNull();
 });
 
-it('does not record anything when persist_tasks is disabled', function () {
-    config()->set('aether.persist_tasks', false);
-
-    ($this->submit)();
-
-    $this->assertDatabaseCount('quantum_tasks', 0);
-});
-
 it('still dispatches the poll job when the insert fails', function () {
-    Schema::dropIfExists('quantum_tasks');
+    QuantumTask::saving(function () {
+        throw new RuntimeException('Simulated database failure');
+    });
 
     ($this->submit)();
 
@@ -94,20 +93,55 @@ it('still dispatches the poll job when the insert fails', function () {
     expect($this->device->submittedCircuits)->toHaveCount(1);
 });
 
+it('records the scheduling failure on the persisted task without retrying', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
+
+    $job->assertFailedWith(QuantumExecutionException::class);
+
+    $this->assertDatabaseCount('quantum_tasks', 1);
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Created)
+        ->and($task->error)->toContain('could not be queued')
+        ->and($task->failed_at)->not->toBeNull();
+
+    Queue::assertNotPushed(PollQuantumTask::class);
+});
+
+it('clears a recorded scheduling failure once the task completes', function () {
+    Queue::fake()->beforePushing(function ($job) {
+        if ($job instanceof PollQuantumTask) {
+            throw new RuntimeException('queue down');
+        }
+    });
+
+    $job = (new SubmitQuantumCircuit($this->circuit, 'fake-async'))->withFakeQueueInteractions();
+    $job->handle($this->manager, app(QuantumTaskRecorder::class), app(AetherConfig::class));
+
+    expect(QuantumTask::query()->firstOrFail()->failed_at)->not->toBeNull();
+
+    // An operator picks polling up by hand; the task then completes.
+    ($this->poll)(new PollQuantumTask($this->device->taskArnToReturn, $this->circuit, 'fake-async'));
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->status)->toBe(TaskStatus::Completed)
+        ->and($task->error)->toBeNull()
+        ->and($task->failed_at)->toBeNull()
+        ->and($task->completed_at)->not->toBeNull();
+});
+
 // -------------------------------------------------------------------------
 // Polling
 // -------------------------------------------------------------------------
-
-it('runs no query at all from the poll job when persist_tasks is disabled', function () {
-    config()->set('aether.persist_tasks', false);
-    $job = ($this->submit)();
-
-    DB::enableQueryLog();
-    ($this->poll)($job);
-
-    expect(DB::getQueryLog())->toBeEmpty();
-    Event::assertDispatched(CircuitCompleted::class);
-});
 
 it('marks the task completed with its counts', function () {
     $job = ($this->submit)();
@@ -125,15 +159,15 @@ it('marks the task completed with its counts', function () {
     Event::assertDispatched(CircuitCompleted::class);
 });
 
-it('mirrors an intermediate backend status while the job is released', function () {
-    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+it('mirrors an intermediate backend status while the job is released', function (TaskStatus $status) {
+    $this->device->snapshotToReturn = new TaskSnapshot($status);
     $job = ($this->submit)()->withFakeQueueInteractions();
 
     ($this->poll)($job);
 
     $job->assertReleased();
-    expect(QuantumTask::query()->firstOrFail()->status)->toBe(TaskStatus::Running);
-});
+    expect(QuantumTask::query()->firstOrFail()->status)->toBe($status);
+})->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
 
 it('keeps the backend status and records the error when polling is exhausted', function () {
     config()->set('aether.max_poll_attempts', 1);
@@ -143,9 +177,10 @@ it('keeps the backend status and records the error when polling is exhausted', f
     $queueJob = Mockery::mock(Job::class);
     $queueJob->shouldReceive('attempts')->andReturn(1);
     $queueJob->shouldNotReceive('release');
+    $queueJob->shouldReceive('fail')->once()->with(Mockery::type(QuantumExecutionException::class));
     $job->setJob($queueJob);
 
-    expect(fn () => ($this->poll)($job))->toThrow(QuantumExecutionException::class);
+    ($this->poll)($job);
 
     $task = QuantumTask::query()->firstOrFail();
 
@@ -183,6 +218,52 @@ it('records a completed task that returned no counts as an error', function () {
         ->and($task->error)->toContain('returned no measurement counts')
         ->and($task->failed_at)->not->toBeNull()
         ->and($task->completed_at)->toBeNull();
+});
+
+it('records a configuration error without changing the last known status', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+    $job = ($this->submit)();
+    ($this->poll)($job); // mirrors RUNNING onto the row before the config error strikes.
+
+    $task = QuantumTask::query()->firstOrFail();
+    expect($task->status)->toBe(TaskStatus::Running);
+
+    $this->device->throwOnCheck = InvalidDriverConfigException::missingKeys('fake-async', ['bucket']);
+
+    expect(fn () => ($this->poll)($job))->toThrow(InvalidDriverConfigException::class);
+
+    $task->refresh();
+
+    expect($task->status)->toBe(TaskStatus::Running)
+        ->and($task->error)->toContain('missing required configuration')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
+it('records the terminal failure from the failed hook when transient errors are exhausted', function () {
+    $job = ($this->submit)();
+
+    $job->failed(new RuntimeException('gave up'));
+
+    $task = QuantumTask::query()->firstOrFail();
+
+    expect($task->error)->toContain('gave up')
+        ->and($task->failed_at)->not->toBeNull();
+});
+
+it('does not overwrite an earlier persisted error when failed() runs afterwards', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Cancelled);
+    $job = ($this->submit)();
+
+    expect(fn () => ($this->poll)($job))->toThrow(TaskFailedException::class);
+
+    $task = QuantumTask::query()->firstOrFail();
+    $originalError = $task->error;
+
+    $job->failed(new RuntimeException('gave up'));
+
+    $task->refresh();
+
+    expect($task->error)->toBe($originalError);
 });
 
 it('still dispatches CircuitCompleted when the update fails', function () {
