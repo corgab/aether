@@ -2,7 +2,6 @@
 /.idea/
 .phpunit.result.cache
 .phpunit.cache/
-.aether-venv
 composer.lock
 .DS_Store
 *.swp

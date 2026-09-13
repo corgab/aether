@@ -25,5 +25,5 @@ Aether with the `aws` driver, submits
 billable tasks to AWS Braket on the credentials of the host application.
 Reports about command injection through circuit payloads, credential
 leakage or ways to bypass the cost and qubit
-ceilings are especially welcome. Vulnerabilities in the Braket SDK, boto3
+ceilings are especially welcome. Vulnerabilities in the AWS PHP SDK
 or Laravel itself should go to those projects.
