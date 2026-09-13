@@ -82,8 +82,7 @@ it('falls back to the default for a blank or non-numeric integer option', functi
 
     expect($config->pollInterval())->toBe(5)
         ->and($config->maxPollAttempts())->toBe(720)
-        ->and($config->maxPollExceptions())->toBe(5)
-        ;
+        ->and($config->maxPollExceptions())->toBe(5);
 })->with(['null' => [null], 'empty string' => [''], 'word' => ['soon'], 'boolean' => [true], 'array' => [[5]]]);
 
 it('treats a blank default driver or queue as unset', function (mixed $raw) {

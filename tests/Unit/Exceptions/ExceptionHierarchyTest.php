@@ -25,7 +25,6 @@ it('quantum execution exception extends aether exception', function (): void {
     expect(is_subclass_of(QuantumExecutionException::class, AetherException::class))->toBeTrue();
 });
 
-
 it('synchronous unsafe includes driver name', function (): void {
     $exception = QuantumExecutionException::synchronousUnsafe('braket');
 
@@ -70,9 +69,6 @@ it('malformed response is a distinct subclass of quantum execution exception', f
         ->and($exception)->toBeInstanceOf(QuantumExecutionException::class)
         ->and($exception->getMessage())->toContain('checkTask')->toContain('no status key');
 });
-
-
-
 
 // -------------------------------------------------------------------------
 // DriverNotFoundException

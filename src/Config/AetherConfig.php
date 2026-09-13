@@ -22,8 +22,6 @@ final class AetherConfig
 {
     public const DEFAULT_DRIVER = 'local';
 
-
-
     public const DEFAULT_POLL_INTERVAL = 5;
 
     public const DEFAULT_MAX_POLL_ATTEMPTS = 720;
