@@ -77,6 +77,10 @@ class QuantumTaskRecorder
                 $task->failed_at = now();
             }
 
+            if (! $task->isDirty()) {
+                return;
+            }
+
             $task->save();
         });
     }

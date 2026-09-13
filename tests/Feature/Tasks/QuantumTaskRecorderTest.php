@@ -83,6 +83,25 @@ it('mirrors an intermediate status without touching the outcome columns', functi
         ->and($task->error)->toBeNull();
 });
 
+it('skips saving when recording progress with an unchanged status', function () {
+    $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
+    $this->recorder->recordProgress('arn:1', TaskStatus::Running);
+
+    $saved = false;
+    QuantumTask::saved(function () use (&$saved) {
+        $saved = true;
+    });
+
+    DB::enableQueryLog();
+    $this->recorder->recordProgress('arn:1', TaskStatus::Running);
+
+    expect($saved)->toBeFalse();
+
+    $queries = DB::getQueryLog();
+    expect($queries)->toHaveCount(1)
+        ->and($queries[0]['query'])->toContain('select');
+});
+
 it('records counts and the completion time on success', function () {
     $this->recorder->recordSubmission('arn:1', 'aws', $this->circuit, 500);
 

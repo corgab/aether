@@ -169,6 +169,22 @@ it('mirrors an intermediate backend status while the job is released', function 
     expect(QuantumTask::query()->firstOrFail()->status)->toBe($status);
 })->with([TaskStatus::Created, TaskStatus::Queued, TaskStatus::Running, TaskStatus::Cancelling]);
 
+it('does not trigger model save events on consecutive polls with unchanged status', function () {
+    $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
+    $job = ($this->submit)()->withFakeQueueInteractions();
+
+    ($this->poll)($job);
+
+    $saved = false;
+    QuantumTask::saved(function () use (&$saved) {
+        $saved = true;
+    });
+
+    ($this->poll)($job);
+
+    expect($saved)->toBeFalse();
+});
+
 it('keeps the backend status and records the error when polling is exhausted', function () {
     config()->set('aether.max_poll_attempts', 1);
     $this->device->snapshotToReturn = new TaskSnapshot(TaskStatus::Running);
