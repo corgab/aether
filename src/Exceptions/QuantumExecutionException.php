@@ -10,17 +10,6 @@ namespace Aether\Exceptions;
 class QuantumExecutionException extends AetherException
 {
     /**
-     * Create an exception from a Python subprocess error.
-     */
-    public static function fromPythonError(string $script, string $stderr, int $exitCode): self
-    {
-        return new self(
-            "Python script [{$script}] failed with exit code {$exitCode}. Stderr: {$stderr}",
-            $exitCode
-        );
-    }
-
-    /**
      * Create an exception for a driver explicitly configured to refuse
      * synchronous execution via `synchronous_safe => false`.
      */

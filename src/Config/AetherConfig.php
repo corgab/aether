@@ -60,14 +60,6 @@ final class AetherConfig
     }
 
     /**
-     * Python executable used to run the bin/python scripts (`aether.python_path`).
-     */
-
-    /**
-     * Seconds a Python subprocess may run before it is killed (`aether.process_timeout`).
-     */
-
-    /**
      * Queue the asynchronous jobs run on, or null for the default queue (`aether.queue`).
      */
     public function queue(): ?string
