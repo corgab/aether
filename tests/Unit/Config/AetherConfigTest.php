@@ -70,7 +70,7 @@ it('casts the numeric strings env() hands over', function () {
         ->and($config->maxPollExceptions())->toBe(8);
 });
 
-it('trims the driver name, python path and queue it returns', function () {
+it('trims the driver name and queue it returns', function () {
     $config = aetherConfig(['default' => ' aws ', 'queue' => 'quantum ']);
 
     expect($config->defaultDriver())->toBe('aws')
@@ -86,7 +86,7 @@ it('falls back to the default for a blank or non-numeric integer option', functi
         ;
 })->with(['null' => [null], 'empty string' => [''], 'word' => ['soon'], 'boolean' => [true], 'array' => [[5]]]);
 
-it('treats a blank default driver, python path or queue as unset', function (mixed $raw) {
+it('treats a blank default driver or queue as unset', function (mixed $raw) {
     $config = aetherConfig(['default' => $raw, 'queue' => $raw]);
 
     expect($config->defaultDriver())->toBe('local')

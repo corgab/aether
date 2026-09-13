@@ -39,8 +39,6 @@ use Illuminate\Support\Str;
  * drivers.local.cache_store (null uses the application's default store) and
  * is checked before anything runs: see assertCacheStoreIsShared().
  *
- * No process ever actually queues or polls anything; check.py explicitly
- * refuses to run for the "local" driver (see bin/python/check.py).
  *
  * @extends AbstractQuantumDriver<DriverConfig>
  */

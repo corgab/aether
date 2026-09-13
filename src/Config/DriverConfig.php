@@ -19,9 +19,9 @@ use Aether\Exceptions\InvalidDriverConfigException;
  * Blank means absent, null or an empty string, which is what env() yields for
  * `AETHER_MAX_QUBITS=`; a blank option always falls back to its default.
  *
- * The raw array is kept verbatim for the JSON payload: the bin/python scripts
+ * The raw array is kept verbatim for the JSON payload: the backend
  * and custom providers read `driver_config` themselves, and may rely on keys
- * this class knows nothing about (`python_provider`, provider-specific
+ * this class knows nothing about ( provider-specific
  * settings), so nothing is stripped or renamed on the way through.
  */
 readonly class DriverConfig

@@ -60,7 +60,7 @@ class CircuitBuilder
      *
      * If gates have already been added, shrinking the count below any of
      * their target indices is rejected to prevent building an invalid
-     * circuit that would otherwise only fail opaquely at the Python layer.
+     * circuit that would otherwise only fail opaquely at the backend layer.
      *
      * @throws InvalidCircuitException
      */

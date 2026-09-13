@@ -60,14 +60,6 @@ Opening an issue before writing code helps ensure the enhancement aligns with th
    composer install
    ```
 
-3. **Set up the Python environment:**
-
-   Create and activate a virtual environment, then install the required Python dependencies and test tools:
-
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r bin/python/requirements.txt pytest
    ```
 
 4. **Verify your setup:**
@@ -112,15 +104,6 @@ composer test
 - Place unit tests in `tests/Unit/` and feature/integration tests in `tests/Feature/`.
 - Mock external quantum execution in tests using `Quantum::fake()`.
 
-### Python Tests (Pytest)
-
-The Python bridge logic in `bin/python/` is tested with Pytest:
-
-```bash
-pytest tests/python/ -v
-```
-
-Python tests live in `tests/python/` and test gate validation, circuit translation, and provider drivers.
 
 ---
 
@@ -210,11 +193,10 @@ A maintainer is requested as reviewer automatically (see `.github/CODEOWNERS`). 
 Before opening your pull request, please verify that:
 
 - [ ] All PHP tests pass: `composer test`
-- [ ] All Python tests pass: `pytest tests/python/ -v`
 - [ ] Static analysis passes at Level 8: `composer analyse`
 - [ ] Code is formatted with Laravel Pint: `composer format`
 - [ ] Strict typing & direct DI: no artificial container fallbacks, backward-compatibility shims, or premature deprecations
-- [ ] New features or bug fixes include corresponding Pest and/or Python tests
+- [ ] New features or bug fixes include corresponding Pest tests
 - [ ] Relevant documentation or docblocks have been added or updated
 
 ## License

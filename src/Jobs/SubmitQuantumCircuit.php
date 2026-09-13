@@ -93,7 +93,7 @@ class SubmitQuantumCircuit implements ShouldQueue
         } catch (InvalidDriverConfigException|InvalidCircuitException $e) {
             // A malformed payload, a configuration fault or a rejected circuit
             // is deterministic: retrying would only replay the same failure
-            // $tries times. Everything else (a dropped connection, a Python
+            // $tries times. Everything else (a dropped connection, a backend error
             // crash) keeps the retry budget.
             $this->failWithoutRetry($e);
 

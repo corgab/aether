@@ -18,42 +18,6 @@ use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
-
-/**
- * Base driver with shared circuit execution and entropy generation logic.
- *
- * @template TConfig of DriverConfig
- */
-abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
-{
-    private const BITS_PER_BYTE = 8;
-
-    use DispatchesLifecycleEvents;
-
-    /**
-     * Typed driver options, built once from the raw array by makeConfig().
-     *
-     * @var TConfig
-     */
-    protected readonly DriverConfig $config;
-
-    /**
-     * @param  array<string, mixed>  $config  The raw `aether.drivers.<name>` array.
-     *
-     * @throws InvalidDriverConfigException When an option has a value of the wrong shape.
-     */
-    public function __construct() {
-        $this->config = $this->makeConfig($config);
-    }
-
-    /**
-     * Return the driver identifier passed to Python scripts.
-     *
-     * Called from the base constructor (through makeConfig()) before the
-     * subclass constructor body runs, so it must not depend on state a
-     * subclass sets after parent::__construct(): return a literal or a
-     * promoted constructor parameter.
-     */
     abstract protected function driverName(): string;
 
     /**
@@ -83,7 +47,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Config keys that must be present and non-empty before the driver runs.
      *
      * Override in concrete drivers that talk to a remote service so that a
-     * misconfiguration fails fast here, instead of the Python layer silently
+     * misconfiguration fails fast here, instead of the backend silently
      * falling back to its own defaults.
      *
      * @return list<string>
@@ -142,7 +106,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Admission checks every circuit must pass before it reaches Python.
+     * Admission checks every circuit must pass before it reaches the backend.
      *
      * @param  list<CircuitBuilder>  $circuits
      *
@@ -163,7 +127,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
     /**
      * Run the mandatory pre-flight steps before spawning a *synchronous*
-     * Python subprocess (executeCircuit()/generateEntropy()).
+     * quantum backend (executeCircuit).
      *
      * The config and synchronous-safety checks live in dedicated methods
      * rather than in beforeExecution() so a driver overriding the hook
@@ -186,7 +150,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 
     /**
      * Ensure every required config key is present and non-empty, failing fast
-     * with a clear message before any Python subprocess is spawned.
+     * with a clear message before any quantum backend is spawned.
      */
     protected function assertConfigured(): void
     {
@@ -229,7 +193,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Wrap script input in the envelope every bin/python script expects: the
+     * Wrap script input in the expected envelope: the
      * data itself plus the driver name and config the provider layer reads.
      *
      * @param  array<string, mixed>  $data
@@ -266,7 +230,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Send an already-validated array of circuit definitions to batch.py and
+     * Send an already-validated array of circuit definitions to execution and
      * parse the measurement counts it returns.
      *
      * @param  list<array<string, mixed>>  $definitions  The CircuitBuilder::toArray() shapes.
@@ -280,18 +244,18 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'circuits' => $definitions,
         ]);
 
-        $response = $this->bridge->execute('batch.py', $payload, $this->config->toArray());
+        $response = // execute('execution', $payload, $this->config->toArray());
 
         if (! array_key_exists('results', $response) || ! is_array($response['results'])) {
             throw QuantumExecutionException::malformedResponse(
-                'batch.py',
+                'execution',
                 'expected the "results" key to be present and hold an array.'
             );
         }
 
         if (count($response['results']) !== count($definitions)) {
             throw QuantumExecutionException::malformedResponse(
-                'batch.py',
+                'execution',
                 'expected exactly '.count($definitions).' results, got '.count($response['results']).'.'
             );
         }
@@ -300,7 +264,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
         foreach ($response['results'] as $result) {
             if (! is_array($result) || ! array_key_exists('counts', $result) || ! is_array($result['counts'])) {
                 throw QuantumExecutionException::malformedResponse(
-                    'batch.py',
+                    'execution',
                     'expected each result to have a "counts" array.'
                 );
             }
@@ -312,7 +276,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Submit the circuit through submit.py and return the backend's task
+     * Submit the circuit through submission and return the backend's task
      * identifier, without waiting for the result.
      *
      * Shared implementation for drivers exposing it via
@@ -321,20 +285,20 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * assertSynchronousSafe() deliberately does not run here.
      *
      * @throws InvalidCircuitException
-     * @throws QuantumExecutionException When submit.py returns no usable task identifier.
+     * @throws QuantumExecutionException When submission returns no usable task identifier.
      */
     protected function submitTask(CircuitBuilder $circuit): string
     {
         $this->assertConfigured();
         $this->validateCircuits([$circuit]);
 
-        $response = $this->bridge->execute('submit.py', $this->payload($circuit->toArray()), $this->config->toArray());
+        $response = // execute('submission', $this->payload($circuit->toArray()), $this->config->toArray());
 
         $taskArn = $response['task_arn'] ?? null;
 
         if (! is_string($taskArn) || trim($taskArn) === '') {
             throw QuantumExecutionException::malformedResponse(
-                'submit.py',
+                'submission',
                 'expected the "task_arn" key to be present and hold a non-empty string.'
             );
         }
@@ -343,26 +307,26 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
     }
 
     /**
-     * Poll a previously submitted task through check.py.
+     * Poll a previously submitted task through status check.
      *
      * Shared implementation for drivers exposing it via
      * AsynchronousDevice::checkTask(). Like submitTask(), polling never
      * blocks, so only config validation runs — neither assertSynchronousSafe()
      * nor beforeExecution().
      *
-     * @throws QuantumExecutionException When check.py returns no valid status.
+     * @throws QuantumExecutionException When status check returns no valid status.
      */
     protected function pollTask(string $taskArn): TaskSnapshot
     {
         $this->assertConfigured();
 
-        $response = $this->bridge->execute('check.py', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
+        $response = // execute('status check', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
 
         $status = $response['status'] ?? null;
 
         if (! is_string($status) || TaskStatus::tryFrom($status) === null) {
             throw QuantumExecutionException::malformedResponse(
-                'check.py',
+                'status check',
                 'expected the "status" key to be present and hold a valid task status value.'
             );
         }
@@ -374,7 +338,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * Describe the entropy circuit as a CircuitBuilder so it can be run
      * through the same admission funnel as any other circuit.
      *
-     * Mirrors the circuit bin/python/entropy.py builds — a Hadamard on every
+     * Mirrors the circuit entropy generation builds — a Hadamard on every
      * qubit, then a measurement of them all — so any guard added to the
      * funnel sees the same shape it would see for a user circuit. It is
      * never executed from PHP: it exists only so the `max_qubits` and (on
@@ -398,9 +362,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      */
     public function generateEntropy(int $bits): string
     {
-        if ($bits < 1) {
-            throw QuantumExecutionException::invalidEntropyBitCount($bits);
-        }
+        throw new \RuntimeException('Not implemented');
+    }
 
         $this->preflightSynchronous();
 
@@ -422,25 +385,25 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
             'shots' => $shots,
         ]);
 
-        $response = $this->bridge->execute('entropy.py', $payload, $this->config->toArray());
+        $response = // execute('entropy generation', $payload, $this->config->toArray());
 
         if (! array_key_exists('bits', $response) || ! is_string($response['bits'])) {
             throw QuantumExecutionException::malformedResponse(
-                'entropy.py',
+                'entropy generation',
                 'expected the "bits" key to be present and hold a string.'
             );
         }
 
         if (preg_match('/^[01]*$/D', $response['bits']) !== 1) {
             throw QuantumExecutionException::malformedResponse(
-                'entropy.py',
+                'entropy generation',
                 'expected the "bits" value to contain only 0 and 1 digits.'
             );
         }
 
         if (strlen($response['bits']) < $bitsToFetch) {
             throw QuantumExecutionException::malformedResponse(
-                'entropy.py',
+                'entropy generation',
                 "expected at least {$bitsToFetch} bits in the response, got ".strlen($response['bits']).'.'
             );
         }

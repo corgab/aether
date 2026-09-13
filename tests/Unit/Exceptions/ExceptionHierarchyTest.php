@@ -7,7 +7,6 @@ use Aether\Exceptions\DriverNotFoundException;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\MalformedResponseException;
-use Aether\Exceptions\PythonEnvironmentException;
 use Aether\Exceptions\QuantumExecutionException;
 
 // -------------------------------------------------------------------------
@@ -26,20 +25,6 @@ it('quantum execution exception extends aether exception', function (): void {
     expect(is_subclass_of(QuantumExecutionException::class, AetherException::class))->toBeTrue();
 });
 
-it('from python error includes script and stderr', function (): void {
-    $exception = QuantumExecutionException::fromPythonError(
-        'run_circuit.py',
-        'Traceback: ModuleNotFoundError',
-        1
-    );
-
-    expect($exception)
-        ->toBeInstanceOf(QuantumExecutionException::class);
-    expect($exception->getMessage())
-        ->toContain('run_circuit.py')
-        ->toContain('Traceback: ModuleNotFoundError');
-    expect($exception->getCode())->toBe(1);
-});
 
 it('synchronous unsafe includes driver name', function (): void {
     $exception = QuantumExecutionException::synchronousUnsafe('braket');
@@ -78,9 +63,6 @@ it('synchronous unsafe for qpu includes driver name and device arn', function ()
 });
 
 // -------------------------------------------------------------------------
-// PythonEnvironmentException
-// -------------------------------------------------------------------------
-
 it('malformed response is a distinct subclass of quantum execution exception', function (): void {
     $exception = QuantumExecutionException::malformedResponse('checkTask', 'no status key');
 

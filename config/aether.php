@@ -30,14 +30,14 @@ return [
     | polling job gives up (the default allows one hour at five-second
     | intervals, which comfortably covers real QPU queue times).
     |
-    | A transient polling error — a failed check.py run, a network blip —
+    | A transient polling error — a failed status check, a network blip —
     | is retried after "poll_interval" seconds. "max_poll_exceptions" is
     | the total number of such errors tolerated over the whole life of the
     | polling job (Laravel counts them per job and does not reset the count
     | after a successful poll); once exceeded the job fails for good.
     | Configuration/environment errors (a missing driver key, a missing
-    | Python binary or dependency, an unregistered driver), an unreadable
-    | check.py response and a task that finishes as failed or cancelled
+    | invalid configuration or unregistered driver), an unreadable
+    | backend response and a task that finishes as failed or cancelled
     | fail the job immediately instead, since retrying them can never
     | succeed.
     |
@@ -74,13 +74,7 @@ return [
     | driver uses the Braket local simulator (no AWS costs). The "aws"
     | driver connects to AWS Braket for QPUs and managed simulators (the default device_arn is the SV1 simulator).
     |
-    | Any driver may declare an optional "python_provider" key pointing at a
-    | Python provider module — either a filesystem path to a ".py" file or
-    | an importable module name — that resolves the backend device on the
-    | Python side. See the "Custom Providers" section of the README for the
-    | provider contract. Security note: the referenced module is executed by
-    | the Python subprocess with the same privileges as "python_path", so
-    | this value is trusted configuration. Never derive it from user input.
+    | Any driver may declare a "provider" key.
     |
     */
 

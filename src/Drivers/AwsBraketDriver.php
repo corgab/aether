@@ -31,7 +31,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      */
     public function __construct(protected readonly array $config)
     {
-        parent::__construct($bridge, self::normalizeBucket($config));
+        parent::__construct(self::normalizeBucket($config));
     }
 
     /**
@@ -78,7 +78,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
     /**
      * Trim the configured bucket, or drop the key entirely once it is blank
      * (absent, null, or whitespace-only — what env() yields for
-     * `AETHER_S3_BUCKET=`), so the Python side's `"bucket" not in config`
+     * `AETHER_S3_BUCKET=`), so the backend's `"bucket" not in config`
      * check is the single place that decides whether one was given.
      *
      * @param  array<string, mixed>  $config

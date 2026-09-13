@@ -94,10 +94,10 @@ it('rejects a synchronous_safe that is not boolean-like', function (mixed $raw) 
 // -------------------------------------------------------------------------
 
 it('keeps untyped keys reachable through get() and toArray()', function () {
-    $raw = ['python_provider' => 'providers.custom', 'max_qubits' => '10', 'nested' => ['a' => 1]];
+    $raw = ['provider' => 'custom', 'max_qubits' => '10', 'nested' => ['a' => 1]];
     $config = new DriverConfig('custom', $raw);
 
-    expect($config->get('python_provider'))->toBe('providers.custom')
+    expect($config->get('provider'))->toBe('custom')
         ->and($config->get('missing'))->toBeNull()
         ->and($config->get('missing', 'fallback'))->toBe('fallback')
         ->and($config->toArray())->toBe($raw);

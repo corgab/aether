@@ -468,7 +468,7 @@ final readonly class Gate
      *
      * Angle already rejects non-finite values in its constructor; this guard
      * gives raw floats the same treatment so a NAN or INF fails here with a
-     * clear message instead of inside json_encode() in the Python bridge.
+     * clear message instead of when encoding the payload.
      */
     private static function radians(float|Angle $angle): float
     {

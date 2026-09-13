@@ -37,7 +37,7 @@ use Throwable;
  * The high attempt allowance exists purely to budget the polling loop.
  * Genuine failures fall into two classes: deliberate terminal outcomes and
  * configuration/environment errors fail the job outright via
- * {@see FailsWithoutRetry}, while everything else (a Python subprocess
+ * {@see FailsWithoutRetry}, while everything else (a backend process
  * error, a timeout, AWS throttling, a cache hiccup) is transient and is
  * left to propagate so the worker retries it, capped by {@see $maxExceptions}
  * with backoff().
@@ -133,7 +133,7 @@ class PollQuantumTask implements ShouldQueue
             return;
         }
 
-        // Likewise for the poll itself: a missing config key, a missing Python
+        // Likewise for the poll itself: a missing config key, a missing backend dependency
         // binary, or a response the driver cannot read fail at once. Anything
         // else is transient and left to propagate so the worker retries it
         // with backoff().

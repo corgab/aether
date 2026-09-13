@@ -21,7 +21,7 @@ with credit to the reporter unless you prefer to stay anonymous.
 
 ## Scope
 
-Aether executes Python subprocesses and, with the `aws` driver, submits
+Aether with the `aws` driver, submits
 billable tasks to AWS Braket on the credentials of the host application.
 Reports about command injection through circuit payloads, credential
 leakage or ways to bypass the cost and qubit

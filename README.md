@@ -8,7 +8,6 @@ Build quantum circuits, generate entropy from quantum measurements, and swap bac
 
 - PHP 8.3+
 - Laravel 13
-- Python 3.12+ with `amazon-braket-sdk` (CI runs 3.12 and 3.13)
 - A running queue worker, if you use asynchronous execution
 
 ## Installation
@@ -17,13 +16,11 @@ Build quantum circuits, generate entropy from quantum measurements, and swap bac
 composer require corgab/aether
 ```
 
-Run the install command to publish the config, check Python dependencies, and verify your setup:
+Run the install command to publish the config, and verify your setup:
 
 ```bash
 php artisan aether:install
 ```
-
-This will optionally create a `.aether-venv` virtual environment and install the required Python packages for you.
 
 ## Configuration
 
@@ -37,7 +34,6 @@ Add to your `.env`:
 
 ```env
 AETHER_DRIVER=local
-AETHER_PYTHON_PATH=python3
 ```
 
 For AWS Braket:
@@ -115,11 +111,11 @@ $roll = $entropy->integer(1, 6);     // unbiased die roll (rejection sampling)
 
 `integer($min, $max)` accepts any bounds whose span fits in the system's maximum integer size, `integer(0, PHP_INT_MAX)` included; a span wider than that, such as `integer(PHP_INT_MIN, PHP_INT_MAX)`, throws an `InvalidArgumentException`.
 
-Each call is one circuit run of `entropy_qubits` qubits (default `16`) and `ceil(bits / entropy_qubits)` shots. The [qubit ceiling](#qubit-ceiling) and, on the `aws` driver, the [cost ceiling](#cost-estimation) apply to it exactly as they do to `->run()` — a `generate()` call that would need more qubits or would cost more than configured throws before any Python subprocess is spawned. `integer()` may issue several 256-bit batches under the hood, so on `aws` budget `max_cost_per_run` accordingly. `AETHER_ENTROPY_QUBITS` (or `entropy_qubits` in config) controls the circuit's width.
+Each call is one circuit run of `entropy_qubits` qubits (default `16`) and `ceil(bits / entropy_qubits)` shots. The [qubit ceiling](#qubit-ceiling) and, on the `aws` driver, the [cost ceiling](#cost-estimation) apply to it exactly as they do to `->run()` — a `generate()` call that would need more qubits or would cost more than configured throws before execution. `integer()` may issue several 256-bit batches under the hood, so on `aws` budget `max_cost_per_run` accordingly. `AETHER_ENTROPY_QUBITS` (or `entropy_qubits` in config) controls the circuit's width.
 
 ### Batch Execution
 
-Run several circuits in a single Python process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.
+Run several circuits in a single backend process instead of paying the interpreter start-up cost once per circuit. The results come back as a `BatchResult`, ordered like the input, which is arrayable, jsonable, countable and iterable over the individual `CircuitResult` objects.
 
 ```php
 use Aether\Facades\Quantum;
@@ -136,7 +132,7 @@ $batch[0]->probabilities();
 
 * **Validation**: every circuit is validated like a single `->run()` would, so a circuit without qubits or without `measure()` throws `InvalidCircuitException` before anything is executed.
 * **Empty batch**: `Quantum::batch([])` throws `InvalidCircuitException` immediately. A list filtered down to nothing is almost always a mistake, and running it would only trigger an empty execution to return no results.
-* **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same Python process.
+* **Per-circuit shots**: each circuit keeps its own `->shots()`. On AWS the whole batch is submitted at once with one shot count per task; the local simulator does not support that, so with mixed shot counts the circuits run sequentially inside the same backend process.
 * **Driver mismatch**: a circuit pinned to another driver (e.g. `Quantum::circuit('aws')`) cannot be run in a batch targeting a different driver — `InvalidCircuitException::batchDriverMismatch` is thrown.
 * **QPU safety**: `synchronous_safe` applies to batches too. A batch `->run()` on a driver that refuses synchronous execution, whether by `synchronous_safe: false` or by a QPU device ARN, throws, exactly like a single `->run()`.
 * **Contracts**: batch-capable drivers implement `Aether\Contracts\BatchableDevice`; `Quantum::batch()` on a driver that does not throws `QuantumExecutionException::batchUnsupported`. The core `Aether\Contracts\QuantumDevice` contract is unchanged, so third-party drivers keep working.
@@ -191,7 +187,7 @@ AETHER_LOCAL_CACHE_STORE=          # cache store for local simulator results; bl
 
 A task that fails or is cancelled throws `TaskFailedException` from the polling job; one that never finishes within `max_poll_attempts` throws `QuantumExecutionException`. Both fail the job immediately — the re-check loop is driven by `release()`, not by queue retries, so these deliberate outcomes never get another attempt. Right before failing, the job dispatches `Aether\Events\CircuitFailed` with the driver, the circuit, the task ARN, the last status the backend reported and the reason, so application code can react to the failure (notify a user, refund a credit, resubmit elsewhere) with a listener instead of reading `failed_jobs`. A task reported as `CANCELLING` is still in flight, though — the job keeps polling it like any other non-terminal state until Braket reports `CANCELLED`.
 
-A transient error instead — a failed `check.py` run, an AWS throttle, a cache hiccup — is left for the worker to retry after `AETHER_POLL_INTERVAL` seconds. `AETHER_MAX_POLL_EXCEPTIONS` (default 5) is the total number of such errors tolerated over the whole life of the polling job, not per incident: Laravel counts them per job and a later successful poll does not reset the count, so raise it for devices with long queues on a flaky connection. Configuration or environment errors (a missing driver key, a missing Python binary or dependency, an unregistered driver) and an unreadable `check.py` response always fail immediately, since retrying them can never succeed. Every failure lands in `failed_jobs` with the task ARN or error in the message, so you can inspect the task in the AWS console; when [task persistence](#task-persistence) is enabled, the failure is also recorded on the task's `quantum_tasks` row.
+A transient error instead — a failed status check, an AWS throttle, a cache hiccup — is left for the worker to retry after `AETHER_POLL_INTERVAL` seconds. `AETHER_MAX_POLL_EXCEPTIONS` (default 5) is the total number of such errors tolerated over the whole life of the polling job, not per incident: Laravel counts them per job and a later successful poll does not reset the count, so raise it for devices with long queues on a flaky connection. Configuration or environment errors (a missing driver key, an invalid configuration, an unregistered driver) and an unreadable backend response always fail immediately, since retrying them can never succeed. Every failure lands in `failed_jobs` with the task ARN or error in the message, so you can inspect the task in the AWS console; when [task persistence](#task-persistence) is enabled, the failure is also recorded on the task's `quantum_tasks` row.
 
 `SubmitQuantumCircuit` itself retries up to three times, but only for failures before a remote task exists — a submission that never reaches the backend is safe to retry. Once the circuit has been submitted, a failure to queue `PollQuantumTask` (e.g. the queue connection is down) fails the submission job immediately instead of retrying, so a queued retry never creates a second billable task. That failure lands in `failed_jobs` as a `QuantumExecutionException` naming the ARN; with `persist_tasks` on, the row for that task also records the error. The task itself still exists on the backend and is simply untracked — dispatch `PollQuantumTask` yourself with that ARN to pick up polling manually.
 
@@ -243,53 +239,7 @@ Quantum::driver('my-driver')->executeCircuit($circuit);
 
 ### Custom Providers
 
-A custom driver usually needs a matching backend on the Python side. Instead of forking the `bin/python` scripts, declare a **provider**: a plain Python module that resolves the device the scripts run circuits on. The scripts pick it from the `python_provider` key of the driver's config — either a filesystem path to a `.py` file or an importable module name — falling back to the built-in providers for the `local` and `aws` drivers.
-
-A provider module may define four module-level hooks; only the first is required:
-
-| Hook | Required | Purpose |
-|------|----------|---------|
-| `resolve_device(config) -> Device` | yes | Return a Braket-compatible device: `.run(circuit, shots=..., **opts)` returning a task with `.id` and `.result()` (whose result exposes `measurement_counts`). Raise `ValueError` with a human-readable message on bad config. |
-| `run_options(config) -> dict` | no | Extra kwargs merged into every `device.run()` call (the aws provider returns the S3 destination folder here). Defaults to `{}`. |
-| `run_batch(device, circuits, shots_list, config) -> list[Result]` | no | Full control over batch execution. Without it, uniform shot counts go through one `device.run_batch()` call and mixed shot counts run sequentially. |
-| `check_task(task_id, config) -> dict` | no | Return `{"status": "<CREATED\|QUEUED\|RUNNING\|COMPLETED\|FAILED\|CANCELLING\|CANCELLED>"}`, plus `"counts"` when `COMPLETED`. Without it, task polling fails with `Driver '<name>' does not support task polling.` |
-
-`config` is the driver's config array from `config/aether.php`, passed through the JSON payload — providers should read their settings from it, **not** from environment variables. A minimal provider:
-
-```python
-# app/quantum/ionq_provider.py
-def resolve_device(config):
-    from braket.aws import AwsDevice
-
-    return AwsDevice(config["device_arn"])
-```
-
-Wire it up with a driver registered through `Quantum::extend()` — `Quantum::bridge()` hands you the same configured `PythonBridge` the built-in drivers use:
-
-```php
-// config/aether.php
-'drivers' => [
-    'ionq' => [
-        'device_arn' => 'arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1',
-        'python_provider' => base_path('app/quantum/ionq_provider.py'),
-    ],
-],
-```
-
-The base driver already refuses `->run()` against this `device_arn` (it contains `device/qpu/`), so `synchronous_safe` only needs setting to `true` if you want to override that.
-
-```php
-use Aether\Facades\Quantum;
-
-Quantum::extend('ionq', fn () => new IonqDriver(
-    Quantum::bridge(),
-    app(\Aether\Config\AetherConfig::class)->driver('ionq'),
-));
-```
-
-where `IonqDriver` extends `Aether\Drivers\AbstractQuantumDriver` and returns `'ionq'` from `driverName()` — the base class already implements circuit execution, batching, and entropy generation on top of the scripts.
-
-> **Trust model.** `python_provider` executes arbitrary Python inside the subprocess — it is exactly as powerful as `python_path` itself. Treat it as trusted code: set it only from configuration you control, and never derive it from user input.
+A custom driver can be registered through `Quantum::extend()`.
 
 ## Available Gates
 
@@ -344,19 +294,18 @@ Appending a fragment that requires more qubits than the circuit has throws an `I
 
 Qubit indices must be integers: `measure()` accepts `null` (every qubit), an `int`, or a non-empty array of integers, and every gate method takes `int` indices. A string or a float inside a `measure()` array throws an `InvalidCircuitException` instead of a `TypeError`, and a queued definition carrying a non-integer index for any gate is rejected when it is rebuilt rather than silently cast to qubit 0.
 
-Measurement is final: listing a qubit twice in one `measure()` call, measuring a qubit a second time, or applying any gate to a qubit after it was measured throws an `InvalidCircuitException` while the circuit is being built, before any Python process is spawned. Put `measure()` last, or measure only the qubits you are done with. A fragment's own measurements do not count, since `append()` drops them: only the parent's measurements constrain what follows.
+Measurement is final: listing a qubit twice in one `measure()` call, measuring a qubit a second time, or applying any gate to a qubit after it was measured throws an `InvalidCircuitException` while the circuit is being built, before any backend process is spawned. Put `measure()` last, or measure only the qubits you are done with. A fragment's own measurements do not count, since `append()` drops them: only the parent's measurements constrain what follows.
 
 ### Adding a Gate
 
-Gate knowledge lives in a single metadata layer on each side of the bridge: the `GateType` / `GateShape` enums in `src/Circuit/` (PHP) and the `GATE_PARAMS` table in `bin/python/common.py` (Python). Adding a gate touches exactly five places:
+Gate knowledge lives in a single metadata layer on each side of the bridge: the `GateType` / `GateShape` enums in `src/Circuit/` (PHP) . Adding a gate touches exactly four places:
 
 1. A `GateType` case (and, for a new parameter shape, a `GateShape` case)
 2. A static factory on `Gate` (a one-liner delegating to `Gate::make()`, which lays the arguments out from the shape)
 3. A fluent method on `CircuitBuilder` (a one-liner delegating to `push()`)
-4. A `GATE_PARAMS` row in `bin/python/common.py`
 5. A row in the gate table above
 
-Everything else is derived from the metadata: `Gate::make(GateType $type, array $qubits, array $angles = [])` and `CircuitBuilder::gate()` build any gate from positional arguments, so the named factories and fluent methods are typed sugar over one generic constructor. Use `->gate()` when the gate type is data rather than code, e.g. when replaying a stored circuit description. The test suite enforces completeness: a `GateType` case without a factory, fluent method, or wire-contract dataset entry fails the Unit suite, and a PHP/Python mismatch fails `tests/Feature/GateParityTest.php`, which compares the two tables through the real Python bridge.
+Everything else is derived from the metadata: `Gate::make(GateType $type, array $qubits, array $angles = [])` and `CircuitBuilder::gate()` build any gate from positional arguments, so the named factories and fluent methods are typed sugar over one generic constructor. Use `->gate()` when the gate type is data rather than code, e.g. when replaying a stored circuit description. The test suite enforces completeness: a `GateType` case without a factory, fluent method, or wire-contract dataset entry fails the Unit suite.
 
 ## Events
 
@@ -513,7 +462,7 @@ The local simulator keeps a full statevector in memory, and that memory doubles 
 ],
 ```
 
-A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before any Python subprocess is spawned. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The value must be a positive integer: anything else (`AETHER_MAX_QUBITS=abc`) throws an `InvalidDriverConfigException` as soon as the driver is resolved, rather than silently becoming a ceiling of zero. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
+A circuit that requests more qubits than the ceiling throws an `InvalidCircuitException` before execution. Raise `AETHER_MAX_QUBITS` if your host has memory to spare, or set it to `null` (or leave `AETHER_MAX_QUBITS=` empty) to remove the ceiling entirely. The value must be a positive integer: anything else (`AETHER_MAX_QUBITS=abc`) throws an `InvalidDriverConfigException` as soon as the driver is resolved, rather than silently becoming a ceiling of zero. The `aws` driver has no ceiling by default, but a `max_qubits` you configure for it is enforced on `->run()`, `->dispatch()`, `Quantum::batch()` and entropy generation alike.
 
 ## Cost Estimation
 
@@ -556,7 +505,7 @@ Set `AETHER_AWS_MAX_COST` (or `max_cost_per_run` in config) to reject a circuit 
 
 The guard runs on `->run()`, `->dispatch()`, `Quantum::batch()` (against the batch's total estimated cost — it bounds what one call can spend), and entropy generation. It throws an `InvalidCircuitException`. `null` (the default) or an empty `AETHER_AWS_MAX_COST=` means unlimited — existing configs keep working unchanged. A ceiling configured without `pricing` rates throws an `InvalidDriverConfigException` instead of silently never tripping, and so does a ceiling or rate that is not a non-negative number.
 
-Every option the PHP layer reads (`max_qubits`, `entropy_qubits`, `synchronous_safe`, and for `aws` the `pricing` rates and `max_cost_per_run`) is validated once, when the driver is resolved, through a typed `Aether\Config\DriverConfig` value object (`AwsDriverConfig` for the `aws` driver). Custom drivers extending `AbstractQuantumDriver` read the shared options from `$this->config->maxQubits` and friends, and any key of their own through `$this->config->get('key')`; the raw array still reaches the Python provider untouched as `driver_config`. The object is built inside the base constructor, so `driverName()` must not depend on state your own constructor sets after calling `parent::__construct()`.
+Every option the PHP layer reads (`max_qubits`, `entropy_qubits`, `synchronous_safe`, and for `aws` the `pricing` rates and `max_cost_per_run`) is validated once, when the driver is resolved, through a typed `Aether\Config\DriverConfig` value object (`AwsDriverConfig` for the `aws` driver). Custom drivers extending `AbstractQuantumDriver` read the shared options from `$this->config->maxQubits` and friends, and any key of their own through `$this->config->get('key')`; the raw array still reaches the backend provider untouched as `driver_config`. The object is built inside the base constructor, so `driverName()` must not depend on state your own constructor sets after calling `parent::__construct()`.
 
 ## Contributing
 
