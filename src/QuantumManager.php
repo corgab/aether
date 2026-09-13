@@ -133,8 +133,6 @@ class QuantumManager extends Manager
         return $fake;
     }
 
-    
-
     /**
      * Resolve a driver by name, throwing DriverNotFoundException for unknown drivers.
      *
@@ -197,6 +195,7 @@ class QuantumManager extends Manager
 
         return new LocalSimulatorDriver(
             $config,
+            $cache
         );
     }
 
@@ -219,7 +218,6 @@ class QuantumManager extends Manager
         );
     }
 
-    
     /**
      * The typed package settings.
      *

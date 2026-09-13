@@ -14,7 +14,7 @@ use Aether\Tasks\TaskSnapshot;
 use Aether\Tasks\TaskStatus;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\NullStore;
-
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Str;
 
 /**
@@ -67,8 +67,9 @@ class LocalSimulatorDriver extends AbstractQuantumDriver implements Asynchronous
      *
      * @param  array<string, mixed>  $config
      */
-    public function __construct(protected readonly array $config) {
-        parent::__construct();
+    public function __construct(array $config, private readonly Repository $cache)
+    {
+        parent::__construct($config);
     }
 
     protected function driverName(): string

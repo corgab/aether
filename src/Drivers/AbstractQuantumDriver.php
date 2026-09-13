@@ -10,14 +10,12 @@ use Aether\Config\DriverConfig;
 use Aether\Contracts\BatchableDevice;
 use Aether\Contracts\QuantumDevice;
 use Aether\Events\CircuitExecuted;
-use Aether\Events\EntropyGenerated;
 use Aether\Exceptions\InvalidCircuitException;
 use Aether\Exceptions\InvalidDriverConfigException;
 use Aether\Exceptions\QuantumExecutionException;
 use Aether\Results\BatchResult;
 use Aether\Results\CircuitResult;
 use Aether\Tasks\TaskSnapshot;
-use Aether\Tasks\TaskStatus;
 
 /**
  * Base driver with shared circuit execution and entropy generation logic.
@@ -26,8 +24,6 @@ use Aether\Tasks\TaskStatus;
  */
 abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
 {
-    private const BITS_PER_BYTE = 8;
-
     use DispatchesLifecycleEvents;
 
     /**
@@ -42,7 +38,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * @throws InvalidDriverConfigException When an option has a value of the wrong shape.
      */
-    public function __construct() {
+    public function __construct(array $config)
+    {
         $this->config = $this->makeConfig($config);
     }
 
@@ -108,8 +105,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * default `null` (or any non-bool value) derives the answer from
      * `device_arn` — a Braket QPU ARN refuses, anything else (a simulator,
      * or no ARN at all) is allowed.
-     *
-     * @throws QuantumExecutionException
      */
     protected function assertSynchronousSafe(): void
     {
@@ -177,12 +172,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * assertConfigured() directly instead — see its docblock for why that
      * still enforces validation.
      */
-    private function preflightSynchronous(): void
-    {
-        $this->assertConfigured();
-        $this->assertSynchronousSafe();
-        $this->beforeExecution();
-    }
 
     /**
      * Ensure every required config key is present and non-empty, failing fast
@@ -296,7 +285,7 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      *
      * @param  array<string, mixed>  $definition  The CircuitBuilder::toArray() shape.
      *
-     * @throws QuantumExecutionException When the response carries no usable counts.
+     *  When the response carries no usable counts.
      */
     private function runDefinition(array $definition): CircuitResult
     {
@@ -310,12 +299,8 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * @param  list<array<string, mixed>>  $definitions  The CircuitBuilder::toArray() shapes.
      * @return list<CircuitResult>
      *
-     * @throws QuantumExecutionException When the response is malformed.
+     *  When the response is malformed.
      */
-    private function runBatchDefinitions(array $definitions): array
-    {
-        throw new \RuntimeException('Not implemented');
-    }
 
     /**
      * Submit the circuit through submission and return the backend's task
@@ -327,25 +312,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * assertSynchronousSafe() deliberately does not run here.
      *
      * @throws InvalidCircuitException
-     * @throws QuantumExecutionException When submission returns no usable task identifier.
+     *                                 When submission returns no usable task identifier.
      */
     protected function submitTask(CircuitBuilder $circuit): string
     {
-        $this->assertConfigured();
-        $this->validateCircuits([$circuit]);
-
-        $response = $this->bridge->execute('submission', $this->payload($circuit->toArray()), $this->config->toArray());
-
-        $taskArn = $response['task_arn'] ?? null;
-
-        if (! is_string($taskArn) || trim($taskArn) === '') {
-            throw QuantumExecutionException::malformedResponse(
-                'submission',
-                'expected the "task_arn" key to be present and hold a non-empty string.'
-            );
-        }
-
-        return $taskArn;
+        throw new \RuntimeException('Not implemented');
     }
 
     /**
@@ -356,24 +327,11 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * blocks, so only config validation runs — neither assertSynchronousSafe()
      * nor beforeExecution().
      *
-     * @throws QuantumExecutionException When status check returns no valid status.
+     *  When status check returns no valid status.
      */
     protected function pollTask(string $taskArn): TaskSnapshot
     {
-        $this->assertConfigured();
-
-        $response = $this->bridge->execute('status check', $this->payload(['task_arn' => $taskArn]), $this->config->toArray());
-
-        $status = $response['status'] ?? null;
-
-        if (! is_string($status) || TaskStatus::tryFrom($status) === null) {
-            throw QuantumExecutionException::malformedResponse(
-                'status check',
-                'expected the "status" key to be present and hold a valid task status value.'
-            );
-        }
-
-        return TaskSnapshot::fromResponse($response);
+        throw new \RuntimeException('Not implemented');
     }
 
     /**
@@ -387,16 +345,6 @@ abstract class AbstractQuantumDriver implements BatchableDevice, QuantumDevice
      * aws) `max_cost_per_run` ceilings apply to entropy generation exactly
      * as they do to ->run(), ->dispatch() and Quantum::batch().
      */
-    private function entropyCircuit(int $qubits, int $shots): CircuitBuilder
-    {
-        $circuit = (new CircuitBuilder($this, $this->driverName()))->qubits($qubits);
-
-        for ($qubit = 0; $qubit < $qubits; $qubit++) {
-            $circuit->h($qubit);
-        }
-
-        return $circuit->measure()->shots($shots);
-    }
 
     /**
      * Returns ceil($bits / 8) bytes, every bit of which was measured: the

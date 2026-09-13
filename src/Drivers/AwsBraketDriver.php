@@ -29,7 +29,7 @@ class AwsBraketDriver extends AbstractQuantumDriver implements AsynchronousDevic
      *
      * @param  array<string, mixed>  $config
      */
-    public function __construct(protected readonly array $config)
+    public function __construct(array $config)
     {
         parent::__construct(self::normalizeBucket($config));
     }
